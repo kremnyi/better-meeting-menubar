@@ -9,6 +9,11 @@ struct MenuBarControlView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            content
+                .padding(12)
+
+            Divider()
+
             if updates.status.showsNotice {
                 HStack(spacing: 10) {
                     if updates.status == .downloading || updates.status == .preparing || updates.status == .installing {
@@ -38,11 +43,6 @@ struct MenuBarControlView: View {
                 .help(updates.errorMessage ?? "")
                 Divider()
             }
-
-            content
-                .padding(12)
-
-            Divider()
 
             HStack(spacing: 8) {
                 Button {
@@ -367,7 +367,22 @@ struct MenuBarControlView: View {
                 errorView(error)
             }
 
-            primaryActionButton
+            if let permission = model.privacyPermission {
+                Button {
+                    if let url = permission.settingsURL { NSWorkspace.shared.open(url) }
+                } label: {
+                    Label("Open System Settings", systemImage: "gearshape")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(.signalCoral)
+
+                Button(model.primaryButtonTitle, action: model.primaryAction)
+                    .buttonStyle(.bordered)
+            } else {
+                primaryActionButton
+            }
 
             Button("Back to meetings", action: model.dismissFailure)
                 .buttonStyle(.bordered)
@@ -387,9 +402,10 @@ struct MenuBarControlView: View {
     }
 
     private var captureSummary: some View {
-        Label(model.captureAccessText, systemImage: model.captureAccessSymbol)
-            .font(.caption)
-            .foregroundStyle(model.privacyPermission == nil ? Color.secondary : Color.orange)
+        let notice = model.captureAccessNotice
+        return Label(notice.text, systemImage: model.captureAccessSymbol)
+            .font(notice.isSecondary ? .caption : .callout)
+            .foregroundStyle(model.privacyPermission != nil ? Color.orange : notice.isSecondary ? .secondary : .primary)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
@@ -402,24 +418,8 @@ struct MenuBarControlView: View {
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if model.privacyPermission != nil || model.completedFolder != nil {
-                HStack(spacing: 10) {
-                    if model.privacyPermission != nil {
-                        Button("Open System Settings") {
-                            if let url = model.privacyPermission?.settingsURL {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                    }
-
-                    if model.completedFolder != nil {
-                        Button("Show saved files") {
-                            if let folder = model.completedFolder {
-                                NSWorkspace.shared.open(folder)
-                            }
-                        }
-                    }
-                }
+            if let folder = model.completedFolder {
+                Button("Show saved files") { NSWorkspace.shared.open(folder) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

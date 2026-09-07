@@ -347,6 +347,39 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
+    func testPermissionFailuresKeepRecoveryVisible() throws {
+        let suite = "BetterMeetingPermissions.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
+        defer { defaults.removePersistentDomain(forName: suite) }
+        _ = NSApplication.shared
+        let model = AppModel(defaults: defaults)
+        for (error, permission, title): (RecorderError, PrivacyPermission, String) in [
+            (.screenPermissionDenied, .screenRecording, "Restart Better Meeting"),
+            (.microphonePermissionDenied, .microphone, "Try again")
+        ] {
+            model.fail(error)
+            XCTAssertEqual(model.state, .failed)
+            XCTAssertEqual(model.privacyPermission, permission)
+            XCTAssertFalse(model.captureAccessNotice.isSecondary, "Blocked access must not look like quiet ready status")
+            XCTAssertEqual(model.primaryButtonTitle, title, "Keep the existing restart or retry as the secondary action")
+            XCTAssertNotNil(permission.settingsURL)
+            let view = NSHostingView(rootView: MenuBarControlView()
+                .environmentObject(model).environmentObject(model.updates)
+                .environment(\.colorScheme, .light)
+                .background(Color(nsColor: .windowBackgroundColor)))
+            XCTAssertEqual(view.fittingSize.width, 304)
+            XCTAssertGreaterThan(view.fittingSize.height, 0)
+            if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
+                try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("permission-\(permission).png"))
+            }
+            model.dismissFailure()
+            XCTAssertEqual(model.state, .idle)
+            XCTAssertNil(model.privacyPermission)
+        }
+    }
+
+    @MainActor
     func testPopoversDoNotResizeMenu() throws {
         let suite = "BetterMeetingLayout.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

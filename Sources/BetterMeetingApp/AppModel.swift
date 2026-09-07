@@ -204,21 +204,21 @@ final class AppModel: ObservableObject {
         return "record.circle"
     }
 
-    var captureAccessText: String {
+    var captureAccessNotice: (text: String, isSecondary: Bool) {
         if let privacyPermission {
-            return privacyPermission.accessNeededText
+            return (privacyPermission.accessNeededText, false)
         }
 
         if state == .recording {
-            return "Stop here or from the macOS recording menu"
+            return ("Stop here or from the macOS recording menu", true)
         }
 
         let microphoneReady = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         if CGPreflightScreenCaptureAccess() && microphoneReady {
-            return "Screen, system audio, and mic ready"
+            return ("Screen, system audio, and mic ready", true)
         }
 
-        return "Permissions requested when recording"
+        return ("Start recording to grant access", false)
     }
 
     var captureAccessSymbol: String {
@@ -845,7 +845,7 @@ final class AppModel: ObservableObject {
         processingFraction = fraction
     }
 
-    private func fail(_ error: Error) {
+    func fail(_ error: Error) {
         stopTimer()
         state = .failed
         statusText = "Couldn’t finish this recording."
@@ -875,7 +875,7 @@ enum PrivacyPermission: Equatable {
 
     var accessNeededText: String {
         switch self {
-        case .screenRecording: "Enable screen access, then restart"
+        case .screenRecording: "Screen access needed"
         case .microphone: "Microphone access needed"
         }
     }

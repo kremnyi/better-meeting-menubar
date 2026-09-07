@@ -316,9 +316,9 @@ enum RecorderError: LocalizedError {
         case .notRecording:
             "There is no active recording to stop."
         case .screenPermissionDenied:
-            "Screen recording access needs to be enabled or refreshed. Turn Better Meeting on in System Settings, then restart the app."
+            "Enable screen access for Better Meeting in System Settings, then restart the app."
         case .microphonePermissionDenied:
-            "Microphone access is off. Enable Better Meeting in System Settings → Privacy & Security → Microphone."
+            "Enable Better Meeting in System Settings → Privacy & Security → Microphone, then try again."
         case .noDisplay:
             "The selected display is unavailable. Choose a connected display in Options."
         case .noMicrophone:

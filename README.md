@@ -35,7 +35,7 @@ Managed Macs may not allow this exception.
 ## Update the app
 
 Open **Options** to see the installed version, release notes, and **Check for Updates**
-below the automatic-download setting. Update notices also appear in the main menu,
+below the automatic-download setting. Update notices also appear above Options in the main menu,
 without separate update dialogs. Sparkle verifies updates with a separate
 signing key before extraction.
 
@@ -65,7 +65,8 @@ updates. Uninstalling the app keeps saved meetings.
    The app remembers these choices. Defaults are the main display, system
    microphone, and `~/Documents/Better Meetings`.
 4. Start recording and grant **Screen & System Audio Recording** and
-   **Microphone** access. Restart the app if prompted after granting screen access.
+   **Microphone** access. If access is blocked, click **Open System Settings** to enable it,
+   then use **Restart Better Meeting** for screen access or **Try again** for microphone access.
 5. Stop recording and wait for transcription. Click the folder button beside the
    finished meeting to open its files in Finder.
 
