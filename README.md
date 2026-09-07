@@ -4,7 +4,9 @@ Record a display, system audio, and microphone from the macOS menu bar. After
 recording stops, Whisper transcribes the audio locally. Each meeting gets a
 folder with the video, audio, and transcript, accessible from a Finder button.
 
-Requires an Apple Silicon Mac and macOS 15 or newer.
+Requires Apple Silicon and macOS 15+. Downloads approximately 1.6 GB of speech
+model files during initial setup. Transcription runs locally and works offline
+afterward.
 
 <img src="docs/menu-bar.png" alt="Better Meeting menu with About in the top-right corner, Options at the bottom left, and Finder buttons for recent meetings" width="304">
 
