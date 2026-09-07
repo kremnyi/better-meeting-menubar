@@ -99,12 +99,12 @@ struct MenuBarControlView: View {
 
     private var idleContent: some View {
         VStack(alignment: .leading, spacing: 12) {
+            captureSummary
+
             TextField("Meeting name (optional)", text: $model.meetingTitle)
                 .textFieldStyle(.roundedBorder)
 
             primaryActionButton
-
-            captureSummary
 
             modelSetupStatus
 
@@ -359,6 +359,10 @@ struct MenuBarControlView: View {
 
     private var failedContent: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if model.privacyPermission != nil {
+                captureSummary
+            }
+
             if let error = model.errorMessage {
                 errorView(error)
             }
@@ -367,10 +371,6 @@ struct MenuBarControlView: View {
 
             Button("Back to meetings", action: model.dismissFailure)
                 .buttonStyle(.bordered)
-
-            if model.privacyPermission != nil {
-                captureSummary
-            }
         }
     }
 
@@ -388,8 +388,11 @@ struct MenuBarControlView: View {
 
     private var captureSummary: some View {
         Label(model.captureAccessText, systemImage: model.captureAccessSymbol)
-            .font(.callout)
-            .foregroundStyle(model.privacyPermission == nil ? Color.primary : Color.orange)
+            .font(.caption)
+            .foregroundStyle(model.privacyPermission == nil ? Color.secondary : Color.orange)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity)
     }
 
     private func errorView(_ message: String) -> some View {
