@@ -5,7 +5,6 @@ struct MenuBarControlView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updates: AppUpdater
     @State var captureOptionsPresented = false
-    @State var aboutPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
 
     var body: some View {
@@ -97,22 +96,6 @@ struct MenuBarControlView: View {
                 Label(model.state.label, systemImage: model.state.symbol)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(model.state.tint)
-            }
-
-            Button {
-                aboutPresented.toggle()
-            } label: {
-                Image(systemName: "info.circle")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("About Better Meeting")
-            .accessibilityLabel("About Better Meeting")
-            .popover(isPresented: $aboutPresented, arrowEdge: .top) {
-                AboutView()
             }
         }
         .padding(.horizontal, 12)

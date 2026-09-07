@@ -356,24 +356,17 @@ final class RecoveryTests: XCTestCase {
         let model = AppModel(defaults: defaults)
         let closed = NSHostingView(rootView: MenuBarControlView().environmentObject(model).environmentObject(model.updates))
         let presented = NSHostingView(rootView: MenuBarControlView(captureOptionsPresented: true).environmentObject(model).environmentObject(model.updates))
-        let about = NSHostingView(rootView: MenuBarControlView(aboutPresented: true).environmentObject(model).environmentObject(model.updates))
         XCTAssertGreaterThan(closed.fittingSize.height, 0)
         XCTAssertEqual(presented.fittingSize, closed.fittingSize)
-        XCTAssertEqual(about.fittingSize, closed.fittingSize)
     }
 
     @MainActor
-    func testOptionsAndAboutLayouts() throws {
+    func testOptionsAndUpdateLayouts() throws {
         let suite = "BetterMeetingPanelLayout.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
         defer { defaults.removePersistentDomain(forName: suite) }
         _ = NSApplication.shared
-        let previousIcon = NSApp.applicationIconImage
-        NSApp.applicationIconImage = NSImage(contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Assets/AppIconMaster.png"))
-        defer { NSApp.applicationIconImage = previousIcon }
         let model = AppModel(defaults: defaults)
         let meeting = MeetingHistoryItem(
             title: "Design review", recordedAt: Date(), duration: 60,
@@ -405,12 +398,12 @@ final class RecoveryTests: XCTestCase {
             ("downloading", .downloading), ("preparing", .preparing),
             ("ready", .ready("0.3.18")), ("installing", .installing), ("failed", .failed)
         ] {
-            panels.append(("about-\(name)", AnyView(AboutView(version: "0.3.12")), 304, status))
+            panels.append(("updates-\(name)", AnyView(UpdateOptionsView(updates: model.updates, version: "0.3.23").frame(width: 328)), 328, status))
         }
-        panels.append(("about-development", AnyView(AboutView(
-            version: nil
-        )), 304, .unchecked))
-        var aboutHeight: CGFloat?
+        panels.append(("updates-development", AnyView(UpdateOptionsView(
+            updates: model.updates, version: nil
+        ).frame(width: 328)), 328, .unchecked))
+        var updatesHeight: CGFloat?
         for (name, content, width, status) in panels {
             model.updates.canCheckForUpdates = status != .checking
             if case .ready = status { model.updates.showReady(toInstallAndRelaunch: { _ in }) }
@@ -427,12 +420,12 @@ final class RecoveryTests: XCTestCase {
             XCTAssertEqual(view.fittingSize.width, width, "\(name) must keep its panel width")
             XCTAssertGreaterThan(view.fittingSize.height, 0)
             if name == "options" {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 430, "Options, including app preferences, must stay compact")
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 480, "Options, including update controls, must stay compact")
             }
-            if ["about-unchecked", "about-checking", "about-current", "about-failed"].contains(name) {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 175, "About must stay compact")
-                if let aboutHeight { XCTAssertEqual(view.fittingSize.height, aboutHeight, "Checking and errors must not resize About") }
-                else { aboutHeight = view.fittingSize.height }
+            if ["updates-unchecked", "updates-checking", "updates-current", "updates-failed"].contains(name) {
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 60, "Update controls must stay compact")
+                if let updatesHeight { XCTAssertEqual(view.fittingSize.height, updatesHeight, "Checking must not resize update controls") }
+                else { updatesHeight = view.fittingSize.height }
             }
             if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
                 let output = URL(fileURLWithPath: path).appendingPathComponent("\(name).png")

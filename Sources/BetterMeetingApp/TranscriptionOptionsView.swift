@@ -57,6 +57,7 @@ struct CaptureOptionsView: View {
                     }
                     Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
                         .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
+                    UpdateOptionsView(updates: model.updates)
                 }
                 .toggleStyle(.checkbox)
             }

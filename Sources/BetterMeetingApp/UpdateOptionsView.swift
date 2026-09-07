@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct AboutView: View {
-    @EnvironmentObject private var updates: AppUpdater
+struct UpdateOptionsView: View {
+    @ObservedObject var updates: AppUpdater
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
     private var updateInProgress: Bool {
@@ -9,29 +9,18 @@ struct AboutView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(nsImage: NSApplication.shared.applicationIconImage)
-                    .resizable()
-                    .frame(width: 32, height: 32)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Better Meeting").font(.headline)
-                    HStack(spacing: 6) {
-                        Text(version.map { "Version \($0)" } ?? "Development build")
-                            .textSelection(.enabled)
-                            .layoutPriority(1)
-                        if updates.status != .unchecked && !updateInProgress {
-                            Text("· \(updates.status.message)")
-                        }
-                    }
-                    .lineLimit(1)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(version.map { "Version \($0)" } ?? "Development build")
+                    .textSelection(.enabled)
+                    .layoutPriority(1)
+                if updates.status != .unchecked && !updateInProgress {
+                    Text("· \(updates.status.message)")
                 }
             }
-
-            Divider()
+            .lineLimit(1)
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -64,7 +53,6 @@ struct AboutView: View {
         }
         .font(.callout)
         .controlSize(.small)
-        .padding(16)
-        .frame(width: 304, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

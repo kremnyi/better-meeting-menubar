@@ -8,7 +8,7 @@ Requires Apple Silicon and macOS 15+. Downloads approximately 1.6 GB of speech
 model files during initial setup. Transcription runs locally and works offline
 afterward.
 
-<img src="docs/menu-bar.png" alt="Better Meeting menu with About in the top-right corner, Options at the bottom left, and Finder buttons for recent meetings" width="304">
+<img src="docs/menu-bar.png" alt="Better Meeting menu with Options at the bottom left and Finder buttons for recent meetings" width="304">
 
 The app's menu, shown with fictional meetings.
 
@@ -34,9 +34,9 @@ Managed Macs may not allow this exception.
 
 ## Update the app
 
-Click the **ⓘ** button in the top-right corner to open **About**, with the installed
-version, release notes, and **Check for Updates**. Checks and downloads appear in
-this menu without separate update dialogs. Sparkle verifies updates with a separate
+Open **Options** to see the installed version, release notes, and **Check for Updates**
+below the automatic-download setting. Update notices also appear in the main menu,
+without separate update dialogs. Sparkle verifies updates with a separate
 signing key before extraction.
 
 Enable **Options → Download updates automatically** to check GitHub on each launch
