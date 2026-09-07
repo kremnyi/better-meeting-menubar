@@ -64,6 +64,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         do {
             try updater.start()
             started = true
+            if automaticChecks { updater.checkForUpdatesInBackground() }
         } catch {
             showUpdaterError(error) {}
         }

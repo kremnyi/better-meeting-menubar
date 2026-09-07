@@ -39,8 +39,9 @@ version, release notes, and **Check for Updates**. Checks and downloads appear i
 this menu without separate update dialogs. Sparkle verifies updates with a separate
 signing key before extraction.
 
-Enable **Options → Download updates automatically** to check GitHub and prepare updates in
-the background. This is off by default. Once ready, click **Restart to Update**
+Enable **Options → Download updates automatically** to check GitHub on each launch
+and periodically while the app is open, preparing updates in the background.
+This is off by default. Once ready, click **Restart to Update**
 in the main menu to install and reopen the app. A prepared update can also install
 when you quit. Recording or processing must finish before restarting. If macOS
 requires authorization, click **Install Update** to continue. Failed updates show

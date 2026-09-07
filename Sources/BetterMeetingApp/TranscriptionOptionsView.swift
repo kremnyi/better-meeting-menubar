@@ -56,7 +56,7 @@ struct CaptureOptionsView: View {
                         .help(launchAtLoginError ?? "")
                     }
                     Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
-                        .help("Checks GitHub and downloads updates in the background. Installs when you restart or quit.")
+                        .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
                 }
                 .toggleStyle(.checkbox)
             }
