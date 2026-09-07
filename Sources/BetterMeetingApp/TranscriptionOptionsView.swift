@@ -129,11 +129,17 @@ struct CaptureOptionsView: View {
             }
             Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
             GridRow {
-                Text("Transcription").font(.headline).gridCellColumns(2)
+                HStack {
+                    Text("Transcription").font(.headline)
+                    Spacer()
+                    Button("Advanced…") { advancedPresented = true }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Advanced transcription")
+                }
+                .gridCellColumns(2)
             }
             TranscriptionOptionsView(
-                languages: $model.transcriptionLanguages, settings: $model.speechSettings,
-                showAdvanced: { advancedPresented = true }
+                languages: $model.transcriptionLanguages, settings: $model.speechSettings
             )
             Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
             GridRow {
@@ -200,7 +206,6 @@ struct CaptureOptionsView: View {
 struct TranscriptionOptionsView: View {
     @Binding var languages: [String]
     @Binding var settings: SpeechSettings
-    let showAdvanced: () -> Void
 
     private var languageNames: String {
         languages.compactMap { TranscriptionLanguage(rawValue: $0)?.label }.joined(separator: ", ")
@@ -228,37 +233,21 @@ struct TranscriptionOptionsView: View {
                 .accessibilityValue(languageNames)
                 .help(languageNames + ". Select the languages you expect. At least one is required.")
             }
-            if languages.count > 1 {
-                GridRow {
-                    Text("")
-                    Text("Fewer languages finish faster.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
             GridRow {
                 Text("Speakers")
-                    .gridCellAnchor(.topLeading)
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle("Add labels", isOn: Binding(
-                        get: { settings.speakerLabels == true },
-                        set: { settings.speakerLabels = $0 }
-                    ))
-                    .toggleStyle(.checkbox)
-                    .accessibilityLabel("Add speaker labels")
-                    .help("Adds Speaker 1, Speaker 2… Downloads about 11 MB once. Labels may need correction.")
-                    if settings.speakerLabels == true {
-                        Text("Takes extra processing time.")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 18)
-                    }
-                }
+                Toggle("Add labels", isOn: Binding(
+                    get: { settings.speakerLabels == true },
+                    set: { settings.speakerLabels = $0 }
+                ))
+                .toggleStyle(.checkbox)
+                .accessibilityLabel("Add speaker labels")
+                .help("Adds Speaker 1, Speaker 2… Downloads about 11 MB once. Labels may need correction.")
             }
             GridRow {
-                Text("")
-                Button("Advanced…", action: showAdvanced)
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Advanced transcription")
+                Text("Extra languages and speaker labels take longer.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .gridCellColumns(2)
             }
         }
     }
@@ -283,15 +272,20 @@ struct RetranscriptionView: View {
                 .foregroundStyle(.tint)
                 AdvancedTranscriptionView(settings: $settings, hints: $hints)
             } else {
-                Text("Re-transcribe meeting").font(.headline)
+                HStack {
+                    Text("Re-transcribe meeting").font(.headline)
+                    Spacer()
+                    Button("Advanced…") { advancedPresented = true }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Advanced transcription")
+                }
                 Text(meeting.title).lineLimit(2)
                 Text("Replaces the saved transcript, including edits, only after processing succeeds. The meeting name stays the same.")
                     .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                     TranscriptionOptionsView(
-                        languages: $languages, settings: $settings,
-                        showAdvanced: { advancedPresented = true }
+                        languages: $languages, settings: $settings
                     )
                 }
             }
