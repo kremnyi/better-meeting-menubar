@@ -94,6 +94,12 @@ enum MeetingArtifacts {
     }
 
     private static func availableDirectory(in root: URL, named baseName: String, current: URL? = nil) -> URL {
+        // Keep whole characters and leave room for a collision suffix within 255 UTF-8 bytes.
+        var bytes = 0
+        let baseName = String(baseName.prefix {
+            bytes += $0.utf8.count
+            return bytes <= 255 - 1 - String(Int.max).utf8.count
+        })
         var candidate = root.appendingPathComponent(baseName, isDirectory: true)
         var suffix = 2
 

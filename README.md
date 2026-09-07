@@ -212,6 +212,7 @@ For unnamed meetings, Apple's `NaturalLanguage` framework looks for a person,
 company, or product and a repeated topic. A discussion with Anna about a pricing
 review might become `Anna — Pricing Review`. The folder, Markdown heading, and
 metadata use the same title. Existing folders are never overwritten.
+Long folder names are shortened to fit filesystem limits; the title inside the meeting stays intact.
 
 Naming needs no additional model or API. Product names use a heuristic based on
 repeated capitalized nouns; recognition varies with the transcript and language

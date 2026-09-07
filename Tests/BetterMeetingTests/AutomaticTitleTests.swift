@@ -84,4 +84,27 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertTrue(manualItem.titleWasProvided, "An explicitly typed 'Meeting' must not be treated as unnamed")
         XCTAssertEqual(manualItem.title, "Meeting")
     }
+
+    func testLongUnicodeFolderNamesKeepTitlesAndHandleCollisions() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let date = Date()
+        let emoji = "👨‍👩‍👧‍👦"
+        let title = String(repeating: emoji, count: 40)
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: title, recordedAt: date)
+        let duplicate = try MeetingArtifacts.createDirectory(in: root, title: title, recordedAt: date)
+        XCTAssertLessThanOrEqual(folder.lastPathComponent.utf8.count, 255)
+        XCTAssertTrue(folder.lastPathComponent.hasSuffix(emoji), "Do not split a compound character")
+        XCTAssertEqual(duplicate.lastPathComponent, folder.lastPathComponent + " 2")
+        try MeetingArtifacts.write(title: title, recordedAt: date, duration: 0, segments: [], to: folder)
+        let meeting = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        XCTAssertEqual(meeting.title, title, "Only the folder name should be shortened")
+        let renamedTitle = String(repeating: "🧑🏽‍💻", count: 50)
+        let renamed = try MeetingArtifacts.renameMeeting(meeting, to: renamedTitle)
+        XCTAssertLessThanOrEqual(renamed.lastPathComponent.utf8.count, 255)
+        XCTAssertEqual(try XCTUnwrap(MeetingArtifacts.meetings(in: root).first).title, renamedTitle)
+        XCTAssertTrue(try String(contentsOf: renamed.appendingPathComponent("transcript.md"), encoding: .utf8)
+            .hasPrefix("# " + renamedTitle + "\n"))
+        XCTAssertEqual(try MeetingArtifacts.renameDirectory(renamed, title: renamedTitle, recordedAt: date), renamed)
+    }
 }
