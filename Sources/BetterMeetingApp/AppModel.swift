@@ -99,14 +99,11 @@ final class AppModel: ObservableObject {
     @Published var captureQuality: CaptureQuality {
         didSet { defaults.set(captureQuality.rawValue, forKey: "captureQuality") }
     }
-    @Published var transcriptionLanguage: TranscriptionLanguage {
-        didSet { defaults.set(transcriptionLanguage.rawValue, forKey: "transcriptionLanguage") }
+    @Published var transcriptionLanguages: [String] {
+        didSet { defaults.set(transcriptionLanguages, forKey: "transcriptionLanguages") }
     }
     @Published var transcriptionHints: String {
         didSet { defaults.set(transcriptionHints, forKey: "transcriptionHints") }
-    }
-    @Published var candidateLanguages: [String] {
-        didSet { defaults.set(candidateLanguages, forKey: "candidateLanguages") }
     }
 
     @Published var completionMessage: String?
@@ -127,10 +124,6 @@ final class AppModel: ObservableObject {
     func speechModelChanged() {
         modelReady = false
         prepareSpeechModel()
-    }
-
-    var transcriptionLanguages: [String] {
-        transcriptionLanguage == .auto ? TranscriptionLanguage.candidates(from: candidateLanguages) : [transcriptionLanguage.rawValue]
     }
 
     private let defaults: UserDefaults
@@ -159,9 +152,13 @@ final class AppModel: ObservableObject {
         selectedMicrophoneID = defaults.string(forKey: "microphoneID") ?? ""
         captureResolution = CaptureResolution(rawValue: defaults.integer(forKey: "captureResolution")) ?? .pixels1440
         captureQuality = CaptureQuality(rawValue: defaults.integer(forKey: "captureQuality")) ?? .standard
-        transcriptionLanguage = TranscriptionLanguage(rawValue: defaults.string(forKey: "transcriptionLanguage") ?? "") ?? .auto
+        let previousLanguage = TranscriptionLanguage(rawValue: defaults.string(forKey: "transcriptionLanguage") ?? "")
+        transcriptionLanguages = TranscriptionLanguage.candidates(from:
+            defaults.stringArray(forKey: "transcriptionLanguages")
+                ?? previousLanguage.map { [$0.rawValue] }
+                ?? defaults.stringArray(forKey: "candidateLanguages") ?? []
+        )
         transcriptionHints = defaults.string(forKey: "transcriptionHints") ?? ""
-        candidateLanguages = TranscriptionLanguage.candidates(from: defaults.stringArray(forKey: "candidateLanguages") ?? [])
         exportAfterRecording = defaults.bool(forKey: "exportAfterRecording")
         automaticUpdateChecks = defaults.bool(forKey: "checkUpdatesOnLaunch")
         speechSettings = defaults.data(forKey: "speechSettings")

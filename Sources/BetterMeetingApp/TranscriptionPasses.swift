@@ -18,18 +18,16 @@ struct TranscriptionLanguage: RawRepresentable, Hashable {
     let rawValue: String
 
     init?(rawValue: String) {
-        guard rawValue == "auto" || Constants.languageCodes.contains(rawValue) else { return nil }
+        guard Constants.languageCodes.contains(rawValue) else { return nil }
         self.rawValue = rawValue
     }
 
-    static let auto = Self(rawValue: "auto")!
-    static let uk = Self(rawValue: "uk")!
     static let defaultCandidates = ["uk", "ru", "en"]
-    static let allCases = [auto] + Constants.languageCodes.compactMap(Self.init(rawValue:))
+    static let allCases = Constants.languageCodes.compactMap(Self.init(rawValue:))
         .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
 
     var label: String {
-        self == .auto ? "Automatic" : (Locale.current.localizedString(forLanguageCode: rawValue) ?? rawValue).capitalized
+        (Locale.current.localizedString(forLanguageCode: rawValue) ?? rawValue).capitalized
     }
 
     static func candidates(from saved: [String]) -> [String] {

@@ -349,17 +349,16 @@ final class RecoveryTests: XCTestCase {
             ("options-login-approval", AnyView(CaptureOptionsView(launchAtLoginStatus: .requiresApproval)), 360, .unchecked),
             ("options-login-error", AnyView(CaptureOptionsView(launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.")), 360, .unchecked),
             ("options-login-missing", AnyView(CaptureOptionsView(launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.")), 360, .unchecked),
-            ("options-video", AnyView(CaptureOptionsView(videoSettingsExpanded: true)), 360, .unchecked),
             ("options-enabled", AnyView(CaptureOptionsView()), 360, .unchecked),
             ("options-single-language", AnyView(CaptureOptionsView()), 360, .unchecked),
             ("options-many-languages", AnyView(CaptureOptionsView()), 360, .unchecked),
             ("advanced", AnyView(CaptureOptionsView(advancedPresented: true)), 360, .unchecked),
             ("retranscribe", AnyView(RetranscriptionView(
-                meeting: meeting, language: .auto, candidates: ["uk", "ru", "en"],
+                meeting: meeting, languages: ["uk", "ru", "en"],
                 hints: "", settings: SpeechSettings(), start: { _, _, _ in }
             )), 360, .unchecked),
             ("retranscribe-advanced", AnyView(RetranscriptionView(
-                meeting: meeting, language: .auto, candidates: ["uk", "ru", "en"],
+                meeting: meeting, languages: ["uk", "ru", "en"],
                 hints: "Anna, Approck", settings: SpeechSettings(), advancedPresented: true, start: { _, _, _ in }
             )), 360, .unchecked)
         ]
@@ -382,9 +381,9 @@ final class RecoveryTests: XCTestCase {
             model.updates.status = status
             model.speechSettings.speakerLabels = name == "options-enabled"
             model.exportAfterRecording = name == "options-enabled"
-            model.transcriptionLanguage = name == "options-single-language" ? .uk : .auto
-            model.candidateLanguages = name == "options-many-languages"
-                ? ["uk", "ru", "en", "fr", "de", "es", "pt", "ja"] : ["uk", "ru", "en"]
+            model.transcriptionLanguages = name == "options-single-language" ? ["uk"]
+                : name == "options-many-languages" ? ["uk", "ru", "en", "fr", "de", "es", "pt", "ja"]
+                : ["uk", "ru", "en"]
             let view = NSHostingView(rootView: content.environmentObject(model).environmentObject(model.updates)
                 .environment(\.colorScheme, .light)
                 .background(Color(nsColor: .windowBackgroundColor)))

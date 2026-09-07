@@ -4,7 +4,6 @@ import SwiftUI
 struct CaptureOptionsView: View {
     @EnvironmentObject private var model: AppModel
     @State var advancedPresented = false
-    @State var videoSettingsExpanded = false
     @State var launchAtLoginStatus = SMAppService.mainApp.status
     @State var launchAtLoginError: String?
 
@@ -107,60 +106,33 @@ struct CaptureOptionsView: View {
                 .frame(maxWidth: .infinity)
             }
             GridRow {
-                Button { videoSettingsExpanded.toggle() } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: videoSettingsExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption)
-                            .frame(width: 10)
-                        Text("Video settings")
-                        Spacer()
-                        if !videoSettingsExpanded {
-                            Text("\(model.captureResolution.label) · \(model.captureQuality.rawValue) fps")
-                                .foregroundStyle(.secondary)
-                        }
+                Text("Resolution")
+                Picker("Resolution", selection: $model.captureResolution) {
+                    ForEach(CaptureResolution.allCases, id: \.self) { resolution in
+                        Text(resolution.label).tag(resolution)
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .accessibilityValue(videoSettingsExpanded ? "Expanded" : "Collapsed")
-                .gridCellColumns(2)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+                .help("Limits the video's longest edge without upscaling")
             }
-            if videoSettingsExpanded {
-                GridRow {
-                    Text("Resolution")
-                    Picker("Resolution", selection: $model.captureResolution) {
-                        ForEach(CaptureResolution.allCases, id: \.self) { resolution in
-                            Text(resolution.label).tag(resolution)
-                        }
+            GridRow {
+                Text("Frame rate")
+                Picker("Frame rate", selection: $model.captureQuality) {
+                    ForEach(CaptureQuality.allCases, id: \.self) { quality in
+                        Text(quality.label).tag(quality)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
-                    .help("Limits the video's longest edge without upscaling")
                 }
-                GridRow {
-                    Text("Frame rate")
-                    Picker("Frame rate", selection: $model.captureQuality) {
-                        ForEach(CaptureQuality.allCases, id: \.self) { quality in
-                            Text(quality.label).tag(quality)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
-                }
-                GridRow {
-                    Text("Resolution limits the longest edge. Smoother motion uses more storage.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .gridCellColumns(2)
-                }
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+                .help("Smoother motion uses more storage")
             }
             Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
             GridRow {
                 Text("Transcription").font(.headline).gridCellColumns(2)
             }
             TranscriptionOptionsView(
-                language: $model.transcriptionLanguage,
-                candidates: $model.candidateLanguages, settings: $model.speechSettings,
+                languages: $model.transcriptionLanguages, settings: $model.speechSettings,
                 showAdvanced: { advancedPresented = true }
             )
             Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
@@ -226,53 +198,37 @@ struct CaptureOptionsView: View {
 }
 
 struct TranscriptionOptionsView: View {
-    @Binding var language: TranscriptionLanguage
-    @Binding var candidates: [String]
+    @Binding var languages: [String]
     @Binding var settings: SpeechSettings
     let showAdvanced: () -> Void
 
-    private var candidateNames: String {
-        candidates.compactMap { TranscriptionLanguage(rawValue: $0)?.label }.joined(separator: ", ")
+    private var languageNames: String {
+        languages.compactMap { TranscriptionLanguage(rawValue: $0)?.label }.joined(separator: ", ")
     }
 
     var body: some View {
         Group {
             GridRow {
-                Text("Language")
-                // Build the full language picker only when its menu opens.
-                Menu(language.label) {
-                    Picker("Transcription language", selection: $language) {
-                        ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
-                            Text(language.label).tag(language)
-                        }
+                Text("Languages")
+                Menu(languageNames) {
+                    ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
+                        Toggle(language.label, isOn: Binding(
+                            get: { languages.contains(language.rawValue) },
+                            set: { selected in
+                                if selected { languages.append(language.rawValue) }
+                                else if languages.count > 1 { languages.removeAll { $0 == language.rawValue } }
+                            }
+                        ))
+                        .disabled(languages == [language.rawValue])
                     }
-                    .pickerStyle(.inline)
                 }
-                .accessibilityLabel("Transcription language")
-                .accessibilityValue(language.label)
-                .frame(maxWidth: .infinity)
-                .help("Automatic transcribes each selected language separately, then merges the results")
+                .lineLimit(1)
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .accessibilityLabel("Spoken languages")
+                .accessibilityValue(languageNames)
+                .help(languageNames + ". Select the languages you expect. At least one is required.")
             }
-            if language == .auto {
-                GridRow {
-                    Text("Languages")
-                    Menu(candidateNames) {
-                        ForEach(TranscriptionLanguage.allCases.filter { $0 != .auto }, id: \.self) { language in
-                            Toggle(language.label, isOn: Binding(
-                                get: { candidates.contains(language.rawValue) },
-                                set: { selected in
-                                    if selected { candidates.append(language.rawValue) }
-                                    else { candidates.removeAll { $0 == language.rawValue } }
-                                }
-                            ))
-                            .disabled(candidates == [language.rawValue])
-                        }
-                    }
-                    .lineLimit(1)
-                    .frame(minWidth: 0, maxWidth: .infinity)
-                    .accessibilityValue(candidateNames)
-                    .help(candidateNames + ". One pass per selected language.")
-                }
+            if languages.count > 1 {
                 GridRow {
                     Text("")
                     Text("Fewer languages finish faster.")
@@ -280,33 +236,29 @@ struct TranscriptionOptionsView: View {
                 }
             }
             GridRow {
+                Text("Speakers")
+                    .gridCellAnchor(.topLeading)
                 VStack(alignment: .leading, spacing: 4) {
-                    Toggle("Label speakers", isOn: Binding(
+                    Toggle("Add labels", isOn: Binding(
                         get: { settings.speakerLabels == true },
                         set: { settings.speakerLabels = $0 }
                     ))
-                    .help("Identify speakers locally after transcription. Downloads about 11 MB once. Labels may need correction.")
+                    .toggleStyle(.checkbox)
+                    .accessibilityLabel("Add speaker labels")
+                    .help("Adds Speaker 1, Speaker 2… Downloads about 11 MB once. Labels may need correction.")
                     if settings.speakerLabels == true {
-                        Text("Adds Speaker 1, Speaker 2… Takes extra processing time.")
+                        Text("Takes extra processing time.")
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.leading, 18)
                     }
                 }
-                .gridCellColumns(2)
             }
             GridRow {
-                Button(action: showAdvanced) {
-                    HStack(spacing: 6) {
-                        Text("Advanced transcription")
-                        Image(systemName: "chevron.right").font(.caption)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
-                .gridCellColumns(2)
+                Text("")
+                Button("Advanced…", action: showAdvanced)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Advanced transcription")
             }
         }
     }
@@ -314,8 +266,7 @@ struct TranscriptionOptionsView: View {
 
 struct RetranscriptionView: View {
     let meeting: MeetingHistoryItem
-    @State var language: TranscriptionLanguage
-    @State var candidates: [String]
+    @State var languages: [String]
     @State var hints: String
     @State var settings: SpeechSettings
     @State var advancedPresented = false
@@ -339,7 +290,7 @@ struct RetranscriptionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                     TranscriptionOptionsView(
-                        language: $language, candidates: $candidates, settings: $settings,
+                        languages: $languages, settings: $settings,
                         showAdvanced: { advancedPresented = true }
                     )
                 }
@@ -349,7 +300,7 @@ struct RetranscriptionView: View {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Re-transcribe") {
                     dismiss()
-                    start(language == .auto ? candidates : [language.rawValue], hints, settings)
+                    start(languages, hints, settings)
                 }
                 .keyboardShortcut(.defaultAction)
             }

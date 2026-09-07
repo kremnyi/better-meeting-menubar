@@ -143,13 +143,18 @@ final class TranscriptionPassTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
-        let model = AppModel(defaults: defaults)
-        XCTAssertEqual(model.transcriptionLanguages, ["uk", "ru", "en"])
-        model.candidateLanguages = ["pl", "en"]
+        XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["uk", "ru", "en"])
+        defaults.set("auto", forKey: "transcriptionLanguage")
+        defaults.set(["pl", "en"], forKey: "candidateLanguages")
         XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["pl", "en"])
-        model.transcriptionLanguage = .uk
+        defaults.set("uk", forKey: "transcriptionLanguage")
+        let model = AppModel(defaults: defaults)
+        XCTAssertEqual(model.transcriptionLanguages, ["uk"], "Preserve the previous single-language selection")
+        model.transcriptionLanguages = ["ja", "en"]
+        XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["ja", "en"], "New choices must override both legacy preferences")
+        model.transcriptionLanguages = ["en"]
         model.transcriptionHints = "Anna, Approck, WhisperKit"
-        XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["uk"])
+        XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["en"])
         XCTAssertEqual(AppModel(defaults: defaults).transcriptionHints, "Anna, Approck, WhisperKit")
     }
 
