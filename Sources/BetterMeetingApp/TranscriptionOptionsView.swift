@@ -6,6 +6,7 @@ struct CaptureOptionsView: View {
     @State var advancedPresented = false
     @State var launchAtLoginStatus = SMAppService.mainApp.status
     @State var launchAtLoginError: String?
+    var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -57,7 +58,8 @@ struct CaptureOptionsView: View {
                     }
                     Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
                         .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
-                    UpdateOptionsView(updates: model.updates)
+                        .padding(.top, 4)
+                    UpdateOptionsView(updates: model.updates, version: version)
                 }
                 .toggleStyle(.checkbox)
             }

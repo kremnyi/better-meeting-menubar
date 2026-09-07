@@ -364,7 +364,7 @@ final class RecoveryTests: XCTestCase {
     func testOptionsAndUpdateLayouts() throws {
         let suite = "BetterMeetingPanelLayout.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
+        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite).appendingPathComponent("Better Meetings"), forKey: "outputFolder")
         defer { defaults.removePersistentDomain(forName: suite) }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
@@ -374,15 +374,18 @@ final class RecoveryTests: XCTestCase {
             needsTranscription: false, titleWasProvided: true
         )
         var panels: [(String, AnyView, CGFloat, AppUpdater.Status)] = [
-            ("options", AnyView(CaptureOptionsView()), 360, .unchecked),
-            ("options-login-enabled", AnyView(CaptureOptionsView(launchAtLoginStatus: .enabled)), 360, .unchecked),
-            ("options-login-approval", AnyView(CaptureOptionsView(launchAtLoginStatus: .requiresApproval)), 360, .unchecked),
-            ("options-login-error", AnyView(CaptureOptionsView(launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.")), 360, .unchecked),
-            ("options-login-missing", AnyView(CaptureOptionsView(launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.")), 360, .unchecked),
-            ("options-enabled", AnyView(CaptureOptionsView()), 360, .unchecked),
-            ("options-single-language", AnyView(CaptureOptionsView()), 360, .unchecked),
-            ("options-many-languages", AnyView(CaptureOptionsView()), 360, .unchecked),
-            ("advanced", AnyView(CaptureOptionsView(advancedPresented: true)), 360, .unchecked),
+            ("options", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("options-current", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .current),
+            ("options-checking", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .checking),
+            ("options-ready", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .ready("0.3.24")),
+            ("options-login-enabled", AnyView(CaptureOptionsView(launchAtLoginStatus: .enabled, version: "0.3.23")), 360, .unchecked),
+            ("options-login-approval", AnyView(CaptureOptionsView(launchAtLoginStatus: .requiresApproval, version: "0.3.23")), 360, .unchecked),
+            ("options-login-error", AnyView(CaptureOptionsView(launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23")), 360, .unchecked),
+            ("options-login-missing", AnyView(CaptureOptionsView(launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.", version: "0.3.23")), 360, .unchecked),
+            ("options-enabled", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("options-single-language", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("options-many-languages", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("advanced", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
             ("retranscribe", AnyView(RetranscriptionView(
                 meeting: meeting, languages: ["uk", "ru", "en"],
                 hints: "", settings: SpeechSettings(), start: { _, _, _ in }
@@ -394,21 +397,27 @@ final class RecoveryTests: XCTestCase {
         ]
         for (name, status): (String, AppUpdater.Status) in [
             ("unchecked", .unchecked), ("checking", .checking), ("current", .current),
-            ("available", .available("0.3.18")), ("downloaded", .downloaded("0.3.18")),
+            ("available", .available("0.3.24")), ("downloaded", .downloaded("0.3.24")),
             ("downloading", .downloading), ("preparing", .preparing),
-            ("ready", .ready("0.3.18")), ("installing", .installing), ("failed", .failed)
+            ("ready", .ready("0.3.24")), ("installing", .installing), ("failed", .failed)
         ] {
             panels.append(("updates-\(name)", AnyView(UpdateOptionsView(updates: model.updates, version: "0.3.23").frame(width: 328)), 328, status))
         }
         panels.append(("updates-development", AnyView(UpdateOptionsView(
             updates: model.updates, version: nil
         ).frame(width: 328)), 328, .unchecked))
+        panels.append(("options-update-error", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .failed))
+        var optionsHeight: CGFloat?
         var updatesHeight: CGFloat?
         for (name, content, width, status) in panels {
             model.updates.canCheckForUpdates = status != .checking
             if case .ready = status { model.updates.showReady(toInstallAndRelaunch: { _ in }) }
             else { model.updates.dismissUpdateInstallation() }
             model.updates.status = status
+            if name == "options-update-error" {
+                model.updates.showUpdaterError(NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet,
+                    userInfo: [NSLocalizedDescriptionKey: "The update could not be downloaded because the internet connection was lost. Check your connection and try again. Your installed version is unchanged."])) {}
+            }
             model.speechSettings.speakerLabels = name == "options-enabled"
             model.exportAfterRecording = name == "options-enabled"
             model.transcriptionLanguages = name == "options-single-language" ? ["uk"]
@@ -419,8 +428,13 @@ final class RecoveryTests: XCTestCase {
                 .background(Color(nsColor: .windowBackgroundColor)))
             XCTAssertEqual(view.fittingSize.width, width, "\(name) must keep its panel width")
             XCTAssertGreaterThan(view.fittingSize.height, 0)
-            if name == "options" {
+            if ["options", "options-current", "options-checking", "options-ready"].contains(name) {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 480, "Options, including update controls, must stay compact")
+                if let optionsHeight { XCTAssertEqual(view.fittingSize.height, optionsHeight, "Update states must not resize Options") }
+                else { optionsHeight = view.fittingSize.height }
+            }
+            if name == "options-update-error", let optionsHeight {
+                XCTAssertGreaterThan(view.fittingSize.height, optionsHeight, "Error details must remain visible inline")
             }
             if ["updates-unchecked", "updates-checking", "updates-current", "updates-failed"].contains(name) {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 60, "Update controls must stay compact")

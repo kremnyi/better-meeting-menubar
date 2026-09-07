@@ -2,54 +2,63 @@ import SwiftUI
 
 struct UpdateOptionsView: View {
     @ObservedObject var updates: AppUpdater
-    var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    var version: String?
 
     private var updateInProgress: Bool {
         [.checking, .downloading, .preparing, .installing].contains(updates.status)
     }
 
+    private var statusMessage: String {
+        switch updates.status {
+        case .available(let version): "\(version) available"
+        case .downloaded(let version): "\(version) downloaded"
+        case .ready(let version): "\(version) ready to install"
+        default: updates.status.message
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text(version.map { "Version \($0)" } ?? "Development build")
-                    .textSelection(.enabled)
-                    .layoutPriority(1)
-                if updates.status != .unchecked && !updateInProgress {
-                    Text("· \(updates.status.message)")
+            HStack(spacing: 8) {
+                if updateInProgress {
+                    ProgressView().controlSize(.small).accessibilityHidden(true)
+                    Text(statusMessage).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                } else {
+                    Button(updates.actionTitle) { updates.performAction() }
+                        .disabled(!updates.canPerformAction || version == nil)
+                    Spacer(minLength: 8)
+                    Text(statusMessage)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .lineLimit(1)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .frame(minHeight: 22)
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    if updateInProgress {
-                        Text(updates.status.message).foregroundStyle(.secondary)
-                    } else {
-                        Button(updates.actionTitle) { updates.performAction() }
-                            .disabled(!updates.canPerformAction || version == nil)
-                    }
-                    Spacer()
-                    Link("Release notes", destination: AppUpdater.releaseURL)
-                        .font(.caption)
-                }
-                .frame(minHeight: 22)
-                if let error = updates.errorMessage {
-                    Text(error).font(.caption).foregroundStyle(.secondary)
-                        .lineLimit(3).help(error)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if updates.installationWaiting {
-                    Text("The update will install when this meeting finishes.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if updates.meetingInProgress {
-                    Text("Finish recording or processing before updating.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            if let error = updates.errorMessage {
+                Text(error).font(.caption).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            if updates.installationWaiting {
+                Text("The update will install when this meeting finishes.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if updates.meetingInProgress {
+                Text("Finish recording or processing before updating.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Text(version.map { "Installed \($0)" } ?? "Development build")
+                    .textSelection(.enabled)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                Link("Release notes", destination: AppUpdater.releaseURL)
+            }
+            .font(.caption)
         }
         .font(.callout)
         .controlSize(.small)
