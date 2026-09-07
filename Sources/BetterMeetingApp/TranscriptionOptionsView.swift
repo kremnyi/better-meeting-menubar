@@ -20,8 +20,46 @@ struct CaptureOptionsView: View {
                     settings: $model.speechSettings, hints: $model.transcriptionHints,
                     modelSelectionDisabled: model.modelPreparationTask != nil
                 )
+                .disabled(model.updates.meetingInProgress)
             } else {
                 basicOptions
+                    .disabled(model.updates.meetingInProgress)
+                    .tint(model.updates.meetingInProgress ? .secondary : .accentColor)
+                if model.updates.meetingInProgress {
+                    Text("Meeting settings are unavailable while recording or processing.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Launch at login", isOn: Binding(
+                        get: { launchAtLoginStatus == .enabled },
+                        set: setLaunchAtLogin
+                    ))
+                    if launchAtLoginStatus == .requiresApproval || launchAtLoginError != nil {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if launchAtLoginStatus == .requiresApproval {
+                                Text("Allow Better Meeting to open at login in System Settings.")
+                            } else if launchAtLoginStatus == .notFound {
+                                Text("Open Better Meeting from Applications and try again.")
+                            } else {
+                                Text("Couldn’t change launch at login. Try again or check Login Items.")
+                            }
+                            if launchAtLoginStatus != .notFound {
+                                Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
+                                    .buttonStyle(.link)
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 18)
+                        .help(launchAtLoginError ?? "")
+                    }
+                    Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
+                        .help("Checks GitHub and downloads updates in the background. Installs when you restart or quit.")
+                }
+                .toggleStyle(.checkbox)
             }
         }
         .font(.callout)
@@ -31,6 +69,7 @@ struct CaptureOptionsView: View {
         .onChange(of: model.speechSettings.model) { model.speechModelChanged() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchAtLoginStatus = SMAppService.mainApp.status
+            launchAtLoginError = nil
         }
     }
 
@@ -140,27 +179,6 @@ struct CaptureOptionsView: View {
                         Text("Saves extra files beside the transcript.")
                             .font(.caption).foregroundStyle(.secondary)
                             .padding(.leading, 18)
-                    }
-                }
-                .gridCellColumns(2)
-            }
-            Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
-            GridRow {
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle("Launch at login", isOn: Binding(
-                        get: { launchAtLoginStatus == .enabled },
-                        set: setLaunchAtLogin
-                    ))
-                    .toggleStyle(.checkbox)
-                    if launchAtLoginStatus == .requiresApproval {
-                        Button("Allow in System Settings…") { SMAppService.openSystemSettingsLoginItems() }
-                            .buttonStyle(.link)
-                            .padding(.leading, 18)
-                    }
-                    if let launchAtLoginError {
-                        Text("Couldn’t change launch at login: \(launchAtLoginError)")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .gridCellColumns(2)
@@ -361,7 +379,12 @@ struct AdvancedTranscriptionView: View {
                     .labelsHidden()
                     .frame(maxWidth: .infinity)
                     .disabled(modelSelectionDisabled)
-                    .help(settings.model.detail + " Downloads once, then works offline.")
+                }
+                GridRow {
+                    Text("")
+                    Text(settings.model.detail + " Downloads once, then works offline.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 GridRow {
                     Text("Vocabulary")

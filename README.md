@@ -39,7 +39,7 @@ version, release notes, and **Check for Updates**. Checks and downloads appear i
 this menu without separate update dialogs. Sparkle verifies updates with a separate
 signing key before extraction.
 
-Enable **Download updates automatically** to check GitHub and prepare updates in
+Enable **Options → Download updates automatically** to check GitHub and prepare updates in
 the background. This is off by default. Once ready, click **Restart to Update**
 in the main menu to install and reopen the app. A prepared update can also install
 when you quit. Recording or processing must finish before restarting. If macOS
@@ -87,11 +87,14 @@ clicking a notification opens that meeting's folder. You can change this in
 macOS **System Settings → Notifications → Better Meeting**.
 
 To open the app automatically when you sign in, enable **Options → Launch at login**.
-If macOS requires approval, use **Allow in System Settings…** below the checkbox.
+If macOS requires approval, use **Open Login Items…** below the checkbox and allow
+Better Meeting to open at login.
 
 ## Recording settings
 
 Options groups settings under **Recording**, **Transcription**, and **Files**.
+These settings remain available after an error and are locked during recording or
+processing. Launch-at-login and automatic-download preferences remain available.
 Expand **Video settings** to change **Resolution** and **Frame rate**. The collapsed
 row shows the current values, which default to 1440 px and 10 fps. Resolution
 limits the video's longest edge to 1280, 1440, 1920, or 2560 pixels. It uses

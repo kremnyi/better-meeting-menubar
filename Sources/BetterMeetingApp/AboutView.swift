@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct AboutView: View {
-    @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updates: AppUpdater
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
@@ -61,9 +60,6 @@ struct AboutView: View {
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
-                    .toggleStyle(.checkbox)
-                    .help("Checks GitHub and downloads updates in the background. Installs when you restart or quit.")
             }
         }
         .font(.callout)

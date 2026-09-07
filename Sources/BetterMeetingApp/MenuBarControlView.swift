@@ -57,7 +57,6 @@ struct MenuBarControlView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.callout)
-                .disabled(model.state != .idle)
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
                     CaptureOptionsView()
                 }

@@ -277,8 +277,12 @@ final class RecoveryTests: XCTestCase {
         }
         let field = try XCTUnwrap(searchField(in: view), "Processing must keep the history search visible")
         XCTAssertTrue(field.isEnabled)
+        XCTAssertTrue(model.updates.meetingInProgress)
         if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("processing.png"))
+            let options = NSHostingView(rootView: CaptureOptionsView().environmentObject(model)
+                .environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))
+            try writePreview(options, to: URL(fileURLWithPath: path).appendingPathComponent("options-processing.png"))
         }
         field.stringValue = "Product"
         field.sendAction(field.action, to: field.target)
@@ -292,6 +296,16 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(model.unfinishedRecordings.first?.folderURL.resolvingSymlinksInPath(), pending.resolvingSymlinksInPath())
         if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("cancelled.png"))
+        }
+        model.retryTranscription(item)
+        await model.processingTask?.value
+        XCTAssertEqual(model.state, .failed)
+        XCTAssertFalse(model.updates.meetingInProgress, "A failure must unlock settings so the user can recover")
+        if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
+            let options = NSHostingView(rootView: CaptureOptionsView().environmentObject(model)
+                .environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))
+            try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("failed.png"))
+            try writePreview(options, to: URL(fileURLWithPath: path).appendingPathComponent("options-failed.png"))
         }
     }
 
@@ -333,7 +347,8 @@ final class RecoveryTests: XCTestCase {
             ("options", AnyView(CaptureOptionsView()), 360, .unchecked),
             ("options-login-enabled", AnyView(CaptureOptionsView(launchAtLoginStatus: .enabled)), 360, .unchecked),
             ("options-login-approval", AnyView(CaptureOptionsView(launchAtLoginStatus: .requiresApproval)), 360, .unchecked),
-            ("options-login-error", AnyView(CaptureOptionsView(launchAtLoginError: "The operation was denied.")), 360, .unchecked),
+            ("options-login-error", AnyView(CaptureOptionsView(launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.")), 360, .unchecked),
+            ("options-login-missing", AnyView(CaptureOptionsView(launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.")), 360, .unchecked),
             ("options-video", AnyView(CaptureOptionsView(videoSettingsExpanded: true)), 360, .unchecked),
             ("options-enabled", AnyView(CaptureOptionsView()), 360, .unchecked),
             ("options-single-language", AnyView(CaptureOptionsView()), 360, .unchecked),
@@ -376,7 +391,7 @@ final class RecoveryTests: XCTestCase {
             XCTAssertEqual(view.fittingSize.width, width, "\(name) must keep its panel width")
             XCTAssertGreaterThan(view.fittingSize.height, 0)
             if name == "options" {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 400, "Options, including launch at login, must stay compact")
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 430, "Options, including app preferences, must stay compact")
             }
             if ["about-unchecked", "about-checking", "about-current", "about-failed"].contains(name) {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 175, "About must stay compact")

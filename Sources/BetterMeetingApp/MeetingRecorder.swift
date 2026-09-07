@@ -320,9 +320,9 @@ enum RecorderError: LocalizedError {
         case .microphonePermissionDenied:
             "Microphone access is off. Enable Better Meeting in System Settings → Privacy & Security → Microphone."
         case .noDisplay:
-            "The selected display is unavailable. Choose a connected display in Capture options."
+            "The selected display is unavailable. Choose a connected display in Options."
         case .noMicrophone:
-            "The selected microphone is unavailable. Choose a connected microphone in Capture options."
+            "The selected microphone is unavailable. Choose a connected microphone in Options."
         }
     }
 }

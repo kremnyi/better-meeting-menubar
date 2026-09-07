@@ -16,9 +16,9 @@ enum SpeechModel: String, CaseIterable, Codable, Sendable {
 
     var detail: String {
         switch self {
-        case .small: "Uses less memory; may miss more words."
-        case .turbo: "The original project's multilingual default."
-        case .large: "Full decoder; needs more processing time and memory."
+        case .small: "Uses the least memory; may miss more words."
+        case .turbo: "Faster than Large v3; uses more memory than Small."
+        case .large: "Uses the most memory and processing time."
         }
     }
 }
