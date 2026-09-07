@@ -1,8 +1,9 @@
 # Third-party notices
 
-Better Meeting for macOS uses the Argmax Open-Source SDK, including WhisperKit,
-for local speech transcription. Argmax Open-Source SDK is distributed under the
-Apache License 2.0. Its source and notices are available at:
+Better Meeting for macOS uses the Argmax Open-Source SDK, including WhisperKit
+for transcription and SpeakerKit for speaker labels. The SDK uses the MIT license;
+it also includes third-party code under separate terms. The app includes
+`Argmax-LICENSE.txt` and `Argmax-NOTICES.txt`. Source and attribution:
 
 https://github.com/argmaxinc/argmax-oss-swift
 
