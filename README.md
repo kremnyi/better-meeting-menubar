@@ -86,6 +86,9 @@ notifications. Allow them to see when transcription finishes or needs attention;
 clicking a notification opens that meeting's folder. You can change this in
 macOS **System Settings → Notifications → Better Meeting**.
 
+To open the app automatically when you sign in, enable **Options → Launch at login**.
+If macOS requires approval, use **Allow in System Settings…** below the checkbox.
+
 ## Recording settings
 
 Options groups settings under **Recording**, **Transcription**, and **Files**.

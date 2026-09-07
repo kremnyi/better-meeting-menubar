@@ -1,9 +1,12 @@
+import ServiceManagement
 import SwiftUI
 
 struct CaptureOptionsView: View {
     @EnvironmentObject private var model: AppModel
     @State var advancedPresented = false
     @State var videoSettingsExpanded = false
+    @State var launchAtLoginStatus = SMAppService.mainApp.status
+    @State var launchAtLoginError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -26,6 +29,9 @@ struct CaptureOptionsView: View {
         .padding(16)
         .frame(width: 360, alignment: .leading)
         .onChange(of: model.speechSettings.model) { model.speechModelChanged() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            launchAtLoginStatus = SMAppService.mainApp.status
+        }
     }
 
     private var basicOptions: some View {
@@ -138,7 +144,45 @@ struct CaptureOptionsView: View {
                 }
                 .gridCellColumns(2)
             }
+            Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
+            GridRow {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Launch at login", isOn: Binding(
+                        get: { launchAtLoginStatus == .enabled },
+                        set: setLaunchAtLogin
+                    ))
+                    .toggleStyle(.checkbox)
+                    if launchAtLoginStatus == .requiresApproval {
+                        Button("Allow in System Settings…") { SMAppService.openSystemSettingsLoginItems() }
+                            .buttonStyle(.link)
+                            .padding(.leading, 18)
+                    }
+                    if let launchAtLoginError {
+                        Text("Couldn’t change launch at login: \(launchAtLoginError)")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .gridCellColumns(2)
+            }
         }
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        let service = SMAppService.mainApp
+        launchAtLoginError = nil
+        do {
+            if enabled && service.status == .requiresApproval {
+                SMAppService.openSystemSettingsLoginItems()
+            } else if enabled {
+                try service.register()
+            } else {
+                try service.unregister()
+            }
+        } catch {
+            launchAtLoginError = error.localizedDescription
+        }
+        launchAtLoginStatus = service.status
     }
 
     private var destinationButton: some View {

@@ -331,6 +331,9 @@ final class RecoveryTests: XCTestCase {
         )
         var panels: [(String, AnyView, CGFloat, AppUpdater.Status)] = [
             ("options", AnyView(CaptureOptionsView()), 360, .unchecked),
+            ("options-login-enabled", AnyView(CaptureOptionsView(launchAtLoginStatus: .enabled)), 360, .unchecked),
+            ("options-login-approval", AnyView(CaptureOptionsView(launchAtLoginStatus: .requiresApproval)), 360, .unchecked),
+            ("options-login-error", AnyView(CaptureOptionsView(launchAtLoginError: "The operation was denied.")), 360, .unchecked),
             ("options-video", AnyView(CaptureOptionsView(videoSettingsExpanded: true)), 360, .unchecked),
             ("options-enabled", AnyView(CaptureOptionsView()), 360, .unchecked),
             ("options-single-language", AnyView(CaptureOptionsView()), 360, .unchecked),
@@ -373,7 +376,7 @@ final class RecoveryTests: XCTestCase {
             XCTAssertEqual(view.fittingSize.width, width, "\(name) must keep its panel width")
             XCTAssertGreaterThan(view.fittingSize.height, 0)
             if name == "options" {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 360, "Everyday options must stay compact")
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 400, "Options, including launch at login, must stay compact")
             }
             if ["about-unchecked", "about-checking", "about-current", "about-failed"].contains(name) {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 175, "About must stay compact")
