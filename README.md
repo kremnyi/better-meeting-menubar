@@ -15,12 +15,15 @@ The app's menu, shown with fictional meetings.
 ## Install with Homebrew
 
 ```bash
-brew tap kremnyi/better-meeting https://github.com/kremnyi/better-meeting
+brew tap --custom-remote kremnyi/better-meeting https://github.com/kremnyi/better-meeting-menubar
 brew install --cask kremnyi/better-meeting/better-meeting
 open -a "Better Meeting"
 ```
 
-The cask downloads the app from [GitHub Releases](https://github.com/kremnyi/better-meeting/releases)
+The tap keeps the name `kremnyi/better-meeting`. If you installed before the
+repository was renamed, run the tap command above to update its URL.
+
+The cask downloads the app from [GitHub Releases](https://github.com/kremnyi/better-meeting-menubar/releases)
 and verifies its SHA-256 checksum. You can also download the ZIP there, extract
 it, and move the app to `/Applications`. Xcode is not required.
 

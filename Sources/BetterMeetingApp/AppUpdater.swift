@@ -37,7 +37,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         }
     }
 
-    static let releaseURL = URL(string: "https://github.com/kremnyi/better-meeting/releases/latest")!
+    static let releaseURL = URL(string: "https://github.com/kremnyi/better-meeting-menubar/releases/latest")!
     @Published var status: Status = .unchecked
     @Published var canCheckForUpdates = false
     @Published private(set) var installationWaiting = false

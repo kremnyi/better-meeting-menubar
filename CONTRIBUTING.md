@@ -90,9 +90,10 @@ BETTER_MEETING_PREVIEW_PATH="$PWD/docs/menu-bar.png" swift test --filter testRen
 
 ## Publish a release
 
-This repository is also the tap. `Casks/better-meeting.rb` points to a versioned
-GitHub release. Releases use the **Better Meeting Release Signing** self-signed
-identity in the maintainer's login Keychain. `package-release.sh` pins its public
+This repository is also the `kremnyi/better-meeting` Homebrew tap.
+`Casks/better-meeting.rb` points to a versioned GitHub release. Releases use the
+**Better Meeting Release Signing** self-signed identity in the maintainer's
+login Keychain. `package-release.sh` pins its public
 certificate fingerprint and fails if the private key is unavailable; it never
 falls back to ad-hoc signing.
 
@@ -124,6 +125,9 @@ to inspect the public key; do not replace the existing key when setting up relea
    download and its checksum. Check that the public `appcast.xml` points to the
    same archive. When changing the updater or signing, also test installation
    between two signed bundles and rejection of a modified archive.
+
+Keep the old repository name `kremnyi/better-meeting` unused. Older app versions
+use its update-feed URL, which redirects to this repository.
 
 Keep the exact archive used for the checksum and Sparkle signature; rebuilding
 can change it. Never replace a published version's archive. Publish a new version

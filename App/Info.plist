@@ -29,7 +29,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/kremnyi/better-meeting/main/appcast.xml</string>
+    <string>https://raw.githubusercontent.com/kremnyi/better-meeting-menubar/main/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>bV+KvsBh6+VG7x7ZGPKPkiVMvN+/JHLoR/YNS+fKlAY=</string>
     <key>SUEnableAutomaticChecks</key>
