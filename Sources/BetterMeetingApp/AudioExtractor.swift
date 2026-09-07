@@ -51,9 +51,6 @@ enum AudioExtractionError: LocalizedError {
     case cannotCreateExporter
 
     var errorDescription: String? {
-        switch self {
-        case .cannotCreateExporter:
-            "The recording does not contain audio that can be prepared for transcription."
-        }
+        "The recording does not contain audio that can be prepared for transcription."
     }
 }

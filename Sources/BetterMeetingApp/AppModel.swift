@@ -199,10 +199,7 @@ final class AppModel: ObservableObject {
         if state == .recording {
             return "stop.fill"
         }
-        if state == .failed, privacyPermission == .screenRecording {
-            return "arrow.clockwise"
-        }
-        if state == .failed, retryableMeeting != nil {
+        if state == .failed, privacyPermission == .screenRecording || retryableMeeting != nil {
             return "arrow.clockwise"
         }
         return "record.circle"
