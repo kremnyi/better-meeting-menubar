@@ -32,6 +32,8 @@ macOS blocks the first launch, try opening the app, then use **System Settings
 → Privacy & Security → Open Anyway**. See [Apple's instructions](https://support.apple.com/102445).
 Managed Macs may not allow this exception.
 
+## Update the app
+
 Click the **ⓘ** button in the top-right corner to open **About**, with the installed
 version, release notes, and **Check for Updates**. Checks and downloads appear in
 this menu without separate update dialogs. Sparkle verifies updates with a separate
@@ -40,11 +42,9 @@ signing key before extraction.
 Enable **Download updates automatically** to check GitHub and prepare updates in
 the background. This is off by default. Once ready, click **Restart to Update**
 in the main menu to install and reopen the app. A prepared update can also install
-when you quit. Recording or
-processing must finish before restarting. If macOS requires authorization, click
-**Install Update** to continue. Failed updates show an inline retry action.
-
-Homebrew remains available for installation and updates.
+when you quit. Recording or processing must finish before restarting. If macOS
+requires authorization, click **Install Update** to continue. Failed updates show
+an inline retry action.
 
 To update with Homebrew, finish any active recording, quit the app, and run:
 
@@ -58,10 +58,7 @@ updates. Uninstalling the app keeps saved meetings.
 
 ## Record a meeting
 
-1. Open the app. If needed, it downloads and prepares the selected speech model
-   (Large v3 Turbo by default) in the background. The menu shows progress; you can
-   start recording during setup. Transcription waits until the model is ready. If setup
-   fails, use **Retry setup**.
+1. Open the app.
 2. Enter a meeting name or leave it empty for automatic naming.
 3. Open **Options** in the bottom-left corner to choose a display, microphone, and save folder.
    The app remembers these choices. Defaults are the main display, system
@@ -70,6 +67,10 @@ updates. Uninstalling the app keeps saved meetings.
    **Microphone** access. Restart the app if prompted after granting screen access.
 5. Stop recording and wait for transcription. Click the folder button beside the
    finished meeting to open its files in Finder.
+
+The app downloads and prepares the selected speech model in the background when
+needed. The menu shows progress; you can record during setup, but transcription
+waits until the model is ready. If setup fails, use **Retry setup**.
 
 While recording, separate microphone and system-audio meters show incoming sound.
 An empty meter can mean silence; check the selected input if it stays empty while
@@ -80,39 +81,59 @@ A warning icon appears if recording or transcription fails and stays until you r
 or dismiss the error. Search, Finder, and **Copy Transcript** remain available during
 transcription and export; renaming and starting another job wait until processing finishes.
 
+Before your first recording or retry, the app asks permission to send completion
+notifications. Allow them to see when transcription finishes or needs attention;
+clicking a notification opens that meeting's folder. You can change this in
+macOS **System Settings → Notifications → Better Meeting**.
+
+## Recording settings
+
 Options groups settings under **Recording**, **Transcription**, and **Files**.
 Expand **Video settings** to change **Resolution** and **Frame rate**. The collapsed
-row shows the current values, which default to
-1440 px and 10 fps. Resolution limits the video's longest edge to 1280, 1440,
-1920, or 2560 pixels. It uses Retina pixels, preserves the display's proportions,
+row shows the current values, which default to 1440 px and 10 fps. Resolution
+limits the video's longest edge to 1280, 1440, 1920, or 2560 pixels. It uses
+Retina pixels, preserves the display's proportions,
 and never upscales smaller displays. Frame rate sets a maximum of 5, 10, or
 30 fps. Higher settings can increase file size and processing load; macOS manages
 compression bitrate. These settings do not affect audio or transcription.
 
-**Advanced transcription → Model** offers multilingual Small, Large v3 Turbo (default), and Large v3.
-Small uses less memory; Large v3 takes longer and uses more memory. Each model
-is downloaded once and then works offline. Changing models releases the previous
-model before loading the next one. The picker waits for active setup to finish.
+## Transcription settings
 
-**Advanced transcription** opens model, vocabulary, and decoding settings in the same panel. Decoding includes temperature,
-fallback attempts and temperature increase, no-speech and log-probability thresholds,
-and the repetition threshold. Use the back button to return to Options.
-**Reset decoding defaults** resets decoding without changing the selected model, vocabulary, or speaker-label option. Model
-and decoding settings are saved with each transcript; retries reuse them and changed settings invalidate
-cached passes.
+### Languages
 
 **Language** defaults to **Automatic**, with Ukrainian, Russian, and English as candidates.
-Automatic transcribes the whole recording
-in each candidate language separately, then merges segments by confidence and filters likely silence
-hallucinations. Choose one language for a single pass. The app remembers your choice.
-Three languages require three passes; progress shows the current language and pass.
+Automatic transcribes the whole recording in each candidate language separately,
+then merges segments by confidence and filters likely silence hallucinations.
+Choose one language for a single pass. The app remembers your choice.
 Change **Languages** to match the languages you expect. Each selected language
-adds one pass; at least one is required. Single-language mode supports any language
-listed by WhisperKit.
+adds one pass; at least one is required. Progress shows the current language and
+pass. Single-language mode supports any language listed by WhisperKit.
+
+### Model
+
+**Advanced transcription → Model** offers multilingual Small, Large v3 Turbo (default), and Large v3.
+Small uses less memory; Large v3 takes longer and uses more memory. Changing
+models releases the previous model before loading the next one. The picker waits
+for active setup to finish.
+
+### Vocabulary
 
 Use **Advanced transcription → Vocabulary** for names, companies, and technical terms separated
 by commas. These optional hints use Whisper's existing prompt support and stay on
 your Mac. The app remembers them; changing hints reruns the affected language passes.
+
+### Decoding
+
+**Advanced transcription** opens model, vocabulary, and decoding settings in the
+same panel. Use the back button to return to Options. Decoding includes temperature,
+fallback attempts and temperature increase, no-speech and log-probability thresholds,
+and the repetition threshold.
+
+**Reset decoding defaults** resets decoding without changing the selected model,
+vocabulary, or speaker-label option. Model and decoding settings are saved with
+each transcript; retries reuse them and changed settings invalidate cached passes.
+
+### Speaker labels
 
 **Label speakers** in **Options → Transcription** is off by default. When enabled,
 SpeakerKit identifies voices locally after transcription and adds **Speaker 1**,
@@ -129,12 +150,27 @@ Changing it reuses matching transcription passes. Speaker turns are cached in
 If speaker detection fails, the transcript is saved without labels and the menu
 shows the error. Cancellation keeps completed passes for a later retry.
 
+## Saved meetings
+
 The menu shows the 10 most recent completed meetings. Search finds matching titles
 and saved transcript text across all completed meetings in the selected folder,
 including older meetings and manual Markdown edits. Search runs locally.
-If transcription fails,
-use **Retry transcription** or **Finish saved recording** to resume from saved
-audio or video, including after a restart. When quitting during work, choose
+
+Right-click a completed meeting to **Copy Transcript** or **Rename…**. Copy uses
+the saved Markdown, including any edits. Rename updates the folder, title, and
+metadata while keeping the transcript body and media files.
+
+### Re-transcribe a meeting
+
+**Re-transcribe…** lets you choose languages and vocabulary for a saved meeting.
+It reuses matching passes and keeps the current transcript available until the
+replacement is ready. A successful run replaces the transcript, including manual
+edits, while preserving the meeting name. Cancellation or failure keeps the old files.
+
+### Retry or cancel transcription
+
+If transcription fails, use **Retry transcription** or **Finish saved recording**
+to resume from saved audio or video, including after a restart. When quitting during work, choose
 **Finish and quit** or **Wait and quit** to let saving finish. Force Quit or power
 loss can leave an unfinished video that cannot be recovered.
 
@@ -145,20 +181,6 @@ Each completed language pass is saved as `pass_uk.json`, `pass_ru.json`, or
 `pass_en.json` in the meeting folder. Retry reuses matching passes and reruns any
 missing or damaged ones. Changing the audio, model, or decoding options invalidates
 the affected cache. Finished transcripts are not regenerated automatically.
-
-Right-click a completed meeting to **Copy Transcript** or **Rename…**. Copy uses
-the saved Markdown, including any edits. Rename updates the folder, title, and
-metadata while keeping the transcript body and media files.
-
-**Re-transcribe…** lets you choose languages and vocabulary for a saved meeting.
-It reuses matching passes and keeps the current transcript available until the
-replacement is ready. A successful run replaces the transcript, including manual
-edits, while preserving the meeting name. Cancellation or failure keeps the old files.
-
-Before your first recording or retry, the app asks permission to send completion
-notifications. Allow them to see when transcription finishes or needs attention;
-clicking a notification opens that meeting's folder. You can change this in
-macOS **System Settings → Notifications → Better Meeting**.
 
 ## Meeting files and titles
 
@@ -233,17 +255,17 @@ menu without marking the saved transcript as failed.
 
 ## Privacy and model storage
 
-Recording, transcription, screenshots, OCR, and automatic naming run on your Mac. The app does not
-upload meetings. Update checks contact GitHub. The first speech-model setup downloads files from Hugging Face;
-after successful setup, transcription works offline. Removing or damaging those
-files can require another download.
+Recording, transcription, screenshots, OCR, and automatic naming run on your Mac.
+The app does not upload meetings. Update checks contact GitHub. Speech models
+download from Hugging Face once per selected model and work offline after setup.
+Removing or damaging those files can require another download.
 
 Model files live under `~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/`.
 Tokenizer files may also be stored under
 `~/Documents/huggingface/models/openai/` for each selected model. WhisperKit calls the
 turbo model `openai_whisper-large-v3-v20240930`; its model files total about 1.6 GB.
-Selecting a model requires its download once. Downloaded model files are kept when switching.
-The first load can take longer while Core ML prepares the model.
+Downloaded model files are kept when switching. The first load can take longer
+while Core ML prepares the model.
 
 Speaker models are downloaded only when processing with **Label speakers** enabled,
 under `~/Documents/huggingface/models/argmaxinc/speakerkit-coreml/`.
