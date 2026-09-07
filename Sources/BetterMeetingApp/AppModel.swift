@@ -136,11 +136,13 @@ final class AppModel: ObservableObject {
     private var quitWhenFinished = false
     private(set) var processingTask: Task<Void, Never>?
     private(set) var historySearchTask: Task<Void, Never>?
+    private(set) var historyRefreshTask: Task<Void, Never>?
     private var completedMeetings: [MeetingHistoryItem] = []
     private var lastTranscriptionOptions: (languages: [String], hints: String, settings: SpeechSettings)?
 
     private var retryableMeeting: MeetingHistoryItem? {
         (unfinishedRecordings + completedMeetings).first { $0.folderURL == completedFolder }
+            ?? completedFolder.flatMap { MeetingArtifacts.meeting(in: $0) }
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -437,6 +439,10 @@ final class AppModel: ObservableObject {
     func setOutputFolder(_ url: URL) {
         outputRoot = url
         defaults.set(url, forKey: "outputFolder")
+        completedMeetings = []
+        unfinishedRecordings = []
+        transcriptionHistory = []
+        searchHistory()
         refreshHistory()
     }
 
@@ -462,8 +468,19 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshHistory() {
-        let meetings = MeetingArtifacts.meetings(in: outputRoot)
+    func refreshHistory(
+        scan: @escaping @Sendable (URL) -> [MeetingHistoryItem] = { MeetingArtifacts.meetings(in: $0) }
+    ) {
+        historyRefreshTask?.cancel()
+        let root = outputRoot
+        historyRefreshTask = Task.detached(priority: .userInitiated) { [weak self] in
+            let meetings = scan(root)
+            await self?.showHistory(meetings)
+        }
+    }
+
+    private func showHistory(_ meetings: [MeetingHistoryItem]) {
+        guard !Task.isCancelled else { return }
         completedMeetings = meetings.filter { !$0.needsTranscription }
         unfinishedRecordings = meetings.filter(\.needsTranscription)
         searchHistory()
@@ -732,7 +749,8 @@ final class AppModel: ObservableObject {
             modelReady = LocalTranscriber.cachedModelFolder(model: speechSettings.model) != nil
             modelSetupError = nil
             refreshHistory()
-            if exportAfterRecording, let meeting = completedMeetings.first(where: { $0.folderURL == folder }) {
+            let meeting = MeetingArtifacts.meeting(in: folder)
+            if exportAfterRecording, let meeting {
                 do {
                     _ = try await createBundle(for: meeting)
                     completionMessage = "Export bundle saved in the meeting folder."
@@ -746,7 +764,7 @@ final class AppModel: ObservableObject {
                 completionMessage = [speakerWarning, completionMessage].compactMap { $0 }.joined(separator: "\n")
             }
             await MeetingNotifications.post(
-                title: transcriptionHistory.first(where: { $0.folderURL == folder })?.title ?? folder.lastPathComponent,
+                title: meeting?.title ?? folder.lastPathComponent,
                 folder: folder, failed: false
             )
             elapsed = 0

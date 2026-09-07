@@ -196,6 +196,7 @@ final class RecoveryTests: XCTestCase {
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Quit check", recordedAt: Date())
         try Data([1]).write(to: folder.appendingPathComponent("audio.m4a"))
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         model.retryTranscription(try XCTUnwrap(model.unfinishedRecordings.first))
         let processing = try XCTUnwrap(model.processingTask)
         XCTAssertEqual(model.state, .processing)
@@ -299,6 +300,7 @@ final class RecoveryTests: XCTestCase {
         try Data([1]).write(to: pending.appendingPathComponent("recording.mp4"))
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         let item = try XCTUnwrap(model.unfinishedRecordings.first)
         model.retryTranscription(item)
         let processing = try XCTUnwrap(model.processingTask)
@@ -456,6 +458,7 @@ final class RecoveryTests: XCTestCase {
         }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         func size() -> NSSize {
             NSHostingView(rootView: MenuBarControlView().environmentObject(model).environmentObject(model.updates)).fittingSize
         }
@@ -513,7 +516,7 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
-    func testRenderMenuBarPreview() throws {
+    func testRenderMenuBarPreview() async throws {
         guard let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PREVIEW_PATH"] else {
             throw XCTSkip("Set BETTER_MEETING_PREVIEW_PATH to render the menu with fictional meetings")
         }
@@ -532,6 +535,7 @@ final class RecoveryTests: XCTestCase {
         }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         let view = NSHostingView(rootView: MenuBarControlView()
             .environmentObject(model).environmentObject(model.updates)
             .environment(\.colorScheme, .light)
@@ -573,7 +577,7 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
-    func testPreferencesPersistAndHistoryKeepsOlderUnfinishedMeetings() throws {
+    func testPreferencesPersistAndHistoryKeepsOlderUnfinishedMeetings() async throws {
         let suite = "BetterMeetingTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -591,6 +595,7 @@ final class RecoveryTests: XCTestCase {
             }
         }
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         XCTAssertEqual(model.captureResolution, .pixels1440)
         XCTAssertEqual(model.captureQuality, .standard)
         model.setOutputFolder(root)
@@ -599,6 +604,7 @@ final class RecoveryTests: XCTestCase {
         model.captureResolution = .pixels1920
         model.captureQuality = .smooth
         let reopened = AppModel(defaults: defaults)
+        await reopened.historyRefreshTask?.value
         XCTAssertEqual(reopened.outputRoot.path, root.path)
         XCTAssertEqual(reopened.selectedDisplayID, 42)
         XCTAssertEqual(reopened.selectedMicrophoneID, "test-mic")
@@ -684,6 +690,7 @@ final class RecoveryTests: XCTestCase {
             if index == 0 { oldest = folder }
         }
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         XCTAssertEqual(model.transcriptionHistory.count, 10)
         model.historyQuery = "cafe"
         await model.historySearchTask?.value
@@ -697,6 +704,48 @@ final class RecoveryTests: XCTestCase {
         await model.historySearchTask?.value
         XCTAssertEqual(model.transcriptionHistory.count, 10, "Cancelled search must not replace newer results")
         XCTAssertFalse(model.searchingHistory)
+    }
+
+    @MainActor
+    func testHistoryRefreshKeepsResultsAndIgnoresAnOldFolderScan() async throws {
+        let suite = "BetterMeetingHistory.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let oldRoot = root.appendingPathComponent("old")
+        let newRoot = root.appendingPathComponent("new")
+        for (destination, title) in [(oldRoot, "Old meeting"), (newRoot, "New meeting")] {
+            let folder = try MeetingArtifacts.createDirectory(in: destination, title: title, recordedAt: Date())
+            try MeetingArtifacts.write(title: title, recordedAt: Date(), duration: 60, segments: [], to: folder)
+        }
+        defaults.set(oldRoot, forKey: "outputFolder")
+        let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
+        let started = expectation(description: "Scanning away from the main thread")
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let oldResults = model.transcriptionHistory
+        model.refreshHistory { _ in
+            XCTAssertFalse(Thread.isMainThread)
+            started.fulfill()
+            release.wait()
+            return oldResults
+        }
+        let oldScan = try XCTUnwrap(model.historyRefreshTask)
+        await fulfillment(of: [started], timeout: 5)
+        XCTAssertEqual(model.transcriptionHistory, oldResults, "Keep results visible during a refresh")
+        model.setOutputFolder(newRoot)
+        XCTAssertTrue(model.transcriptionHistory.isEmpty, "A different folder must not show stale actions")
+        model.historyQuery = "New"
+        await model.historyRefreshTask?.value
+        await model.historySearchTask?.value
+        XCTAssertEqual(model.transcriptionHistory.map(\.title), ["New meeting"])
+        release.signal()
+        await oldScan.value
+        XCTAssertEqual(model.transcriptionHistory.map(\.title), ["New meeting"], "An old scan must not replace the new folder")
     }
 
     func testModelPreparationAcrossColdLaunches() async throws {

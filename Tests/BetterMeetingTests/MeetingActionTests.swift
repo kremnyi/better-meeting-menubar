@@ -21,6 +21,7 @@ final class MeetingActionTests: XCTestCase {
         let names = ["transcript.md", "transcript.json", "metadata.json"]
         let original = try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         let item = try XCTUnwrap(model.transcriptionHistory.first)
         model.retryTranscription(item)
         XCTAssertTrue(model.canCancelTranscription)
@@ -128,7 +129,7 @@ final class MeetingActionTests: XCTestCase {
     }
 
     @MainActor
-    func testCopyUsesSavedMarkdownAndKeepsClipboardOnReadFailure() throws {
+    func testCopyUsesSavedMarkdownAndKeepsClipboardOnReadFailure() async throws {
         let suite = "BetterMeetingActions.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
@@ -143,6 +144,7 @@ final class MeetingActionTests: XCTestCase {
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Copy me", recordedAt: date)
         try MeetingArtifacts.write(title: "Copy me", recordedAt: date, duration: 0, segments: [], to: folder)
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         let item = try XCTUnwrap(model.transcriptionHistory.first)
         let markdownURL = folder.appendingPathComponent("transcript.md")
         let text = "# My notes\n\nAn edited transcript.\n"

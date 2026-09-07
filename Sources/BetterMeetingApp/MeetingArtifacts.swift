@@ -242,38 +242,41 @@ enum MeetingArtifacts {
             includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey],
             options: [.skipsHiddenFiles]
         )) ?? []
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
         return folders.compactMap { folder in
-            let values = try? folder.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey])
-            guard values?.isDirectory == true else { return nil }
-
-            let metadataURL = folder.appendingPathComponent("metadata.json")
-            let manifest = (try? Data(contentsOf: metadataURL)).flatMap {
-                try? decoder.decode(MeetingManifest.self, from: $0)
-            }
-            let hasTranscripts = ["transcript.md", "transcript.json"].allSatisfy {
-                FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
-            }
-            let complete = manifest != nil && manifest?.transcriptionComplete != false && hasTranscripts
-            let hasRecording = ["recording.mp4", "audio.m4a"].contains {
-                FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
-            }
-            guard complete || hasRecording else { return nil }
-
-            let nameParts = folder.lastPathComponent.components(separatedBy: " — ")
-
-            return MeetingHistoryItem(
-                title: manifest?.title ?? (nameParts.count > 1 ? nameParts.dropFirst().joined(separator: " — ") : folder.lastPathComponent),
-                recordedAt: manifest?.recordedAt ?? folderDateFormatter.date(from: nameParts[0]) ?? values?.creationDate ?? .distantPast,
-                duration: manifest?.duration ?? 0,
-                folderURL: folder,
-                needsTranscription: !complete,
-                titleWasProvided: manifest?.titleWasProvided ?? true
-            )
+            Task.isCancelled ? nil : meeting(in: folder)
         }
         .sorted { $0.recordedAt > $1.recordedAt }
+    }
+
+    static func meeting(in folder: URL) -> MeetingHistoryItem? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let values = try? folder.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey])
+        guard values?.isDirectory == true else { return nil }
+
+        let metadataURL = folder.appendingPathComponent("metadata.json")
+        let manifest = (try? Data(contentsOf: metadataURL)).flatMap {
+            try? decoder.decode(MeetingManifest.self, from: $0)
+        }
+        let hasTranscripts = ["transcript.md", "transcript.json"].allSatisfy {
+            FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
+        }
+        let complete = manifest != nil && manifest?.transcriptionComplete != false && hasTranscripts
+        let hasRecording = ["recording.mp4", "audio.m4a"].contains {
+            FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
+        }
+        guard complete || hasRecording else { return nil }
+
+        let nameParts = folder.lastPathComponent.components(separatedBy: " — ")
+
+        return MeetingHistoryItem(
+            title: manifest?.title ?? (nameParts.count > 1 ? nameParts.dropFirst().joined(separator: " — ") : folder.lastPathComponent),
+            recordedAt: manifest?.recordedAt ?? folderDateFormatter.date(from: nameParts[0]) ?? values?.creationDate ?? .distantPast,
+            duration: manifest?.duration ?? 0,
+            folderURL: folder,
+            needsTranscription: !complete,
+            titleWasProvided: manifest?.titleWasProvided ?? true
+        )
     }
 
     static func transcriptMarkdown(

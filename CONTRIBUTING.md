@@ -19,7 +19,8 @@ menu bar without a Dock icon.
 Tests cover meeting recovery, audio exports, saved preferences, capture presets,
 automatic titles, multilingual merging, and per-language cache recovery.
 They also cover cancellation, vocabulary and language settings, safe transcript
-replacement, stereo audio meters, background model setup, and stable history search layout.
+replacement, stereo audio meters, model-cache repair, and stable history search layout.
+History refresh checks cover background scanning and discarding results from an old folder.
 Model and decoding checks cover saved settings and cache invalidation. Screen tests
 create a two-slide video and run native frame extraction and Vision OCR. Bundle
 checks cover language shares, manual edits, replacement, and cancellation recovery.
