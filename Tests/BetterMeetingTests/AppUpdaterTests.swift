@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Sparkle
 import XCTest
 @testable import BetterMeetingApp
@@ -68,6 +69,9 @@ final class AppUpdaterTests: XCTestCase {
         _ = NSApplication.shared
         var busy = true
         let updates = AppUpdater(isBusy: { busy })
+        var changes = 0
+        let observation = updates.objectWillChange.sink { changes += 1 }
+        defer { observation.cancel() }
         let controller = SPUStandardUpdaterController(
             startingUpdater: false, updaterDelegate: updates, userDriverDelegate: nil
         )
@@ -77,6 +81,7 @@ final class AppUpdaterTests: XCTestCase {
             installations += 1
         })
         XCTAssertTrue(updates.installationWaiting)
+        XCTAssertEqual(changes, 1, "Deferring installation must notify the UI")
         updates.resumePendingInstallation()
         XCTAssertEqual(installations, 0)
         busy = false

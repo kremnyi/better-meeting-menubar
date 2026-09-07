@@ -351,11 +351,7 @@ struct AdvancedTranscriptionView: View {
                        help: "Compression ratio above this triggers a retry for repetitive output.")
             }
             Button("Reset decoding defaults") {
-                let model = settings.model
-                let speakerLabels = settings.speakerLabels
-                settings = SpeechSettings()
-                settings.model = model
-                settings.speakerLabels = speakerLabels
+                settings = SpeechSettings(model: settings.model, speakerLabels: settings.speakerLabels)
             }
         }
         .controlSize(.small)

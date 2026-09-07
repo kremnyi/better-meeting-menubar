@@ -40,11 +40,11 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     static let releaseURL = URL(string: "https://github.com/kremnyi/better-meeting-menubar/releases/latest")!
     @Published var status: Status = .unchecked
     @Published var canCheckForUpdates = false
-    @Published private(set) var installationWaiting = false
+    var installationWaiting: Bool { pendingInstallation != nil }
     @Published private(set) var errorMessage: String?
     private let isBusy: () -> Bool
     private var updateAction: (() -> Void)?
-    private var pendingInstallation: (() -> Void)?
+    @Published private var pendingInstallation: (() -> Void)?
     private var updateVersion = ""
     private var informationURL: URL?
     private var started = false
@@ -144,7 +144,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
                  untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         guard isBusy() else { return false }
         pendingInstallation = installHandler
-        installationWaiting = true
         return true
     }
 
@@ -152,7 +151,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         guard !isBusy() else { return }
         let install = pendingInstallation
         pendingInstallation = nil
-        installationWaiting = false
         install?()
     }
 
@@ -213,7 +211,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         updateAction = nil
         pendingInstallation = nil
         informationURL = nil
-        installationWaiting = false
         if status != .failed && status != .current { status = .unchecked }
     }
 

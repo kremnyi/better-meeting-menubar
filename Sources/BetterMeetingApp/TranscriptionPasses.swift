@@ -112,10 +112,7 @@ enum TranscriptionPasses {
         while true {
             let candidates = segments.filter { $0.end > cursor + 0.2 && $0.start <= cursor + 2 }
             // Keep the first candidate on ties, matching Python's max().
-            if let best = candidates.reduce(nil as ScoredSegment?, { best, next in
-                guard let best else { return next }
-                return next.score > best.score ? next : best
-            }) {
+            if let best = candidates.max(by: { $0.score < $1.score }) {
                 merged.append(best)
                 cursor = best.end
             } else if let next = segments.first(where: { $0.start > cursor }) {

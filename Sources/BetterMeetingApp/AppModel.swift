@@ -234,7 +234,7 @@ final class AppModel: ObservableObject {
 
     func primaryAction() {
         if state == .recording {
-            stopRecording()
+            beginProcessing(stopCapture: true)
         } else if state == .failed, privacyPermission == .screenRecording {
             restartApplication()
         } else if state == .failed, let item = retryableMeeting {
@@ -435,7 +435,7 @@ final class AppModel: ObservableObject {
             return state == .idle ? .terminateNow : .terminateCancel
         }
         quitWhenFinished = true
-        if state == .recording { stopRecording() }
+        if state == .recording { beginProcessing(stopCapture: true) }
         // terminateLater keeps AppKit in a modal loop and stalls menu-bar updates.
         return .terminateCancel
     }
@@ -602,13 +602,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func stopRecording() {
-        beginProcessing()
-        processingTask = Task {
-            await finishRecording(stopCapture: true)
-        }
-    }
-
     private func captureStoppedExternally(with error: Error?) {
         guard state == .recording else { return }
 
@@ -617,19 +610,19 @@ final class AppModel: ObservableObject {
             return
         }
 
-        beginProcessing()
-        processingTask = Task {
-            await finishRecording(stopCapture: false)
-        }
+        beginProcessing(stopCapture: false)
     }
 
-    private func beginProcessing() {
+    private func beginProcessing(stopCapture: Bool) {
         if let recordedAt {
             elapsed = Date().timeIntervalSince(recordedAt)
         }
         stopTimer()
         state = .processing
         setProcessingPhase(.finalizingRecording)
+        processingTask = Task {
+            await finishRecording(stopCapture: stopCapture)
+        }
     }
 
     private func finishRecording(
