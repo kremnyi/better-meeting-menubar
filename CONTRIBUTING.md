@@ -8,7 +8,13 @@ repository root:
 ```bash
 swift test
 ./scripts/build-app.sh
+open "dist/Better Meeting.app"
 ```
+
+The build script packages the executable, icons, permission descriptions,
+frameworks, and license notices. Use the app bundle for recording;
+`swift run BetterMeeting` does not include those resources. The app runs in the
+menu bar without a Dock icon.
 
 Tests cover meeting recovery, audio exports, saved preferences, capture presets,
 automatic titles, multilingual merging, and per-language cache recovery.
@@ -17,6 +23,8 @@ replacement, stereo audio meters, background model setup, and stable history sea
 Model and decoding checks cover saved settings and cache invalidation. Screen tests
 create a two-slide video and run native frame extraction and Vision OCR. Bundle
 checks cover language shares, manual edits, replacement, and cancellation recovery.
+Updater checks cover inline states, waiting for a restart click, and deferring
+installation while a meeting is active.
 GitHub Actions runs the same checks and keeps any macOS
 crash reports when a check fails.
 
@@ -121,6 +129,6 @@ Keep the exact archive used for the checksum and Sparkle signature; rebuilding
 can change it. Never replace a published version's archive. Publish a new version
 instead. `auto_updates true` in the cask identifies the built-in updater.
 
-Release notes must explain self-signing, first-launch approval, and the permission
-reset when upgrading from 0.3.4 or older. Keep checksum verification and platform
-requirements in the cask. Install hooks must not disable security checks or remove meetings.
+Release notes must explain self-signing and first-launch approval. Keep checksum
+verification and platform requirements in the cask. Install hooks must not disable
+security checks or remove meetings.

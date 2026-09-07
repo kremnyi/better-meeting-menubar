@@ -33,13 +33,12 @@ this menu without separate update dialogs. Sparkle verifies updates with a separ
 signing key before extraction.
 
 Enable **Download updates automatically** to check GitHub and prepare updates in
-the background. This is off by default and preserves your previous update-check
-preference. Once ready, click **Restart to Update** in the main menu to install and
-reopen the app. A prepared update can also install when you quit. Recording or
+the background. This is off by default. Once ready, click **Restart to Update**
+in the main menu to install and reopen the app. A prepared update can also install
+when you quit. Recording or
 processing must finish before restarting. If macOS requires authorization, click
 **Install Update** to continue. Failed updates show an inline retry action.
 
-Versions 0.3.14 and older need one Homebrew or manual update to get Sparkle.
 Homebrew remains available for installation and updates.
 
 To update with Homebrew, finish any active recording, quit the app, and run:
@@ -49,16 +48,14 @@ brew update
 brew upgrade --cask kremnyi/better-meeting/better-meeting
 ```
 
-Version 0.3.5 changes the signing identity. After upgrading from 0.3.4 or older,
-grant Screen Recording and Microphone access again. Later releases reuse the same
-certificate so macOS can recognize the app across updates. Uninstalling the app
-keeps saved meetings.
+Releases reuse the same signing certificate so macOS can recognize the app across
+updates. Uninstalling the app keeps saved meetings.
 
 ## Record a meeting
 
-1. Open the app. If needed, it downloads and prepares the multilingual Whisper
-   `large-v3-turbo` model in the background. The menu shows progress; you can start
-   recording during setup. Transcription waits until the model is ready. If setup
+1. Open the app. If needed, it downloads and prepares the selected speech model
+   (Large v3 Turbo by default) in the background. The menu shows progress; you can
+   start recording during setup. Transcription waits until the model is ready. If setup
    fails, use **Retry setup**.
 2. Enter a meeting name or leave it empty for automatic naming.
 3. Open **Options** in the bottom-left corner to choose a display, microphone, and save folder.
@@ -97,7 +94,7 @@ fallback attempts and temperature increase, no-speech and log-probability thresh
 and the repetition threshold. Use the back button to return to Options.
 **Reset decoding defaults** resets decoding without changing the selected model, vocabulary, or speaker-label option. Model
 and decoding settings are saved with each transcript; retries reuse them and changed settings invalidate
-cached passes. These are WhisperKit controls, not arbitrary Python Whisper flags.
+cached passes.
 
 **Language** defaults to **Automatic**, with Ukrainian, Russian, and English as candidates.
 Automatic transcribes the whole recording
@@ -132,9 +129,9 @@ and saved transcript text across all completed meetings in the selected folder,
 including older meetings and manual Markdown edits. Search runs locally.
 If transcription fails,
 use **Retry transcription** or **Finish saved recording** to resume from saved
-audio or video, including after a restart. Quit waits for an active recording
-and its transcript to finish saving. Force Quit or power loss can leave an
-unfinished video that cannot be recovered.
+audio or video, including after a restart. When quitting during work, choose
+**Finish and quit** or **Wait and quit** to let saving finish. Force Quit or power
+loss can leave an unfinished video that cannot be recovered.
 
 **Cancel transcription** stops processing and keeps the recording and completed
 language passes. Use **Finish saved recording** to resume later, even after a restart.
@@ -250,20 +247,8 @@ use also includes the decoded recording, so longer meetings need more memory.
 
 ## Build from source
 
-Install Xcode 16 or newer, then run:
-
-```bash
-git clone https://github.com/kremnyi/better-meeting.git
-cd better-meeting
-./scripts/build-app.sh
-open "dist/Better Meeting.app"
-```
-
-The script builds the app bundle with its icons, permission descriptions, and
-license notices. Use this bundle for recording; `swift run BetterMeeting` lacks
-those resources. The app has no Dock icon.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for tests, signing, and release steps.
+Source builds require Xcode 16 or newer. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for building, testing, signing, and publishing releases.
 
 ## Limits
 
@@ -281,4 +266,4 @@ which processes existing recordings. The original implementation remains in
 that repository and this fork's Git history.
 
 Licensed under [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution
-and [ThirdPartyNotices.md](ThirdPartyNotices.md) for WhisperKit notices.
+and [ThirdPartyNotices.md](ThirdPartyNotices.md) for dependency licenses.

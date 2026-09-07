@@ -17,6 +17,5 @@ cask "better-meeting" do
   caveats <<~EOS
     This app uses a self-signed certificate and is not notarized by Apple.
     If macOS blocks opening it, use System Settings > Privacy & Security > Open Anyway.
-    Upgrading from 0.3.4 or older requires granting recording permissions again.
   EOS
 end
