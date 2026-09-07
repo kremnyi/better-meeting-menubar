@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreML
 import Foundation
 import WhisperKit
 
@@ -65,14 +66,23 @@ actor LocalTranscriber {
         }
 
         progressHandler(.loadingModel)
-        let loaded = try await MeetingWhisperKit(
-            modelFolder: modelFolder.path,
-            tokenizerFolder: downloadBase,
-            verbose: false,
-            prewarm: false,
-            load: true,
-            download: false
-        )
+        let loaded: MeetingWhisperKit
+        do {
+            loaded = try await MeetingWhisperKit(
+                modelFolder: modelFolder.path,
+                tokenizerFolder: downloadBase,
+                verbose: false,
+                prewarm: false,
+                load: true,
+                download: false
+            )
+        } catch {
+            try Task.checkCancellation()
+            guard (error as NSError).domain == MLModelErrorDomain else { throw error }
+            // The downloader reuses existing files, even when their contents are damaged.
+            try FileManager.default.removeItem(at: modelFolder)
+            throw WhisperError.modelsUnavailable("Speech model files could not be loaded. Retry to download them again.")
+        }
         whisper = loaded
         loadedModel = model
         try Task.checkCancellation()

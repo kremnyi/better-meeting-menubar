@@ -104,6 +104,41 @@ final class RecoveryTests: XCTestCase {
         XCTAssertFalse(LocalTranscriber.hasModelFiles(in: root))
     }
 
+    func testFailedCoreMLLoadClearsOnlyThatModelForRetry() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: root) }
+        let folder = root.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(SpeechModel.turbo.rawValue)")
+        for name in ["MelSpectrogram", "AudioEncoder", "TextDecoder"] {
+            let component = folder.appendingPathComponent("\(name).mlmodelc")
+            try fm.createDirectory(at: component, withIntermediateDirectories: true)
+            try Data([1]).write(to: component.appendingPathComponent("coremldata.bin"))
+        }
+        let otherModel = folder.deletingLastPathComponent().appendingPathComponent(SpeechModel.small.rawValue)
+        try fm.createDirectory(at: otherModel, withIntermediateDirectories: false)
+        let tokenizer = root.appendingPathComponent("tokenizer.json")
+        try Data("keep tokenizer".utf8).write(to: tokenizer)
+        let transcriber = LocalTranscriber(downloadBase: root)
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await transcriber.prepare { _ in }
+        }
+        if case .success = await cancelled.result { XCTFail("Cancelled setup must stop") }
+        XCTAssertNotNil(LocalTranscriber.cachedModelFolder(in: root), "Cancellation must keep the cache")
+        do {
+            try await transcriber.prepare { progress in
+                if case .downloadingModel = progress { XCTFail("Repair downloads happen on retry") }
+            }
+            XCTFail("Damaged models must not load")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Retry to download"))
+        }
+        XCTAssertNil(LocalTranscriber.cachedModelFolder(in: root), "Retry must enter the download path")
+        XCTAssertFalse(fm.fileExists(atPath: folder.path))
+        XCTAssertTrue(fm.fileExists(atPath: otherModel.path))
+        XCTAssertEqual(try Data(contentsOf: tokenizer), Data("keep tokenizer".utf8))
+    }
+
     @MainActor
     func testBackgroundModelSetupCanRetryWithoutTakingOverRecording() async throws {
         let suite = "BetterMeetingSetup.\(UUID().uuidString)"

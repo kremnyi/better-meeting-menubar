@@ -72,6 +72,8 @@ updates. Uninstalling the app keeps saved meetings.
 The app downloads and prepares the selected speech model in the background when
 needed. The menu shows progress; you can record during setup, but transcription
 waits until the model is ready. If setup fails, use **Retry setup**.
+If Core ML cannot load the model files, the app clears that model's cache so retrying
+downloads a fresh copy. Other downloaded models and saved meetings are kept.
 
 While recording, separate microphone and system-audio meters show incoming sound.
 An empty meter can mean silence; check the selected input if it stays empty while
