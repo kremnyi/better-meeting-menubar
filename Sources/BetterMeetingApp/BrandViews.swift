@@ -86,32 +86,3 @@ struct MenuBarStatusIcon: View {
 extension Color {
     static let signalCoral = Color(red: 0.96, green: 0.25, blue: 0.22)
 }
-
-extension AppState {
-    var label: String {
-        switch self {
-        case .idle: "Ready"
-        case .preparing: "Preparing"
-        case .recording: "Recording"
-        case .processing: "Finishing"
-        case .failed: "Needs attention"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .idle: "circle"
-        case .preparing, .processing: "hourglass"
-        case .recording: "record.circle.fill"
-        case .failed: "exclamationmark.triangle.fill"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .recording: .signalCoral
-        case .failed: .orange
-        default: .secondary
-        }
-    }
-}

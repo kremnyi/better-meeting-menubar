@@ -51,7 +51,7 @@ struct UpdateOptionsView: View {
             }
 
             HStack {
-                Text(version.map { "Installed \($0)" } ?? "Development build")
+                Text(version.map { "Better Meeting · Installed \($0)" } ?? "Better Meeting · Development build")
                     .textSelection(.enabled)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

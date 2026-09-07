@@ -9,10 +9,6 @@ struct MenuBarControlView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-
-            Divider()
-
             if updates.status.showsNotice {
                 HStack(spacing: 10) {
                     if updates.status == .downloading || updates.status == .preparing || updates.status == .installing {
@@ -83,23 +79,6 @@ struct MenuBarControlView: View {
             model.refreshHistory()
             model.refreshInputs()
         }
-    }
-
-    private var header: some View {
-        HStack(spacing: 10) {
-            Text("Better Meeting")
-                .font(.headline)
-
-            Spacer()
-
-            if model.state != .idle {
-                Label(model.state.label, systemImage: model.state.symbol)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(model.state.tint)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
     }
 
     @ViewBuilder
