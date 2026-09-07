@@ -416,10 +416,18 @@ final class RecoveryTests: XCTestCase {
         }
         let field = try XCTUnwrap(searchField(in: menu))
         XCTAssertEqual(field.bounds.width, initial.width - 24, accuracy: 1, "Search must fill the padded content width")
-        field.stringValue = "Meeting 1"
-        field.sendAction(field.action, to: field.target)
+        let window = NSWindow(contentRect: menu.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = menu
+        window.makeFirstResponder(field)
+        let editor = try XCTUnwrap(field.currentEditor() as? NSTextView)
+        editor.insertText("Meeting 1", replacementRange: NSRange(location: 0, length: 0))
+        XCTAssertEqual(model.historyQuery, "", "Typing must wait for the native search delay")
+        model.meetingTitle = "Unrelated update"
+        menu.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(field.stringValue, "Meeting 1", "View updates must preserve pending search text")
+        try await Task.sleep(for: .seconds(1))
         XCTAssertEqual(model.historyQuery, "Meeting 1")
-        XCTAssertTrue(model.searchingHistory)
         XCTAssertEqual(size(), initial)
         await model.historySearchTask?.value
         XCTAssertEqual(model.transcriptionHistory.count, 1)

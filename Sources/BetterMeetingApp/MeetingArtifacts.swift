@@ -257,11 +257,10 @@ enum MeetingArtifacts {
             guard complete || hasRecording else { return nil }
 
             let nameParts = folder.lastPathComponent.components(separatedBy: " — ")
-            let legacyDate = folderDateFormatter.date(from: nameParts[0])
 
             return MeetingHistoryItem(
                 title: manifest?.title ?? (nameParts.count > 1 ? nameParts.dropFirst().joined(separator: " — ") : folder.lastPathComponent),
-                recordedAt: manifest?.recordedAt ?? legacyDate ?? values?.creationDate ?? .distantPast,
+                recordedAt: manifest?.recordedAt ?? folderDateFormatter.date(from: nameParts[0]) ?? values?.creationDate ?? .distantPast,
                 duration: manifest?.duration ?? 0,
                 folderURL: folder,
                 needsTranscription: !complete,

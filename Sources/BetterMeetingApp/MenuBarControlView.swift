@@ -474,7 +474,7 @@ private struct MeetingSearchField: NSViewRepresentable {
         field.toolTip = "Search all titles and transcripts"
         field.setAccessibilityLabel("Search all meetings")
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        field.sendsSearchStringImmediately = true
+        field.sendsSearchStringImmediately = false
         field.sendsWholeSearchString = false
         field.target = context.coordinator
         field.action = #selector(Coordinator.search(_:))
