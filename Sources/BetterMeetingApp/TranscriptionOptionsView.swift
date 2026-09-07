@@ -177,12 +177,17 @@ struct TranscriptionOptionsView: View {
         Group {
             GridRow {
                 Text("Language")
-                Picker("Transcription language", selection: $language) {
-                    ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
-                        Text(language.label).tag(language)
+                // Build the full language picker only when its menu opens.
+                Menu(language.label) {
+                    Picker("Transcription language", selection: $language) {
+                        ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
+                            Text(language.label).tag(language)
+                        }
                     }
+                    .pickerStyle(.inline)
                 }
-                .labelsHidden()
+                .accessibilityLabel("Transcription language")
+                .accessibilityValue(language.label)
                 .frame(maxWidth: .infinity)
                 .help("Automatic transcribes each selected language separately, then merges the results")
             }
