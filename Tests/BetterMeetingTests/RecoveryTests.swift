@@ -347,7 +347,9 @@ final class RecoveryTests: XCTestCase {
         ]
         for (name, status): (String, AppUpdater.Status) in [
             ("unchecked", .unchecked), ("checking", .checking), ("current", .current),
-            ("available", .available("0.3.13")), ("failed", .failed)
+            ("available", .available("0.3.18")), ("downloaded", .downloaded("0.3.18")),
+            ("downloading", .downloading), ("preparing", .preparing),
+            ("ready", .ready("0.3.18")), ("installing", .installing), ("failed", .failed)
         ] {
             panels.append(("about-\(name)", AnyView(AboutView(version: "0.3.12")), 304, status))
         }
@@ -357,6 +359,8 @@ final class RecoveryTests: XCTestCase {
         var aboutHeight: CGFloat?
         for (name, content, width, status) in panels {
             model.updates.canCheckForUpdates = status != .checking
+            if case .ready = status { model.updates.showReady(toInstallAndRelaunch: { _ in }) }
+            else { model.updates.dismissUpdateInstallation() }
             model.updates.status = status
             model.speechSettings.speakerLabels = name == "options-enabled"
             model.exportAfterRecording = name == "options-enabled"
@@ -475,17 +479,30 @@ final class RecoveryTests: XCTestCase {
         try writePreview(view, to: URL(fileURLWithPath: path))
         if let panels = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             let initialSize = view.fittingSize
-            model.updates.status = .available("0.3.12")
-            let updated = NSHostingView(rootView: view.rootView)
-            XCTAssertEqual(updated.fittingSize.width, initialSize.width)
-            XCTAssertGreaterThan(updated.fittingSize.height, initialSize.height, "A confirmed update must add its notice")
-            try writePreview(updated, to: URL(fileURLWithPath: panels).appendingPathComponent("menu-update.png"))
+            for (name, status): (String, AppUpdater.Status) in [
+                ("ready", .ready("0.3.18")), ("ready-dark", .ready("0.3.18")),
+                ("ready-busy", .ready("0.3.18")), ("downloading", .downloading),
+                ("preparing", .preparing), ("failed", .failed)
+            ] {
+                let updates = AppUpdater(isBusy: { name == "ready-busy" })
+                updates.canCheckForUpdates = true
+                if case .ready = status { updates.showReady(toInstallAndRelaunch: { _ in }) }
+                updates.status = status
+                let updated = NSHostingView(rootView: MenuBarControlView()
+                    .environmentObject(model).environmentObject(updates)
+                    .environment(\.colorScheme, name == "ready-dark" ? .dark : .light)
+                    .background(Color(nsColor: .windowBackgroundColor)))
+                updated.appearance = NSAppearance(named: name == "ready-dark" ? .darkAqua : .aqua)
+                XCTAssertEqual(updated.fittingSize.width, initialSize.width)
+                XCTAssertGreaterThan(updated.fittingSize.height, initialSize.height, "An update must add its notice")
+                try writePreview(updated, to: URL(fileURLWithPath: panels).appendingPathComponent("menu-update-\(name).png"))
+            }
         }
     }
 
     @MainActor
     private func writePreview(_ view: NSView, to output: URL) throws {
-        view.appearance = NSAppearance(named: .aqua)
+        if view.appearance == nil { view.appearance = NSAppearance(named: .aqua) }
         view.frame = NSRect(origin: .zero, size: view.fittingSize)
         view.layoutSubtreeIfNeeded()
         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))

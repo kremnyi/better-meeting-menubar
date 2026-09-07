@@ -28,16 +28,16 @@ macOS blocks the first launch, try opening the app, then use **System Settings
 Managed Macs may not allow this exception.
 
 Click the **ⓘ** button in the top-right corner to open **About**, with the installed
-version, release notes, and **Check for Updates**. Sparkle checks GitHub and lets
-you download and install a newer release without opening Terminal. Updates are
-verified with a separate signing key before extraction.
+version, release notes, and **Check for Updates**. Checks and downloads appear in
+this menu without separate update dialogs. Sparkle verifies updates with a separate
+signing key before extraction.
 
-Enable **Check for updates automatically** to check periodically in the background.
-This is off by default and preserves your previous update-check preference. A newer
-release adds an **Update available** row to the main menu; click it, then **View Update**.
-Background checks stay quiet when no update is found or GitHub cannot be reached.
-Downloads and installation require your choice. Installation waits for active
-recording or processing to finish.
+Enable **Download updates automatically** to check GitHub and prepare updates in
+the background. This is off by default and preserves your previous update-check
+preference. Once ready, click **Restart to Update** in the main menu to install and
+reopen the app. A prepared update can also install when you quit. Recording or
+processing must finish before restarting. If macOS requires authorization, click
+**Install Update** to continue. Failed updates show an inline retry action.
 
 Versions 0.3.14 and older need one Homebrew or manual update to get Sparkle.
 Homebrew remains available for installation and updates.

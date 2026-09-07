@@ -35,7 +35,7 @@
     <key>SUEnableAutomaticChecks</key>
     <false/>
     <key>SUAllowsAutomaticUpdates</key>
-    <false/>
+    <true/>
     <key>SUAutomaticallyUpdate</key>
     <false/>
     <key>SUVerifyUpdateBeforeExtraction</key>

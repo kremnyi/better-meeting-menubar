@@ -14,25 +14,33 @@ struct MenuBarControlView: View {
 
             Divider()
 
-            if let version = updates.status.availableVersion {
-                Button {
-                    aboutPresented = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Label("Update available", systemImage: "arrow.down.circle")
-                        Spacer()
-                        Text(version).foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right").font(.caption2)
+            if updates.status.showsNotice {
+                HStack(spacing: 10) {
+                    if updates.status == .downloading || updates.status == .preparing || updates.status == .installing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: updates.status == .failed ? "exclamationmark.circle" : "arrow.down.circle")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                     }
-                    .font(.callout)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .contentShape(Rectangle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(updates.status.message).font(.callout)
+                        if updates.meetingInProgress && updates.status.availableVersion != nil {
+                            Text("Finish meeting first.").font(.caption).foregroundStyle(.secondary)
+                        } else if let version = updates.status.availableVersion {
+                            Text("Version \(version)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    if updates.status.availableVersion != nil || updates.status == .failed {
+                        Button(updates.actionTitle) { updates.performAction() }
+                            .disabled(!updates.canPerformAction)
+                            .controlSize(.small)
+                    }
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-                .accessibilityLabel("Version \(version) available. View update details")
-
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .help(updates.errorMessage ?? "")
                 Divider()
             }
 
