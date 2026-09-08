@@ -136,7 +136,6 @@ enum MeetingArtifacts {
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .iso8601
 
         let transcriptData = try encoder.encode(segments)
         try transcriptData.write(
@@ -285,7 +284,7 @@ enum MeetingArtifacts {
         duration: TimeInterval,
         segments: [TranscriptSegment]
     ) -> String {
-        let date = displayDateFormatter.string(from: recordedAt)
+        let date = DateFormatter.localizedString(from: recordedAt, dateStyle: .long, timeStyle: .short)
         var lines = [
             "# \(title)",
             "",
@@ -316,10 +315,9 @@ enum MeetingArtifacts {
         var matches: [MeetingHistoryItem] = []
         for meeting in meetings {
             guard !Task.isCancelled else { return [] }
-            if meeting.title.localizedStandardContains(query) {
-                matches.append(meeting)
-            } else if let transcript = try? String(contentsOf: meeting.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8),
-                      transcript.localizedStandardContains(query) {
+            if meeting.title.localizedStandardContains(query)
+                || (try? String(contentsOf: meeting.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8)
+                    .localizedStandardContains(query)) == true {
                 matches.append(meeting)
             }
         }
@@ -346,14 +344,6 @@ enum MeetingArtifacts {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-        return formatter
-    }()
-
-    private static let displayDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.dateStyle = .long
-        formatter.timeStyle = .short
         return formatter
     }()
 }

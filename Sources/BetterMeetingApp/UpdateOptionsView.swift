@@ -8,27 +8,18 @@ struct UpdateOptionsView: View {
         [.checking, .downloading, .preparing, .installing].contains(updates.status)
     }
 
-    private var statusMessage: String {
-        switch updates.status {
-        case .available(let version): "\(version) available"
-        case .downloaded(let version): "\(version) downloaded"
-        case .ready(let version): "\(version) ready to install"
-        default: updates.status.message
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 if updateInProgress {
                     ProgressView().controlSize(.small).accessibilityHidden(true)
-                    Text(statusMessage).foregroundStyle(.secondary)
+                    Text(updates.status.message).foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 } else {
                     Button(updates.actionTitle) { updates.performAction() }
                         .disabled(!updates.canPerformAction || version == nil)
                     Spacer(minLength: 8)
-                    Text(statusMessage)
+                    Text(updates.status.message)
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

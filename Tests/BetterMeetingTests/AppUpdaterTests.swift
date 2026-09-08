@@ -65,6 +65,24 @@ final class AppUpdaterTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundNoUpdateClearsErrorsAndActions() {
+        _ = NSApplication.shared
+        let updates = AppUpdater(isBusy: { false })
+        let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: updates, delegate: updates)
+        updates.showUpdaterError(URLError(.notConnectedToInternet)) {}
+        updates.showReady(toInstallAndRelaunch: { _ in XCTFail("A completed check must discard stale installation actions") })
+        let error = NSError(domain: SUSparkleErrorDomain, code: Int(SUError.noUpdateError.rawValue))
+        updates.updater(updater, didAbortWithError: error)
+        XCTAssertEqual(updates.status, .current)
+        XCTAssertNil(updates.errorMessage)
+        XCTAssertEqual(updates.actionTitle, "Check for Updates")
+        updates.canCheckForUpdates = true
+        XCTAssertTrue(updates.canPerformAction)
+        updates.status = .ready("test")
+        XCTAssertFalse(updates.canPerformAction)
+    }
+
+    @MainActor
     func testInstallationWaitsForWorkAndResumesOnlyOnce() {
         _ = NSApplication.shared
         var busy = true

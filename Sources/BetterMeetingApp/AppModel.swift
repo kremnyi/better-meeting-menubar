@@ -25,10 +25,16 @@ enum ProcessingPhase: Equatable {
     case exportingBundle
 
     var stepText: String {
-        if self == .labelingSpeakers { return "Speaker labels" }
-        if self == .extractingScreens { return "Step 1 of 2" }
-        if self == .exportingBundle { return "Step 2 of 2" }
-        return "Step \(stepNumber) of 5"
+        switch self {
+        case .finalizingRecording: "Step 1 of 5"
+        case .preparingAudio: "Step 2 of 5"
+        case .preparingModel, .downloadingModel, .loadingModel: "Step 3 of 5"
+        case .transcribing: "Step 4 of 5"
+        case .writingFiles: "Step 5 of 5"
+        case .labelingSpeakers: "Speaker labels"
+        case .extractingScreens: "Step 1 of 2"
+        case .exportingBundle: "Step 2 of 2"
+        }
     }
 
     var statusText: String {
@@ -43,18 +49,6 @@ enum ProcessingPhase: Equatable {
         case .writingFiles: "Writing transcript.md…"
         case .extractingScreens: "Extracting screenshots and screen text…"
         case .exportingBundle: "Writing the export bundle…"
-        }
-    }
-
-    private var stepNumber: Int {
-        switch self {
-        case .finalizingRecording: 1
-        case .preparingAudio: 2
-        case .preparingModel, .downloadingModel, .loadingModel: 3
-        case .transcribing, .labelingSpeakers: 4
-        case .writingFiles: 5
-        case .extractingScreens: 1
-        case .exportingBundle: 2
         }
     }
 }
@@ -82,7 +76,7 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var searchingHistory = false
     @Published private(set) var unfinishedRecordings: [MeetingHistoryItem] = []
-    @Published private(set) var modelReady = LocalTranscriber.cachedModelFolder() != nil
+    @Published private(set) var modelReady = false
     @Published private(set) var modelSetupStatus = "Preparing speech model…"
     @Published private(set) var modelSetupFraction: Double?
     @Published private(set) var modelSetupError: String?
@@ -544,12 +538,10 @@ final class AppModel: ObservableObject {
     }
 
     func openMeetingsFolder() {
-        if !FileManager.default.fileExists(atPath: outputRoot.path) {
-            try? FileManager.default.createDirectory(
-                at: outputRoot,
-                withIntermediateDirectories: true
-            )
-        }
+        try? FileManager.default.createDirectory(
+            at: outputRoot,
+            withIntermediateDirectories: true
+        )
         NSWorkspace.shared.open(outputRoot)
     }
 

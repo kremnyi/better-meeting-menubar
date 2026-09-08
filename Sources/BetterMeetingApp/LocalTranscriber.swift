@@ -91,17 +91,13 @@ actor LocalTranscriber {
 
     func transcribe(
         audioURL: URL,
-        languages: [String] = ["uk", "ru", "en"],
+        languages: [String] = TranscriptionLanguage.defaultCandidates,
         hints: String = "",
         settings: SpeechSettings = SpeechSettings(),
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         try settings.validate()
-        let audioFile = try AVAudioFile(
-            forReading: audioURL,
-            commonFormat: .pcmFormatFloat32,
-            interleaved: false
-        )
+        let audioFile = try AVAudioFile(forReading: audioURL)
         let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
 
         return try await TranscriptionPasses.run(

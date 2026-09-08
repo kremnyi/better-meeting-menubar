@@ -28,18 +28,9 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             throw RecorderError.screenPermissionDenied
         }
 
-        let microphoneAllowed: Bool
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized:
-            microphoneAllowed = true
-        case .notDetermined:
-            microphoneAllowed = await AVCaptureDevice.requestAccess(for: .audio)
-        case .denied, .restricted:
-            microphoneAllowed = false
-        @unknown default:
-            microphoneAllowed = false
+        guard await AVCaptureDevice.requestAccess(for: .audio) else {
+            throw RecorderError.microphonePermissionDenied
         }
-        guard microphoneAllowed else { throw RecorderError.microphonePermissionDenied }
     }
 
     func start(

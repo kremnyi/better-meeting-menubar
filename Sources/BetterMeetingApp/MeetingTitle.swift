@@ -68,16 +68,16 @@ enum MeetingTitle {
             }
         }
 
-        let name = names.values.sorted {
+        let name = names.values.min {
             $0.count != $1.count ? $0.count > $1.count : $0.index < $1.index
-        }.first
-        let topic = topics.values.filter { $0.count >= 2 }.sorted {
+        }
+        let topic = topics.values.filter { $0.count >= 2 }.min {
             let leftScore = $0.count * $0.length
             let rightScore = $1.count * $1.length
             if leftScore != rightScore { return leftScore > rightScore }
             if $0.length != $1.length { return $0.length > $1.length }
             return $0.index < $1.index
-        }.first
+        }
         guard let name, let topic else { return nil }
         return MeetingArtifacts.sanitizedTitle("\(name.text) — \(topic.text.capitalized)")
     }

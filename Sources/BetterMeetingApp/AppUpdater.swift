@@ -12,11 +12,11 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
             case .unchecked: ""
             case .checking: "Checking…"
             case .current: "Up to date"
-            case .available: "Update available"
-            case .downloaded: "Update downloaded"
+            case .available(let version): "\(version) available"
+            case .downloaded(let version): "\(version) downloaded"
             case .downloading: "Downloading update…"
             case .preparing: "Preparing update…"
-            case .ready: "Update ready"
+            case .ready(let version): "\(version) ready to install"
             case .installing: "Restarting…"
             case .failed: "Update failed"
             }
@@ -106,11 +106,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         status = .ready(item.displayVersionString)
         updateAction = installHandler
         return true
-    }
-
-    func updaterDidNotFindUpdate(_ updater: SPUUpdater) {
-        errorMessage = nil
-        status = .current
     }
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
