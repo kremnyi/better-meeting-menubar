@@ -50,6 +50,7 @@ struct MenuBarControlView: View {
             .padding(.vertical, 8)
         }
         .frame(width: 304)
+        .background(MenuWindowReader(model: model).frame(width: 0, height: 0).accessibilityHidden(true))
         .sheet(item: $retranscribingMeeting) { meeting in
             RetranscriptionView(
                 meeting: meeting, languages: model.transcriptionLanguages, hints: model.transcriptionHints,
@@ -261,10 +262,27 @@ struct MenuBarControlView: View {
                 audioMeter("System audio", level: model.systemAudioLevel)
             }
 
-            Text(model.statusText)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            ZStack(alignment: .leading) {
+                Text(model.statusText)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .opacity(model.audioWarning ? 0 : 1)
+                    .accessibilityHidden(model.audioWarning)
+                VStack(alignment: .leading, spacing: 2) {
+                    Label {
+                        Text("No audio detected yet").fontWeight(.medium)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                    Text("Check your microphone and meeting audio.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 .fixedSize(horizontal: false, vertical: true)
+                .opacity(model.audioWarning ? 1 : 0)
+                .accessibilityHidden(!model.audioWarning)
+            }
+            .font(.callout)
 
             primaryActionButton
 
@@ -408,6 +426,27 @@ struct MenuBarControlView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct MenuWindowReader: NSViewRepresentable {
+    let model: AppModel
+
+    func makeNSView(context: Context) -> WindowView {
+        let view = WindowView()
+        view.model = model
+        return view
+    }
+
+    func updateNSView(_ view: WindowView, context: Context) {}
+
+    final class WindowView: NSView {
+        weak var model: AppModel?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            model?.menuWindow = window
+        }
     }
 }
 

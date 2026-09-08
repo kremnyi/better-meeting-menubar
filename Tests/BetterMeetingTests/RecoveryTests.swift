@@ -1,7 +1,9 @@
 import AppKit
 import AVFoundation
+import Combine
 import CoreMedia
 import Foundation
+import ScreenCaptureKit
 import SwiftUI
 import XCTest
 @testable import BetterMeetingApp
@@ -694,6 +696,79 @@ final class RecoveryTests: XCTestCase {
                 }
             }
         }
+    }
+
+    @MainActor
+    func testRecordingAudioWarningClearsWithoutResizingOrRepeating() throws {
+        _ = NSApplication.shared
+        let suite = "BetterMeetingAudioWarning.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
+        let model = AppModel(defaults: defaults)
+        defer {
+            model.fail(AppError.missingRecording)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        model.recordingDidStart(at: Date())
+        var warnings = 0
+        let observation = model.$audioWarning.sink { if $0 { warnings += 1 } }
+        defer { observation.cancel() }
+        let view = NSHostingView(rootView: MenuBarControlView()
+            .environmentObject(model).environmentObject(model.updates)
+            .environment(\.colorScheme, .light)
+            .background(Color(nsColor: .windowBackgroundColor)))
+        let initialSize = view.fittingSize
+        model.checkRecordingAudio(elapsed: 29.99, audioDetected: false)
+        XCTAssertFalse(model.audioWarning)
+        let panels = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"].map { URL(fileURLWithPath: $0) }
+        if let panels { try writePreview(view, to: panels.appendingPathComponent("recording-normal.png")) }
+        model.checkRecordingAudio(elapsed: 30, audioDetected: false)
+        XCTAssertTrue(model.audioWarning)
+        model.checkRecordingAudio(elapsed: 120, audioDetected: false)
+        XCTAssertEqual(warnings, 1)
+        XCTAssertEqual(model.state, .recording, "A warning must not stop recording")
+        let warningView = NSHostingView(rootView: view.rootView)
+        XCTAssertEqual(warningView.fittingSize, initialSize, "The warning must not move the recording controls")
+        if let panels {
+            try writePreview(warningView, to: panels.appendingPathComponent("recording-audio-warning.png"))
+            let dark = NSHostingView(rootView: MenuBarControlView()
+                .environmentObject(model).environmentObject(model.updates)
+                .environment(\.colorScheme, .dark)
+                .background(Color(nsColor: .windowBackgroundColor)))
+            dark.appearance = NSAppearance(named: .darkAqua)
+            XCTAssertEqual(dark.fittingSize, initialSize)
+            try writePreview(dark, to: panels.appendingPathComponent("recording-audio-warning-dark.png"))
+        }
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 100))
+        buffer.frameLength = 100
+        let samples = try XCTUnwrap(buffer.floatChannelData)[0]
+        for source: SCStreamOutputType in [.microphone, .audio] {
+            let recorder = MeetingRecorder()
+            samples.update(repeating: 0, count: 100)
+            recorder.updateAudioLevel(buffer, type: source, at: Date())
+            XCTAssertFalse(recorder.hasDetectedAudio)
+            samples.update(repeating: 0.1, count: 100)
+            recorder.updateAudioLevel(buffer, type: source, at: Date())
+            XCTAssertTrue(recorder.hasDetectedAudio, "Either source must count as detected audio")
+            model.checkRecordingAudio(elapsed: 120, audioDetected: recorder.hasDetectedAudio)
+            XCTAssertFalse(model.audioWarning)
+            samples.update(repeating: 0, count: 100)
+            recorder.updateAudioLevel(buffer, type: source, at: Date())
+            XCTAssertTrue(recorder.hasDetectedAudio, "Later silence must not erase the earlier signal")
+            model.checkRecordingAudio(elapsed: 600, audioDetected: recorder.hasDetectedAudio)
+            XCTAssertFalse(model.audioWarning)
+        }
+        XCTAssertEqual(warnings, 1)
+        XCTAssertEqual(NSHostingView(rootView: view.rootView).fittingSize, initialSize)
+        model.recordingDidStart(at: Date())
+        model.checkRecordingAudio(elapsed: 30, audioDetected: false)
+        XCTAssertEqual(warnings, 2, "A new recording must get its own warning")
+        model.fail(AppError.missingRecording)
+        XCTAssertFalse(model.audioWarning)
+        XCTAssertNil(model.recordingID)
+        model.checkRecordingAudio(elapsed: 60, audioDetected: false)
+        XCTAssertFalse(model.audioWarning, "A late timer callback must not warn after recording stops")
     }
 
     @MainActor

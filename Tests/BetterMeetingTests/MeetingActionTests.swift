@@ -1,7 +1,14 @@
 import AppKit
+import SwiftUI
 import UserNotifications
 import XCTest
 @testable import BetterMeetingApp
+
+@MainActor
+private final class NotificationMenuClicks: NSObject {
+    var count = 0
+    @objc func click() { count += 1 }
+}
 
 final class MeetingActionTests: XCTestCase {
     @MainActor
@@ -105,6 +112,60 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertEqual(failure.title, "Transcription needs attention")
         XCTAssertEqual(failure.body, renamed.lastPathComponent)
         XCTAssertNil(MeetingNotifications.folder(from: UNMutableNotificationContent()))
+    }
+
+    @MainActor
+    func testAudioWarningNotificationOpensControlsAndIgnoresStaleRecordings() throws {
+        _ = NSApplication.shared
+        let suite = "BetterMeetingAudioNotification.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
+        let model = AppModel(defaults: defaults)
+        let delegate = AppDelegate()
+        delegate.model = model
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let clicks = NotificationMenuClicks()
+        item.button?.target = clicks
+        item.button?.action = #selector(NotificationMenuClicks.click)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 304, height: 300),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.alphaValue = 0
+        defer {
+            window.orderOut(nil)
+            NSStatusBar.system.removeStatusItem(item)
+            model.fail(AppError.missingRecording)
+            defaults.removePersistentDomain(forName: suite)
+        }
+        model.recordingDidStart(at: Date())
+        let request = MeetingNotifications.audioWarning(recordingID: try XCTUnwrap(model.recordingID))
+        XCTAssertEqual(request.content.title, "Check your recording")
+        XCTAssertNil(MeetingNotifications.folder(from: request.content))
+        model.checkRecordingAudio(elapsed: 30, audioDetected: false)
+        XCTAssertTrue(delegate.shouldPresentAudioWarning(request))
+        delegate.openNotification(request)
+        XCTAssertEqual(clicks.count, 1, "A click must activate the existing native menu button")
+        let view = NSHostingView(rootView: MenuBarControlView()
+            .environmentObject(model).environmentObject(model.updates))
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        XCTAssertTrue(model.menuWindow === window, "The menu must track its own native window")
+        window.orderFront(nil)
+        XCTAssertTrue(window.isVisible)
+        XCTAssertFalse(delegate.shouldPresentAudioWarning(request), "The open menu already shows the warning")
+        delegate.openNotification(request)
+        XCTAssertEqual(clicks.count, 1, "Clicking with the menu open must not toggle it closed")
+        window.orderOut(nil)
+        model.checkRecordingAudio(elapsed: 31, audioDetected: true)
+        XCTAssertFalse(delegate.shouldPresentAudioWarning(request))
+        model.recordingDidStart(at: Date())
+        model.checkRecordingAudio(elapsed: 30, audioDetected: false)
+        XCTAssertFalse(delegate.shouldPresentAudioWarning(request))
+        delegate.openNotification(request)
+        XCTAssertEqual(clicks.count, 1, "Old notifications must not open a later recording")
+        let current = MeetingNotifications.audioWarning(recordingID: try XCTUnwrap(model.recordingID))
+        model.fail(AppError.missingRecording)
+        delegate.openNotification(current)
+        XCTAssertEqual(clicks.count, 1, "Stopped recordings must ignore late clicks")
     }
 
     func testFailedRenameRestoresOriginalFiles() throws {

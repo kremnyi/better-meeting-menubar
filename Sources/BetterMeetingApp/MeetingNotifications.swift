@@ -2,6 +2,8 @@ import Foundation
 import UserNotifications
 
 enum MeetingNotifications {
+    static let audioWarningCategory = "recording-audio-warning"
+
     static var center: UNUserNotificationCenter? {
         // Command-line tests do not have an application identity for notifications.
         guard Bundle.main.bundleURL.pathExtension == "app" else { return nil }
@@ -14,12 +16,31 @@ enum MeetingNotifications {
     }
 
     static func post(title: String, folder: URL, failed: Bool) async {
+        guard let content = try? content(title: title, folder: folder, failed: failed) else { return }
+        await post(UNNotificationRequest(identifier: folder.path, content: content, trigger: nil))
+    }
+
+    static func post(_ request: UNNotificationRequest) async {
         guard let center else { return }
         let status = await center.notificationSettings().authorizationStatus
+        let isAudioWarning = request.content.categoryIdentifier == audioWarningCategory
         guard status == .authorized || status == .provisional,
-              let content = try? content(title: title, folder: folder, failed: failed) else { return }
-        let request = UNNotificationRequest(identifier: folder.path, content: content, trigger: nil)
+              !isAudioWarning || !Task.isCancelled else { return }
         try? await center.add(request)
+        if isAudioWarning && Task.isCancelled { remove(request.identifier) }
+    }
+
+    static func audioWarning(recordingID: UUID) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = "Check your recording"
+        content.body = "No audio detected in this recording yet. Check your microphone and meeting audio."
+        content.categoryIdentifier = audioWarningCategory
+        return UNNotificationRequest(identifier: recordingID.uuidString, content: content, trigger: nil)
+    }
+
+    static func remove(_ identifier: String) {
+        center?.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center?.removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
     static func content(title: String, folder: URL, failed: Bool) throws -> UNMutableNotificationContent {

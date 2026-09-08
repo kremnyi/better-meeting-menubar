@@ -80,6 +80,11 @@ While recording, separate microphone and system-audio meters show incoming sound
 An empty meter can mean silence; check the selected input if it stays empty while
 you expect sound.
 
+If neither source has detected audio after 30 seconds, an amber warning replaces
+the recording status. With the menu closed, the app also sends one notification;
+click it to open the recording controls. Recording continues. The warning clears
+when either source detects audio, and later pauses do not trigger another warning.
+
 The menu-bar icon spins during processing, or stays still with Reduce Motion enabled.
 A warning icon appears if recording or transcription fails and stays until you retry
 or dismiss the error. Search, Finder, and **Copy Transcript** remain available during

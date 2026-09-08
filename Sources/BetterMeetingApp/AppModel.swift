@@ -66,6 +66,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var microphoneLevel = 0.0
     @Published private(set) var systemAudioLevel = 0.0
+    @Published private(set) var audioWarning = false
+    private(set) var recordingID: UUID?
+    weak var menuWindow: NSWindow?
     @Published private(set) var statusText = "Ready to record your display and audio."
     @Published private(set) var errorMessage: String?
     @Published private(set) var completedFolder: URL?
@@ -133,6 +136,7 @@ final class AppModel: ObservableObject {
     private var recordedAt: Date?
     private var titleWasProvided = true
     private var timer: Timer?
+    private var audioWarningTask: Task<Void, Never>?
     private var quitWhenFinished = false
     private(set) var processingTask: Task<Void, Never>?
     private(set) var historySearchTask: Task<Void, Never>?
@@ -604,9 +608,7 @@ final class AppModel: ObservableObject {
                     to: recordingURL, displayID: selectedDisplayID, microphoneID: selectedMicrophoneID,
                     resolution: captureResolution, quality: captureQuality
                 )
-                state = .recording
-                statusText = "Recording the selected display, system audio, and microphone."
-                startTimer(from: startedAt)
+                recordingDidStart(at: startedAt)
             } catch {
                 fail(error)
             }
@@ -804,19 +806,52 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func startTimer(from startDate: Date) {
-        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.elapsed = Date().timeIntervalSince(startDate)
-                self?.microphoneLevel = self?.recorder.audioLevel(microphone: true) ?? 0
-                self?.systemAudioLevel = self?.recorder.audioLevel(microphone: false) ?? 0
+    func recordingDidStart(at startDate: Date) {
+        stopTimer()
+        let recordingID = UUID()
+        self.recordingID = recordingID
+        elapsed = 0
+        state = .recording
+        statusText = "Recording the selected display, system audio, and microphone."
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.state == .recording, self.recordingID == recordingID else { return }
+                self.elapsed = Date().timeIntervalSince(startDate)
+                self.microphoneLevel = self.recorder.audioLevel(microphone: true)
+                self.systemAudioLevel = self.recorder.audioLevel(microphone: false)
+                self.checkRecordingAudio(elapsed: self.elapsed, audioDetected: self.recorder.hasDetectedAudio)
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    func checkRecordingAudio(elapsed: TimeInterval, audioDetected: Bool) {
+        guard state == .recording else { return }
+        let warning = elapsed >= 30 && !audioDetected
+        guard audioWarning != warning else { return }
+        audioWarning = warning
+        if warning, menuWindow?.isVisible != true, let recordingID {
+            audioWarningTask = Task {
+                await MeetingNotifications.post(MeetingNotifications.audioWarning(recordingID: recordingID))
+            }
+        } else if !warning {
+            clearAudioWarning()
+        }
+    }
+
+    private func clearAudioWarning() {
+        audioWarningTask?.cancel()
+        audioWarningTask = nil
+        if let recordingID { MeetingNotifications.remove(recordingID.uuidString) }
     }
 
     private func stopTimer() {
         timer?.invalidate()
         timer = nil
+        clearAudioWarning()
+        audioWarning = false
+        recordingID = nil
         microphoneLevel = 0
         systemAudioLevel = 0
     }

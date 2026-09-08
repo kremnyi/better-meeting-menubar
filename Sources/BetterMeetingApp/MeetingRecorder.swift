@@ -8,6 +8,7 @@ import ScreenCaptureKit
 @MainActor
 final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegate, SCStreamOutput {
     var onUnexpectedStop: ((Error?) -> Void)?
+    private(set) var hasDetectedAudio = false
 
     private var stream: SCStream?
     private var recordingOutput: SCRecordingOutput?
@@ -46,6 +47,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         resolution: CaptureResolution, quality: CaptureQuality
     ) async throws {
         guard stream == nil else { throw RecorderError.alreadyRecording }
+        hasDetectedAudio = false
         guard CGPreflightScreenCaptureAccess() else { throw RecorderError.screenPermissionDenied }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
             throw RecorderError.microphonePermissionDenied
@@ -168,8 +170,14 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                   let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)) else { return }
             buffer.frameLength = AVAudioFrameCount(frames)
             guard CMSampleBufferCopyPCMDataIntoAudioBufferList(sampleBuffer, at: 0, frameCount: Int32(frames), into: buffer.mutableAudioBufferList) == noErr else { return }
-            levels[type] = (Self.meterLevel(buffer), now)
+            updateAudioLevel(buffer, type: type, at: now)
         }
+    }
+
+    func updateAudioLevel(_ buffer: AVAudioPCMBuffer, type: SCStreamOutputType, at time: Date) {
+        let level = Self.meterLevel(buffer)
+        levels[type] = (level, time)
+        hasDetectedAudio = hasDetectedAudio || level > 0
     }
 
     static func meterLevel(_ buffer: AVAudioPCMBuffer) -> Double {
