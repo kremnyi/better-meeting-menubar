@@ -141,7 +141,7 @@ struct MenuBarControlView: View {
                 .help("Retry transcription from a saved recording")
             }
 
-            Text("Recent meetings")
+            Text("Meetings")
                 .font(.callout.weight(.medium))
 
             MeetingSearchField(text: $model.historyQuery)

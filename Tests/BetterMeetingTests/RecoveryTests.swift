@@ -664,8 +664,9 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(reopened.selectedMicrophoneID, "test-mic")
         XCTAssertEqual(reopened.captureResolution, .pixels1920)
         XCTAssertEqual(reopened.captureQuality, .smooth)
-        XCTAssertEqual(reopened.transcriptionHistory.count, 10)
+        XCTAssertEqual(reopened.transcriptionHistory.count, 11)
         XCTAssertEqual(reopened.transcriptionHistory.first?.title, "Meeting 11")
+        XCTAssertEqual(reopened.transcriptionHistory.last?.title, "Meeting 1")
         XCTAssertEqual(reopened.unfinishedRecordings.map(\.title), ["Meeting 0"])
         XCTAssertEqual(reopened.terminationReply(), .terminateNow)
         defaults.set(999, forKey: "captureResolution")
@@ -818,7 +819,7 @@ final class RecoveryTests: XCTestCase {
         }
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
-        XCTAssertEqual(model.transcriptionHistory.count, 10)
+        XCTAssertEqual(model.transcriptionHistory.count, 12)
         model.historyQuery = "cafe"
         await model.historySearchTask?.value
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Café planning"])
@@ -829,7 +830,7 @@ final class RecoveryTests: XCTestCase {
         model.historyQuery = "missing"
         model.historyQuery = "  "
         await model.historySearchTask?.value
-        XCTAssertEqual(model.transcriptionHistory.count, 10, "Cancelled search must not replace newer results")
+        XCTAssertEqual(model.transcriptionHistory.count, 12, "Cancelled search must not replace newer results")
         XCTAssertFalse(model.searchingHistory)
     }
 

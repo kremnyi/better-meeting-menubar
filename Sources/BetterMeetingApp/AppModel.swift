@@ -493,7 +493,7 @@ final class AppModel: ObservableObject {
         let query = historyQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
             searchingHistory = false
-            transcriptionHistory = Array(completedMeetings.prefix(10))
+            transcriptionHistory = completedMeetings
             return
         }
         let meetings = completedMeetings
