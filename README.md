@@ -90,10 +90,11 @@ A warning icon appears if recording or transcription fails and stays until you r
 or dismiss the error. Search, Finder, and **Copy Transcript** remain available during
 transcription and export; renaming and starting another job wait until processing finishes.
 
-Before your first recording or retry, the app asks permission to send completion
-notifications. Allow them to see when transcription finishes or needs attention;
-clicking a notification opens that meeting's folder. You can change this in
-macOS **System Settings → Notifications → Better Meeting**.
+Before your first recording or retry, the app asks permission to send notifications
+for missing audio and transcription results. Click an audio warning to open the
+recording controls, or a transcription notification to open the meeting's folder.
+You can change notification access in macOS **System Settings → Notifications
+→ Better Meeting**.
 
 To open the app automatically when you sign in, enable **Options → Launch at login**.
 If macOS requires approval, use **Open Login Items…** below the checkbox and allow

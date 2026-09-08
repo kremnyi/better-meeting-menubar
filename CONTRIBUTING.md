@@ -16,18 +16,11 @@ frameworks, and license notices. Use the app bundle for recording;
 `swift run BetterMeeting` does not include those resources. The app runs in the
 menu bar without a Dock icon.
 
-Tests cover meeting recovery, audio exports, saved preferences, capture presets,
-automatic titles, multilingual merging, and per-language cache recovery.
-They also cover cancellation, vocabulary and language settings, safe transcript
-replacement, stereo audio meters, model-cache repair, and stable history search layout.
-History refresh checks cover background scanning and discarding results from an old folder.
-Model and decoding checks cover saved settings and cache invalidation. Screen tests
-create a two-slide video and run native frame extraction and Vision OCR. Bundle
-checks cover language shares, manual edits, replacement, and cancellation recovery.
-Updater checks cover inline states, waiting for a restart click, and deferring
-installation while a meeting is active.
-GitHub Actions runs the same checks and keeps any macOS
-crash reports when a check fails.
+Tests cover recording recovery, transcription and cache reuse, saved settings,
+screen extraction, exports, and updates. UI checks cover stable layouts, audio
+warnings, and notification routing. GitHub Actions runs the tests and app-bundle
+build, keeping macOS crash reports if a check fails. Live model checks are opt-in;
+see below.
 
 Use `dist/Better Meeting.app` to check recording permissions. Local builds and CI
 default to ad-hoc signing. On the release Mac, reuse the persistent identity:
@@ -81,6 +74,16 @@ To update the README screenshot with fictional meetings:
 ```bash
 BETTER_MEETING_PREVIEW_PATH="$PWD/docs/menu-bar.png" swift test --filter testRenderMenuBarPreview
 ```
+
+To render Options, update states, and recording audio warnings in light and dark
+mode without launching the app:
+
+```bash
+BETTER_MEETING_PANELS_PREVIEW_PATH="$PWD/.build/previews" swift test --filter 'testOptionsAndUpdateLayouts|testRecordingAudioWarningClearsWithoutResizingOrRepeating'
+```
+
+The PNGs use fictional data and do not verify live notification delivery or
+recording permissions.
 
 ## Before opening a pull request
 
