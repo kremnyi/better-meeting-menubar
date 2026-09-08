@@ -380,17 +380,29 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
-    func testPopoversDoNotResizeMenu() throws {
+    func testPopoversDoNotResizeMenu() async throws {
         let suite = "BetterMeetingLayout.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
         defer { defaults.removePersistentDomain(forName: suite) }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
         let closed = NSHostingView(rootView: MenuBarControlView().environmentObject(model).environmentObject(model.updates))
         let presented = NSHostingView(rootView: MenuBarControlView(captureOptionsPresented: true).environmentObject(model).environmentObject(model.updates))
-        XCTAssertGreaterThan(closed.fittingSize.height, 0)
-        XCTAssertEqual(presented.fittingSize, closed.fittingSize)
+        let initialSize = closed.fittingSize
+        XCTAssertGreaterThan(initialSize.height, 0)
+        XCTAssertEqual(presented.fittingSize, initialSize)
+        let statuses: [AppUpdater.Status] = [
+            .checking, .current, .available("0.3.26"), .downloading, .downloaded("0.3.26"),
+            .preparing, .ready("0.3.26"), .installing, .failed, .unchecked
+        ]
+        for status in statuses {
+            model.updates.status = status
+            await Task.yield()
+            XCTAssertEqual(closed.fittingSize, initialSize, "\(status) must not resize the menu")
+            XCTAssertEqual(presented.fittingSize, initialSize, "\(status) must not move the open Options popover")
+        }
     }
 
     @MainActor
@@ -584,8 +596,8 @@ final class RecoveryTests: XCTestCase {
         if let panels = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             let initialSize = view.fittingSize
             for (name, status): (String, AppUpdater.Status) in [
-                ("ready", .ready("0.3.18")), ("ready-dark", .ready("0.3.18")),
-                ("ready-busy", .ready("0.3.18")), ("downloading", .downloading),
+                ("ready", .ready("0.3.26")), ("ready-dark", .ready("0.3.26")),
+                ("ready-busy", .ready("0.3.26")), ("downloading", .downloading),
                 ("preparing", .preparing), ("failed", .failed)
             ] {
                 let updates = AppUpdater(isBusy: { name == "ready-busy" })
@@ -598,7 +610,7 @@ final class RecoveryTests: XCTestCase {
                     .background(Color(nsColor: .windowBackgroundColor)))
                 updated.appearance = NSAppearance(named: name == "ready-dark" ? .darkAqua : .aqua)
                 XCTAssertEqual(updated.fittingSize.width, initialSize.width)
-                XCTAssertGreaterThan(updated.fittingSize.height, initialSize.height, "An update must add its notice")
+                XCTAssertEqual(updated.fittingSize.height, initialSize.height, "Update feedback must not resize the menu")
                 try writePreview(updated, to: URL(fileURLWithPath: panels).appendingPathComponent("menu-update-\(name).png"))
             }
         }

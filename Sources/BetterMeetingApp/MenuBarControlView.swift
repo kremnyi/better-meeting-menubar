@@ -7,6 +7,10 @@ struct MenuBarControlView: View {
     @State var captureOptionsPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
 
+    private var updateReady: Bool {
+        if case .ready = updates.status { true } else { false }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             content
@@ -14,44 +18,23 @@ struct MenuBarControlView: View {
 
             Divider()
 
-            if updates.status.showsNotice {
-                HStack(spacing: 10) {
-                    if updates.status == .downloading || updates.status == .preparing || updates.status == .installing {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: updates.status == .failed ? "exclamationmark.circle" : "arrow.down.circle")
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(updates.status.message).font(.callout)
-                        if updates.meetingInProgress && updates.status.availableVersion != nil {
-                            Text("Finish meeting first.").font(.caption).foregroundStyle(.secondary)
-                        } else if let version = updates.status.availableVersion {
-                            Text("Version \(version)").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer(minLength: 4)
-                    if updates.status.availableVersion != nil || updates.status == .failed {
-                        Button(updates.actionTitle) { updates.performAction() }
-                            .disabled(!updates.canPerformAction)
-                            .controlSize(.small)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .help(updates.errorMessage ?? "")
-                Divider()
-            }
-
             HStack(spacing: 8) {
                 Button {
                     captureOptionsPresented.toggle()
                 } label: {
-                    Label("Options", systemImage: "slider.horizontal.3")
+                    HStack(spacing: 6) {
+                        Label("Options", systemImage: "slider.horizontal.3")
+                        Circle()
+                            .fill(.blue)
+                            .frame(width: 6, height: 6)
+                            .opacity(updateReady ? 1 : 0)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .buttonStyle(.plain)
                 .font(.callout)
+                .help(updateReady ? "Update ready to install" : "Recording and app options")
+                .accessibilityLabel(updateReady ? "Options, update ready to install" : "Options")
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
                     CaptureOptionsView()
                 }

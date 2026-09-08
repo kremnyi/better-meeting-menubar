@@ -7,13 +7,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     enum Status: Equatable {
         case unchecked, checking, current, available(String), downloaded(String), downloading, preparing, ready(String), installing, failed
 
-        var availableVersion: String? {
-            switch self {
-            case .available(let version), .downloaded(let version), .ready(let version): version
-            default: nil
-            }
-        }
-
         var message: String {
             switch self {
             case .unchecked: ""
@@ -26,13 +19,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
             case .ready: "Update ready"
             case .installing: "Restarting…"
             case .failed: "Update failed"
-            }
-        }
-
-        var showsNotice: Bool {
-            switch self {
-            case .unchecked, .checking, .current: false
-            default: true
             }
         }
     }
