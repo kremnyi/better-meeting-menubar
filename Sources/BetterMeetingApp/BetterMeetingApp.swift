@@ -7,18 +7,21 @@ struct BetterMeetingApp: App {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var processingFrame = 0
     @State private var iconTimer: Timer?
-    @StateObject private var model: AppModel = {
+    @StateObject private var model: AppModel
+
+    init() {
         let model = AppModel()
+        _model = StateObject(wrappedValue: model)
+        appDelegate.model = model
+        model.calendar.startMonitoring()
         model.prepareSpeechModel()
-        return model
-    }()
+    }
 
     var body: some Scene {
         MenuBarExtra {
             MenuBarControlView()
                 .environmentObject(model)
                 .environmentObject(model.updates)
-                .onAppear { appDelegate.model = model }
         } label: {
             MenuBarStatusIcon(state: model.state, processingFrame: processingFrame)
         }
@@ -50,11 +53,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         MeetingNotifications.center?.delegate = self
+        MeetingNotifications.center?.setNotificationCategories([CalendarReminder.category])
     }
 
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
+        if notification.request.content.categoryIdentifier == CalendarReminder.categoryID {
+            return await shouldPresentCalendarReminder(notification.request) ? [.banner, .list, .sound] : []
+        }
         if notification.request.content.categoryIdentifier == MeetingNotifications.audioWarningCategory {
             return await shouldPresentAudioWarning(notification.request) ? [.banner, .list] : []
         }
@@ -69,8 +76,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func userNotificationCenter(
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
     ) async {
+        if response.notification.request.content.categoryIdentifier == CalendarReminder.categoryID {
+            await handleCalendarReminder(response.notification.request, action: response.actionIdentifier)
+            return
+        }
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
         openNotification(response.notification.request)
+    }
+
+    func shouldPresentCalendarReminder(_ request: UNNotificationRequest) async -> Bool {
+        guard let model, model.calendar.enabled, model.calendar.notifyAtStart else { return false }
+        await model.calendar.refresh()
+        return model.calendar.events.contains {
+            CalendarReminder.matches(request, event: $0) && $0.scheduledEnd > Date()
+                && model.calendar.selectedIDs.contains($0.providerCalendarId)
+        }
+    }
+
+    func handleCalendarReminder(_ request: UNNotificationRequest, action: String,
+                                start: ((CalendarEvent) -> Void)? = nil) async {
+        guard action == UNNotificationDefaultActionIdentifier || action == CalendarReminder.startActionID else { return }
+        guard let model else { return }
+        if action == CalendarReminder.startActionID, model.state == .idle {
+            do {
+                guard model.calendar.notifyAtStart,
+                      let id = request.content.userInfo["occurrenceId"] as? String else { throw CalendarRecordingError.eventUnavailable }
+                let event = try await model.calendar.eventForRecording(id: id)
+                guard CalendarReminder.matches(request, event: event) else { throw CalendarRecordingError.eventUnavailable }
+                guard model.state == .idle else { return }
+                if let start { start(event) } else { model.startCalendarRecording(event) }
+            } catch {
+                if model.state == .idle {
+                    model.completionMessage = "This meeting changed or is no longer available. Check the upcoming meeting, or start a manual recording."
+                }
+            }
+        }
+        showMenu()
+    }
+
+    private func showMenu() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = model?.menuWindow, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        var views = NSApp.windows.compactMap(\.contentView)
+        while let view = views.popLast() {
+            if let button = view as? NSStatusBarButton { button.performClick(nil); return }
+            views.append(contentsOf: view.subviews)
+        }
     }
 
     func openNotification(_ request: UNNotificationRequest) {

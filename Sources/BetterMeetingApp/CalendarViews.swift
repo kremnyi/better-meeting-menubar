@@ -14,13 +14,10 @@ struct CalendarOptionsView: View {
             ))
             .toggleStyle(.checkbox)
 
-            Text("Uses calendars synced with macOS. Add your Google account in System Settings → Internet Accounts, with Calendars enabled.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
             if calendar.enabled {
                 if calendar.authorization == .fullAccess {
                     Text("Choose calendars").font(.callout.weight(.medium))
+                        .padding(.top, 4)
                     if calendar.isLoading && calendar.calendars.isEmpty {
                         ProgressView().controlSize(.small).accessibilityLabel("Loading calendars")
                     } else if calendar.calendars.isEmpty {
@@ -48,9 +45,8 @@ struct CalendarOptionsView: View {
                         }
                         .frame(height: min(220, CGFloat(calendar.calendars.count) * 46))
                     }
-                    Text("Reads selected calendars without editing events. Turning this off keeps details already saved with recordings.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Divider()
+                    CalendarReminderOptionsView(calendar: calendar, reminders: calendar.reminders)
                 } else {
                     Text(calendar.authorization == .restricted
                          ? "Calendar access is restricted by your Mac’s settings or administrator."
@@ -84,6 +80,63 @@ struct CalendarOptionsView: View {
     }
 }
 
+private struct CalendarReminderOptionsView: View {
+    @ObservedObject var calendar: CalendarIntegration
+    @ObservedObject var reminders: CalendarReminders
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Meeting reminders").font(.callout.weight(.medium))
+            Toggle("Notify me when meetings start", isOn: Binding(
+                get: { calendar.notifyAtStart },
+                set: { value in Task { await calendar.setNotifyAtStart(value) } }
+            ))
+            .toggleStyle(.checkbox)
+            .disabled(reminders.requestingAccess)
+            if calendar.notifyAtStart {
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    let scheduled = reminders.scheduledEvents.filter { $0.scheduledStart > context.date }
+                    if let next = scheduled.first {
+                        HStack(spacing: 10) {
+                            Image(systemName: "calendar")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(scheduled.count == 1 ? "1 meeting scheduled" : "\(scheduled.count) meetings scheduled")
+                                Text("Next: \(next.title) · \(next.relativeStart(at: context.date))")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .help(next.title)
+                            }
+                        }
+                        .padding(.top, 4)
+                    } else if reminders.message == nil {
+                        if reminders.isUpdating {
+                            ProgressView("Scheduling reminders…").controlSize(.small)
+                        } else {
+                            Text("No upcoming reminders scheduled.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            if calendar.notifyAtStart, let message = reminders.message {
+                Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Notification Settings…") {
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    Button("Retry") { Task { await calendar.setNotifyAtStart(true) } }
+                        .disabled(reminders.requestingAccess)
+                }
+            }
+        }
+    }
+}
+
 struct UpcomingMeetingView: View {
     @ObservedObject var calendar: CalendarIntegration
     let configure: () -> Void
@@ -96,7 +149,9 @@ struct UpcomingMeetingView: View {
                     HStack {
                         Text("Upcoming meeting").font(.callout.weight(.medium))
                         Spacer()
-                        Button(action: configure) { Image(systemName: "calendar") }
+                        Button(action: configure) {
+                            Image(systemName: "calendar").frame(width: 24, height: 20)
+                        }
                             .buttonStyle(.borderless)
                             .accessibilityLabel("Calendar options")
                             .help("Choose calendars")
@@ -106,29 +161,28 @@ struct UpcomingMeetingView: View {
                     } else if calendar.isLoading && calendar.events.isEmpty {
                         ProgressView().controlSize(.small).accessibilityLabel("Loading upcoming meetings")
                     } else if let event = calendar.events.first {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(event.title).lineLimit(2).help(event.title)
-                            Text(event.scheduledStart.formatted(date: .abbreviated, time: .shortened)
-                                 + " – " + event.scheduledEnd.formatted(date: .omitted, time: .shortened))
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text(event.calendarTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        HStack {
-                            Button("Start recording") { record(event) }
-                                .accessibilityLabel("Start recording \(event.title)")
-                            if calendar.events.count > 1 {
-                                Menu("Record another…") {
-                                    ForEach(calendar.events.dropFirst()) { other in
-                                        Button("Start recording — \(other.title) · \(other.scheduledStart.formatted(date: .abbreviated, time: .shortened))") {
-                                            record(other)
-                                        }
-                                    }
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(event.title).lineLimit(2).help(event.title)
+                                TimelineView(.periodic(from: .now, by: 60)) { context in
+                                    Text(event.relativeStart(at: context.date) + " · " + event.timeRange)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
                                 }
-                                .fixedSize()
-                                .help("Start recording another event in the next 24 hours")
+                                Text(event.calendarTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            Button { record(event) } label: {
+                                Image(systemName: "record.circle")
+                                    .font(.system(size: 16))
+                                    .frame(width: 24, height: 24)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Record this meeting: \(event.title)")
+                            .help("Record this meeting")
                         }
-                        .controlSize(.small)
                     } else {
                         Text(calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) })
                              ? "No meetings in the next 24 hours."
@@ -152,5 +206,26 @@ struct UpcomingMeetingView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await calendar.refresh() }
         }
+    }
+}
+
+extension CalendarEvent {
+    func relativeStart(at now: Date, calendar: Calendar = .current) -> String {
+        if scheduledEnd <= now { return "Ended" }
+        if scheduledStart <= now { return "In progress" }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: scheduledStart)).day
+        if days == 1 { return "Tomorrow" }
+        if days != 0 { return scheduledStart.formatted(date: .abbreviated, time: .omitted) }
+        let minutes = Int(ceil(scheduledStart.timeIntervalSince(now) / 60))
+        if minutes < 60 { return "Starts in \(minutes) min" }
+        let remainder = minutes % 60
+        return "Starts in \(minutes / 60) hr" + (remainder == 0 ? "" : " \(remainder) min")
+    }
+
+    var timeRange: String {
+        scheduledStart.formatted(date: .omitted, time: .shortened) + "–"
+            + scheduledEnd.formatted(date: Calendar.current.isDate(scheduledStart, inSameDayAs: scheduledEnd) ? .omitted : .abbreviated,
+                                     time: .shortened)
     }
 }

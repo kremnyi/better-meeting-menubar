@@ -2,10 +2,182 @@ import Foundation
 import AppKit
 import EventKit
 import SwiftUI
+import UserNotifications
 import XCTest
 @testable import BetterMeetingApp
 
 final class MeetingCalendarTests: XCTestCase {
+    @MainActor
+    func testReminderScheduleUpdatesWithoutDuplicatesAndPreservesOtherNotifications() async throws {
+        let center = ReminderCenterFixture()
+        let reminders = CalendarReminders(center: center)
+        let now = Date()
+        let event = try calendarEventFixture(date: now.addingTimeInterval(600))
+        let unrelated = UNNotificationRequest(identifier: "transcript-ready", content: UNMutableNotificationContent(), trigger: nil)
+        center.pending[unrelated.identifier] = unrelated
+        reminders.update(events: [event], enabled: false)
+        await reminders.task?.value
+        XCTAssertEqual(center.authorizationRequests, 0)
+        XCTAssertEqual(center.pending.count, 1)
+        XCTAssertTrue(reminders.scheduledEvents.isEmpty)
+
+        reminders.update(events: [event], enabled: true)
+        await reminders.task?.value
+        let request = try XCTUnwrap(center.pending[CalendarReminder.prefix + event.id])
+        XCTAssertEqual(request.content.categoryIdentifier, CalendarReminder.categoryID)
+        XCTAssertEqual(request.content.body, event.title)
+        XCTAssertEqual(request.content.userInfo.count, 2, "Do not put attendee emails into notifications")
+        let trigger = try XCTUnwrap(request.trigger as? UNCalendarNotificationTrigger)
+        XCTAssertEqual(trigger.nextTriggerDate(), event.scheduledStart)
+        XCTAssertFalse(trigger.repeats)
+        XCTAssertEqual(CalendarReminder.category.actions.first?.identifier, CalendarReminder.startActionID)
+        XCTAssertTrue(CalendarReminder.category.actions[0].options.contains(.foreground))
+        XCTAssertTrue(CalendarReminder.category.actions[0].options.contains(.authenticationRequired))
+        reminders.update(events: [event], enabled: true)
+        await reminders.task?.value
+        XCTAssertEqual(center.adds, 1, "Refreshing the menu must not duplicate or postpone alerts")
+        XCTAssertEqual(reminders.scheduledEvents, [event])
+
+        let moved = try calendarEventFixture(date: now.addingTimeInterval(1200))
+        center.delivered = [request]
+        reminders.update(events: [moved], enabled: true)
+        await reminders.task?.value
+        XCTAssertEqual(center.adds, 2)
+        XCTAssertTrue(center.delivered.isEmpty)
+        XCTAssertTrue(CalendarReminder.matches(try XCTUnwrap(center.pending[request.identifier]), event: moved))
+        XCTAssertEqual(reminders.scheduledEvents, [moved])
+        reminders.update(events: [], enabled: true) // Deleted event, deselected calendar, or revoked calendar access.
+        await reminders.task?.value
+        XCTAssertEqual(Array(center.pending.keys), [unrelated.identifier])
+        XCTAssertTrue(reminders.scheduledEvents.isEmpty)
+        reminders.update(events: [try calendarEventFixture(date: now.addingTimeInterval(-60))], enabled: true)
+        await reminders.task?.value
+        XCTAssertEqual(center.adds, 2, "Never replay alerts for a meeting already started")
+        center.allowed = false
+        reminders.update(events: [event], enabled: true)
+        await reminders.task?.value
+        XCTAssertNotNil(reminders.message)
+        XCTAssertEqual(center.pending.count, 1)
+        XCTAssertTrue(reminders.scheduledEvents.isEmpty)
+        XCTAssertFalse(reminders.isUpdating)
+    }
+
+    @MainActor
+    func testReminderSummaryCountsOnlyConfirmedAlertsAfterPartialFailure() async throws {
+        let center = ReminderCenterFixture()
+        let reminders = CalendarReminders(center: center)
+        let first = try calendarEventFixture(id: "first")
+        let failed = try calendarEventFixture(id: "failed", date: Date().addingTimeInterval(1200))
+        center.rejectedIDs = [CalendarReminder.prefix + failed.id]
+        reminders.update(events: [first, failed], enabled: true)
+        await reminders.task?.value
+        XCTAssertEqual(reminders.scheduledEvents, [first])
+        XCTAssertNotNil(reminders.message)
+        XCTAssertFalse(reminders.isUpdating)
+
+        center.rejectedIDs = []
+        reminders.update(events: [first, failed], enabled: true)
+        await reminders.task?.value
+        XCTAssertEqual(reminders.scheduledEvents, [first, failed])
+        XCTAssertNil(reminders.message)
+        reminders.update(events: [first, failed], enabled: false)
+        XCTAssertTrue(reminders.scheduledEvents.isEmpty, "Turning reminders off immediately clears the visible summary")
+        await reminders.task?.value
+        XCTAssertTrue(center.pending.isEmpty)
+    }
+
+    func testUpcomingMeetingTimeDistinguishesFutureOngoingAndTomorrow() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-09T12:00:00Z"))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let event = try calendarEventFixture(date: now.addingTimeInterval(18 * 60))
+        XCTAssertEqual(event.relativeStart(at: now, calendar: calendar), "Starts in 18 min")
+        XCTAssertEqual(event.relativeStart(at: event.scheduledStart.addingTimeInterval(-30), calendar: calendar), "Starts in 1 min")
+        XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar), "Starts in 1 hr 18 min")
+        XCTAssertEqual(event.relativeStart(at: event.scheduledStart, calendar: calendar), "In progress")
+        XCTAssertEqual(event.relativeStart(at: event.scheduledEnd, calendar: calendar), "Ended")
+        XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-86400), calendar: calendar), "Tomorrow")
+    }
+
+    @MainActor
+    func testDisablingRemindersWinsAnInFlightNotificationAdd() async throws {
+        let center = ReminderCenterFixture()
+        let reminders = CalendarReminders(center: center)
+        let adding = expectation(description: "notification add started")
+        var resume: CheckedContinuation<Void, Never>?
+        center.beforeAdd = {
+            await withCheckedContinuation { continuation in
+                resume = continuation
+                adding.fulfill()
+            }
+        }
+        reminders.update(events: [try calendarEventFixture()], enabled: true)
+        await fulfillment(of: [adding], timeout: 2)
+        reminders.update(events: [], enabled: false)
+        resume?.resume()
+        await reminders.task?.value
+        XCTAssertTrue(center.pending.isEmpty)
+        XCTAssertTrue(center.delivered.isEmpty)
+        XCTAssertTrue(reminders.scheduledEvents.isEmpty)
+        XCTAssertFalse(reminders.isUpdating)
+    }
+
+    @MainActor
+    func testReminderActionsRequireExplicitClickAndCurrentEventWithoutInterruptingCapture() async throws {
+        _ = NSApplication.shared
+        let suite = "ReminderAction.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        defaults.set(root, forKey: "outputFolder")
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let reader = CalendarReaderFixture()
+        reader.authorizationStatus = .fullAccess
+        let event = try calendarEventFixture()
+        reader.events = [event]
+        let center = ReminderCenterFixture()
+        let calendar = CalendarIntegration(defaults: defaults, reader: reader, reminders: CalendarReminders(center: center))
+        XCTAssertFalse(calendar.notifyAtStart)
+        calendar.setEnabled(true)
+        calendar.select(event.providerCalendarId, enabled: true)
+        await calendar.setNotifyAtStart(true)
+        await calendar.reminders.task?.value
+        XCTAssertEqual(center.authorizationRequests, 1)
+        XCTAssertTrue(CalendarIntegration(defaults: defaults, reader: reader).notifyAtStart)
+        let model = AppModel(defaults: defaults)
+        model.calendar = calendar
+        let delegate = AppDelegate()
+        delegate.model = model // No menu appearance is required for notification handling.
+        let request = CalendarReminder.request(for: event)
+        let presented = await delegate.shouldPresentCalendarReminder(request)
+        XCTAssertTrue(presented)
+        var starts = 0
+        await delegate.handleCalendarReminder(request, action: UNNotificationDefaultActionIdentifier) { _ in starts += 1 }
+        await delegate.handleCalendarReminder(request, action: UNNotificationDismissActionIdentifier) { _ in starts += 1 }
+        XCTAssertEqual(starts, 0)
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { selected in
+            starts += 1
+            XCTAssertEqual(selected.id, event.id)
+        }
+        XCTAssertEqual(starts, 1)
+        model.recordingDidStart(at: Date())
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
+        XCTAssertEqual(starts, 1)
+        XCTAssertEqual(model.state, .recording)
+        model.fail(AppError.missingRecording)
+        model.dismissFailure()
+        reader.events = [try calendarEventFixture(date: Date().addingTimeInterval(1800))]
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
+        XCTAssertEqual(starts, 1, "A moved event must not be recorded through its old alert")
+        XCTAssertNotNil(model.completionMessage)
+        await calendar.setNotifyAtStart(false)
+        await calendar.reminders.task?.value
+        XCTAssertEqual(center.authorizationRequests, 1)
+        XCTAssertTrue(center.pending.isEmpty)
+    }
+
     private let sidecar = """
     {"schemaVersion":1,"meetingId":"fixture","event":{
       "title":"Portfolio discussion","attendees":[
@@ -175,19 +347,30 @@ final class MeetingCalendarTests: XCTestCase {
             try? FileManager.default.removeItem(at: root)
         }
         let reader = CalendarReaderFixture()
-        let calendar = CalendarIntegration(defaults: defaults, reader: reader)
+        let notificationCenter = ReminderCenterFixture()
+        let calendar = CalendarIntegration(defaults: defaults, reader: reader, reminders: CalendarReminders(center: notificationCenter))
         let model = AppModel(defaults: defaults)
         model.calendar = calendar
         model.prepareSpeechModel { _ in }
         try await model.modelPreparationTask?.value
-        for state in ["off", "permission", "denied", "empty", "connected"] {
+        for state in ["off", "permission", "denied", "empty", "connected", "notify-on", "notify-denied", "notify-empty", "notify-partial", "long-title"] {
             calendar.setEnabled(state != "off")
+            calendar.select("fixture-calendar", enabled: false)
+            reader.events = []
+            notificationCenter.rejectedIDs = []
             reader.authorizationStatus = state == "denied" ? .denied : state == "permission" ? .notDetermined : .fullAccess
-            if state == "connected" {
+            if state == "connected" || state.hasPrefix("notify-") || state == "long-title" {
                 calendar.select("fixture-calendar", enabled: true)
-                reader.events = [try calendarEventFixture(), try calendarEventFixture(id: "second-occurrence")]
+                if state != "notify-empty" {
+                    let title = state == "long-title" ? "Portfolio contract and investment discussion with Alexandra and the international product team" : "Portfolio review with Alex"
+                    reader.events = [try calendarEventFixture(title: title), try calendarEventFixture(id: "second-occurrence")]
+                }
             }
+            if state == "notify-partial" { notificationCenter.rejectedIDs = [CalendarReminder.prefix + "second-occurrence"] }
             await calendar.refresh()
+            notificationCenter.allowed = state != "notify-denied"
+            await calendar.setNotifyAtStart(state.hasPrefix("notify-") || state == "long-title")
+            await calendar.reminders.task?.value
             for scheme: ColorScheme in [.light, .dark] {
                 let panels: [(String, AnyView)] = [
                     ("options", AnyView(CaptureOptionsView(calendarsPresented: true))),
@@ -240,12 +423,11 @@ private final class CalendarReaderFixture: CalendarReading {
     }
 }
 
-private func calendarEventFixture(id: String = "occurrence") throws -> CalendarEvent {
-    let date = Date().addingTimeInterval(600)
+private func calendarEventFixture(id: String = "occurrence", date: Date = Date().addingTimeInterval(600), title: String = "Portfolio review with Alex") throws -> CalendarEvent {
     let iso = ISO8601DateFormatter()
     let json = """
     {"calendarKey":"eventkit:fixture","providerCalendarId":"fixture-calendar","providerEventId":"item",
-     "externalIdentifier":"external","calendarTitle":"Work","title":"Portfolio review with Alex",
+     "externalIdentifier":"external","calendarTitle":"Work","title":"\(title)",
      "scheduledStart":"\(iso.string(from: date))","scheduledEnd":"\(iso.string(from: date.addingTimeInterval(1800)))",
      "recurrenceId":"\(iso.string(from: date))","timeZone":"Europe/Warsaw","sourceUpdatedAt":null,
      "attendees":[{"name":"Alex Example","email":"Alex@example.com","normalizedEmail":"alex@example.com","responseStatus":"accepted"}],
@@ -254,4 +436,34 @@ private func calendarEventFixture(id: String = "occurrence") throws -> CalendarE
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601
     return try decoder.decode(CalendarEvent.self, from: Data(json.utf8))
+}
+
+@MainActor
+private final class ReminderCenterFixture: CalendarReminderCenter {
+    var allowed = true
+    var authorizationRequests = 0
+    var pending: [String: UNNotificationRequest] = [:]
+    var delivered: [UNNotificationRequest] = []
+    var adds = 0
+    var beforeAdd: (() async -> Void)?
+    var rejectedIDs: Set<String> = []
+
+    func calendarAccess(request: Bool) async throws -> Bool {
+        if request { authorizationRequests += 1 }
+        return allowed
+    }
+    func pendingNotificationRequests() async -> [UNNotificationRequest] { Array(pending.values) }
+    func calendarDeliveredRequests() async -> [UNNotificationRequest] { delivered }
+    func add(_ request: UNNotificationRequest) async throws {
+        await beforeAdd?()
+        if rejectedIDs.contains(request.identifier) { throw NSError(domain: "ReminderFixture", code: 1) }
+        adds += 1
+        pending[request.identifier] = request
+    }
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        for id in identifiers { pending.removeValue(forKey: id) }
+    }
+    func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
+        delivered.removeAll { identifiers.contains($0.identifier) }
+    }
 }

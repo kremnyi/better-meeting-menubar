@@ -1,4 +1,5 @@
 import Combine
+import AppKit
 import EventKit
 import Foundation
 
@@ -58,15 +59,20 @@ final class CalendarIntegration: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var requestingAccess = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var notifyAtStart: Bool
+    let reminders: CalendarReminders
 
     private let defaults: UserDefaults
     private let reader: any CalendarReading
     private var revision = 0
+    private var monitoring: AnyCancellable?
 
-    init(defaults: UserDefaults = .standard, reader: (any CalendarReading)? = nil) {
+    init(defaults: UserDefaults = .standard, reader: (any CalendarReading)? = nil, reminders: CalendarReminders? = nil) {
         self.defaults = defaults
         let reader = reader ?? EventKitCalendarReader()
         self.reader = reader
+        self.reminders = reminders ?? CalendarReminders()
+        notifyAtStart = defaults.bool(forKey: "calendarNotifyAtStart")
         enabled = defaults.bool(forKey: "calendarIntegrationEnabled")
         selectedIDs = Set(defaults.stringArray(forKey: "selectedCalendarIDs") ?? [])
         authorization = reader.authorizationStatus
@@ -80,6 +86,7 @@ final class CalendarIntegration: ObservableObject {
         calendars = []
         errorMessage = nil
         isLoading = false
+        reminders.update(events: [], enabled: false)
     }
 
     func select(_ id: String, enabled: Bool) {
@@ -87,6 +94,30 @@ final class CalendarIntegration: ObservableObject {
         defaults.set(selectedIDs.sorted(), forKey: "selectedCalendarIDs")
         revision += 1
         events = []
+        reminders.update(events: [], enabled: false)
+    }
+
+    func setNotifyAtStart(_ value: Bool) async {
+        notifyAtStart = value
+        defaults.set(value, forKey: "calendarNotifyAtStart")
+        if value { await reminders.authorize() }
+        else { reminders.update(events: [], enabled: false) }
+        await refresh()
+    }
+
+    func startMonitoring() {
+        guard monitoring == nil else { return }
+        let changes = NotificationCenter.default.publisher(for: .EKEventStoreChanged).map { _ in () }
+        let wake = NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification).map { _ in () }
+        let active = NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification).map { _ in () }
+        let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect().map { _ in () }
+        monitoring = Publishers.Merge4(changes, wake, active, timer).sink { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.enabled && self.notifyAtStart else { return }
+                await self.refresh()
+            }
+        }
+        Task { await refresh() }
     }
 
     func requestAccess() async {
@@ -110,6 +141,7 @@ final class CalendarIntegration: ObservableObject {
             events = []
             calendars = []
             isLoading = false
+            reminders.update(events: [], enabled: false)
             return
         }
         isLoading = true
@@ -120,10 +152,12 @@ final class CalendarIntegration: ObservableObject {
         guard enabled, authorization == .fullAccess else {
             events = []
             calendars = []
+            reminders.update(events: [], enabled: false)
             return
         }
         calendars = snapshot.calendars
         events = snapshot.events
+        reminders.update(events: events, enabled: notifyAtStart, now: now)
     }
 
     func eventForRecording(id: String) async throws -> CalendarEvent {
