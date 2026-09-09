@@ -331,7 +331,7 @@ final class RecoveryTests: XCTestCase {
         await model.historySearchTask?.value
         XCTAssertEqual(model.state, .idle)
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Product sync"])
-        XCTAssertEqual(model.completionMessage, "Transcription cancelled. Recording kept; resume with Finish saved recording.")
+        XCTAssertEqual(model.completionMessage, "Transcription cancelled. Recording kept; choose it from the Transcribe all menu to resume.")
         XCTAssertEqual(model.unfinishedRecordings.first?.folderURL.resolvingSymlinksInPath(), pending.resolvingSymlinksInPath())
         if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("cancelled.png"))

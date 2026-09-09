@@ -316,6 +316,7 @@ enum MeetingArtifacts {
         for meeting in meetings {
             guard !Task.isCancelled else { return [] }
             if meeting.title.localizedStandardContains(query)
+                || MeetingCalendar.matches(in: meeting.folderURL, query: query)
                 || (try? String(contentsOf: meeting.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8)
                     .localizedStandardContains(query)) == true {
                 matches.append(meeting)

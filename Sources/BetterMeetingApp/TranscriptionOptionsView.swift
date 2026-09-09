@@ -4,13 +4,21 @@ import SwiftUI
 struct CaptureOptionsView: View {
     @EnvironmentObject private var model: AppModel
     @State var advancedPresented = false
+    @State var calendarsPresented = false
     @State var launchAtLoginStatus = SMAppService.mainApp.status
     @State var launchAtLoginError: String?
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if advancedPresented {
+            if calendarsPresented {
+                Button { calendarsPresented = false } label: {
+                    Label("Options", systemImage: "chevron.left")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                CalendarOptionsView(calendar: model.calendar)
+            } else if advancedPresented {
                 Button { advancedPresented = false } label: {
                     Label("Options", systemImage: "chevron.left")
                 }
@@ -78,7 +86,14 @@ struct CaptureOptionsView: View {
     private var basicOptions: some View {
         Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
             GridRow {
-                Text("Recording").font(.headline).gridCellColumns(2)
+                HStack {
+                    Text("Recording").font(.headline)
+                    Spacer()
+                    Button { calendarsPresented = true } label: {
+                        Label("Calendars…", systemImage: "calendar")
+                    }
+                }
+                .gridCellColumns(2)
             }
             GridRow {
                 Text("Display")

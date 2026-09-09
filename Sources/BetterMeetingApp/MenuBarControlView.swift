@@ -5,6 +5,7 @@ struct MenuBarControlView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updates: AppUpdater
     @State var captureOptionsPresented = false
+    @State private var calendarOptionsPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
 
     private var updateReady: Bool {
@@ -36,7 +37,10 @@ struct MenuBarControlView: View {
                 .help(updateReady ? "Update ready to install" : "Recording and app options")
                 .accessibilityLabel(updateReady ? "Options, update ready to install" : "Options")
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
-                    CaptureOptionsView()
+                    CaptureOptionsView(calendarsPresented: calendarOptionsPresented)
+                }
+                .onChange(of: captureOptionsPresented) { _, presented in
+                    if !presented { calendarOptionsPresented = false }
                 }
 
                 Spacer()
@@ -75,7 +79,11 @@ struct MenuBarControlView: View {
         case .recording:
             recordingContent
         case .processing:
-            processingContent
+            if model.isTranscribingBatch {
+                batchProcessingContent
+            } else {
+                processingContent
+            }
         case .failed:
             failedContent
         }
@@ -103,6 +111,13 @@ struct MenuBarControlView: View {
 
             Divider()
 
+            UpcomingMeetingView(calendar: model.calendar) {
+                calendarOptionsPresented = true
+                captureOptionsPresented = true
+            } record: { event in
+                model.startCalendarRecording(event)
+            }
+
             historySection
         }
     }
@@ -129,16 +144,47 @@ struct MenuBarControlView: View {
 
     private var historySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !model.unfinishedRecordings.isEmpty {
-                Menu("Finish saved recording (\(model.unfinishedRecordings.count))") {
-                    ForEach(model.unfinishedRecordings) { item in
-                        Button("\(item.title) · \(item.recordedAt.formatted(date: .abbreviated, time: .shortened))") {
-                            model.retryTranscription(item)
+            if !model.unfinishedRecordings.isEmpty, model.state == .idle {
+                HStack(spacing: 8) {
+                    Text("\(model.unfinishedRecordings.count) unfinished")
+                        .font(.callout)
+                    Spacer(minLength: 0)
+                    HStack(spacing: 0) {
+                        Button {
+                            model.transcribeAllRecordings()
+                        } label: {
+                            Text("Transcribe all \(model.unfinishedRecordings.count)")
+                                .padding(.horizontal, 10)
+                                .frame(height: 28)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .help("Transcribe all unfinished recordings")
+
+                        Rectangle().fill(.white.opacity(0.3)).frame(width: 1, height: 16)
+
+                        Menu {
+                            ForEach(model.unfinishedRecordings) { item in
+                                Button("\(item.title) · \(item.recordedAt.formatted(date: .abbreviated, time: .shortened))") {
+                                    model.retryTranscription(item)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .frame(width: 26, height: 28)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .accessibilityLabel("Choose a recording to transcribe")
+                        .help("Choose one unfinished recording")
                     }
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.white)
+                    .background(.blue, in: RoundedRectangle(cornerRadius: 6))
+                    .fixedSize()
                 }
-                .disabled(model.state != .idle)
-                .help("Retry transcription from a saved recording")
             }
 
             Text("Meetings")
@@ -289,6 +335,65 @@ struct MenuBarControlView: View {
             captureSummary
 
             modelSetupStatus
+        }
+    }
+
+    private var batchProcessingContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            captureSummary
+
+            TextField("Meeting name (optional)", text: .constant(""))
+                .textFieldStyle(.roundedBorder)
+                .disabled(true)
+
+            Button {} label: {
+                Label("Start recording", systemImage: "record.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(.gray)
+            .disabled(true)
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Image(systemName: "waveform")
+                    .font(.title2)
+                    .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Transcribing \(model.transcriptionBatchIndex) of \(model.transcriptionBatchTotal)")
+                        .font(.callout.weight(.medium))
+                    Text(model.meetingTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(model.meetingTitle)
+                }
+                Spacer(minLength: 0)
+                Button("Cancel", action: model.cancelTranscription)
+                    .disabled(!model.canCancelTranscription)
+                    .accessibilityLabel("Cancel transcription queue")
+                    .help("Stops the queue and keeps saved transcripts and recordings")
+            }
+
+            processingIndicator
+                .tint(.blue)
+                .accessibilityLabel(model.statusText)
+
+            HStack(alignment: .top) {
+                Text(model.statusText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                Text("\(model.transcriptionBatchWaiting) waiting")
+                    .fixedSize()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Divider()
+            historySection
         }
     }
 
@@ -456,7 +561,7 @@ private struct MeetingSearchField: NSViewRepresentable {
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
         field.placeholderString = "Search meetings"
-        field.toolTip = "Search all titles and transcripts"
+        field.toolTip = "Search titles, transcripts, and calendar attendees"
         field.setAccessibilityLabel("Search all meetings")
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.sendsSearchStringImmediately = false

@@ -44,7 +44,7 @@ enum ProcessingPhase: Equatable {
         case .preparingModel: "Checking the speech model…"
         case .downloadingModel: "Downloading the speech model…"
         case .loadingModel: "Loading the speech model…"
-        case .transcribing: "Transcribing on this Mac…"
+        case .transcribing: "Transcribing…"
         case .labelingSpeakers: "Preparing speaker labels…"
         case .writingFiles: "Writing transcript.md…"
         case .extractingScreens: "Extracting screenshots and screen text…"
@@ -76,6 +76,10 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var searchingHistory = false
     @Published private(set) var unfinishedRecordings: [MeetingHistoryItem] = []
+    @Published private(set) var transcriptionBatchTotal = 0
+    @Published private(set) var transcriptionBatchIndex = 0
+    var isTranscribingBatch: Bool { transcriptionBatchTotal > 0 }
+    var transcriptionBatchWaiting: Int { max(0, transcriptionBatchTotal - transcriptionBatchIndex) }
     @Published private(set) var modelReady = false
     @Published private(set) var modelSetupStatus = "Preparing speech model…"
     @Published private(set) var modelSetupFraction: Double?
@@ -104,6 +108,7 @@ final class AppModel: ObservableObject {
     }
 
     @Published var completionMessage: String?
+    lazy var calendar = CalendarIntegration(defaults: defaults)
     lazy var updates = AppUpdater { [weak self] in
         guard let self else { return true }
         return state == .preparing || state == .recording || state == .processing
@@ -305,7 +310,66 @@ final class AppModel: ObservableObject {
     }
 
     func retryTranscription(_ item: MeetingHistoryItem, languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil) {
-        guard state == .idle || state == .failed else { return }
+        guard !isTranscribingBatch, state == .idle || state == .failed else { return }
+        prepareSavedTranscription(item)
+        processingTask = Task {
+            await MeetingNotifications.requestPermission()
+            await finishRecording(
+                stopCapture: false, replacing: item.needsTranscription ? nil : item,
+                languages: languages, hints: hints,
+                settings: settings ?? MeetingArtifacts.speechSettings(in: item.folderURL)
+            )
+        }
+    }
+
+    func transcribeAllRecordings() {
+        transcribeAllRecordings { [self] item in
+            await MeetingNotifications.requestPermission()
+            return await finishRecording(
+                stopCapture: false, settings: MeetingArtifacts.speechSettings(in: item.folderURL),
+                inBatch: true
+            )
+        }
+    }
+
+    func transcribeAllRecordings(_ process: @escaping (MeetingHistoryItem) async -> Bool) {
+        guard state == .idle, !isTranscribingBatch, !unfinishedRecordings.isEmpty else { return }
+        let recordings = unfinishedRecordings
+        transcriptionBatchTotal = recordings.count
+        transcriptionBatchIndex = 1
+        prepareSavedTranscription(recordings[0])
+        processingTask = Task {
+            var completed = 0
+            for (index, item) in recordings.enumerated() {
+                guard !Task.isCancelled else { break }
+                transcriptionBatchIndex = index + 1
+                if index > 0 { prepareSavedTranscription(item) }
+                guard await process(item) else { break }
+                completed += 1
+            }
+            let cancelled = Task.isCancelled
+            if state != .failed {
+                state = .idle
+                completionMessage = cancelled
+                    ? "Transcription cancelled. \(completed) of \(recordings.count) finished; remaining recordings are kept."
+                    : "Transcribed \(completed) of \(recordings.count) recordings."
+                processingPhase = nil
+                processingFraction = nil
+                activeFolder = nil
+                recordedAt = nil
+                meetingTitle = ""
+                elapsed = 0
+            }
+            transcriptionBatchTotal = 0
+            transcriptionBatchIndex = 0
+            processingTask = nil
+            cancellingTranscription = false
+            refreshHistory()
+            completeTermination(!cancelled && completed == recordings.count)
+        }
+    }
+
+    private func prepareSavedTranscription(_ item: MeetingHistoryItem) {
         completionMessage = nil
         activeFolder = item.folderURL
         completedFolder = nil
@@ -316,15 +380,7 @@ final class AppModel: ObservableObject {
         errorMessage = nil
         privacyPermission = nil
         state = .processing
-        setProcessingPhase(.preparingAudio)
-        processingTask = Task {
-            await MeetingNotifications.requestPermission()
-            await finishRecording(
-                stopCapture: false, replacing: item.needsTranscription ? nil : item,
-                languages: languages, hints: hints,
-                settings: settings ?? MeetingArtifacts.speechSettings(in: item.folderURL)
-            )
-        }
+        setProcessingPhase(.preparingAudio, fraction: 0)
     }
 
     var canCancelTranscription: Bool {
@@ -417,10 +473,12 @@ final class AppModel: ObservableObject {
             return .terminateCancel
         }
         alert.messageText = state == .recording ? "Finish this recording and quit?" : "Quit when transcription finishes?"
+        if isTranscribingBatch { alert.messageText = "Quit when all queued transcriptions finish?" }
         if isExportingBundle { alert.messageText = "Quit when export finishes?" }
         alert.informativeText = isExportingBundle
             ? "Better Meeting will stay open until the export bundle is saved."
             : "Better Meeting will stay open until the recording and transcript are saved."
+        if isTranscribingBatch { alert.informativeText = "Better Meeting will stay open until the queue finishes. An error or cancellation will keep the app open." }
         alert.addButton(withTitle: state == .recording ? "Finish and quit" : "Wait and quit")
         alert.addButton(withTitle: "Keep open")
         guard confirm(alert) == .alertFirstButtonReturn else { return .terminateCancel }
@@ -496,7 +554,7 @@ final class AppModel: ObservableObject {
             transcriptionHistory = completedMeetings
             return
         }
-        let meetings = completedMeetings
+        let meetings = (completedMeetings + unfinishedRecordings).sorted { $0.recordedAt > $1.recordedAt }
         searchingHistory = true
         historySearchTask = Task.detached(priority: .userInitiated) { [weak self] in
             let matches = MeetingArtifacts.search(meetings, query: query)
@@ -565,7 +623,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func startRecording() {
+    func startCalendarRecording(_ event: CalendarEvent) {
+        guard state == .idle else { return }
+        startRecording(calendarEvent: event)
+    }
+
+    private func startRecording(calendarEvent: CalendarEvent? = nil) {
         stopTimer()
         elapsed = 0
         state = .preparing
@@ -579,13 +642,22 @@ final class AppModel: ObservableObject {
         recordedAt = nil
 
         completionMessage = nil
-        let title = meetingTitle
-        titleWasProvided = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let manualTitle = meetingTitle
         Task {
             do {
                 try await recorder.requestPermissions()
                 await MeetingNotifications.requestPermission()
 
+                // Resolve only the exact event the user clicked, never a title/time match.
+                let event: CalendarEvent?
+                if let calendarEvent {
+                    event = try await calendar.eventForRecording(id: calendarEvent.id)
+                } else {
+                    event = nil
+                }
+                let title = event?.title ?? manualTitle
+                meetingTitle = title
+                titleWasProvided = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 let startedAt = Date()
                 let folder = try MeetingArtifacts.createDirectory(
                     in: outputRoot,
@@ -593,6 +665,7 @@ final class AppModel: ObservableObject {
                     recordedAt: startedAt
                 )
                 let recordingURL = folder.appendingPathComponent("recording.mp4")
+                try event?.attach(to: folder, recordedAt: startedAt)
 
                 activeFolder = folder
                 recordedAt = startedAt
@@ -630,13 +703,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @discardableResult
     private func finishRecording(
         stopCapture: Bool, replacing: MeetingHistoryItem? = nil,
-        languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil
-    ) async {
+        languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil,
+        inBatch: Bool = false
+    ) async -> Bool {
         defer {
-            processingTask = nil
-            cancellingTranscription = false
+            if !inBatch {
+                processingTask = nil
+                cancellingTranscription = false
+            }
         }
         let languages = languages ?? transcriptionLanguages
         let hints = hints ?? transcriptionHints
@@ -762,7 +839,7 @@ final class AppModel: ObservableObject {
                 folder: folder, failed: false
             )
             elapsed = 0
-            state = .idle
+            if !inBatch { state = .idle }
             statusText = "Ready to record your display and audio."
             errorMessage = nil
             privacyPermission = nil
@@ -771,7 +848,8 @@ final class AppModel: ObservableObject {
             activeFolder = nil
             self.recordedAt = nil
             meetingTitle = ""
-            completeTermination(!Task.isCancelled)
+            if !inBatch { completeTermination(!Task.isCancelled) }
+            return true
         } catch {
             if let activeFolder {
                 completedFolder = activeFolder
@@ -779,7 +857,7 @@ final class AppModel: ObservableObject {
             if Task.isCancelled {
                 state = .idle
                 completionMessage = replacing == nil
-                    ? "Transcription cancelled. Recording kept; resume with Finish saved recording."
+                    ? "Transcription cancelled. Recording kept; choose it from the Transcribe all menu to resume."
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
                 processingPhase = nil
                 processingFraction = nil
@@ -789,12 +867,13 @@ final class AppModel: ObservableObject {
                 elapsed = 0
                 refreshHistory()
                 completeTermination(false)
-                return
+                return false
             }
             fail(error)
             if let activeFolder {
                 await MeetingNotifications.post(title: meetingTitle, folder: activeFolder, failed: true)
             }
+            return false
         }
     }
 

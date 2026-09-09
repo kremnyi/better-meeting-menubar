@@ -19,9 +19,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.29</string>
+    <string>0.3.30</string>
     <key>CFBundleVersion</key>
-    <string>32</string>
+    <string>33</string>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
     <key>LSApplicationCategoryType</key>
@@ -44,6 +44,8 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Better Meeting records your microphone so your side of the meeting is included.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Better Meeting reads calendars you select to show upcoming meetings and save event titles and invitee emails when you start recording from an event. It never edits calendar events.</string>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Better Meeting records the selected display and meeting audio to create a local recording and transcript.</string>
 </dict>
