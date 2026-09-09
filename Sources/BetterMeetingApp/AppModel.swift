@@ -459,7 +459,7 @@ final class AppModel: ObservableObject {
     }
 
     func terminationReply(
-        confirm: (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }
+        confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }
     ) -> NSApplication.TerminateReply {
         guard state == .recording || state == .processing || state == .preparing else {
             return .terminateNow
@@ -503,7 +503,7 @@ final class AppModel: ObservableObject {
         refreshHistory()
     }
 
-    func completeTermination(_ success: Bool, terminate: () -> Void = { NSApp.terminate(nil) }) {
+    func completeTermination(_ success: Bool, terminate: @MainActor () -> Void = { NSApp.terminate(nil) }) {
         if quitWhenFinished {
             quitWhenFinished = false
             if success { terminate() }
