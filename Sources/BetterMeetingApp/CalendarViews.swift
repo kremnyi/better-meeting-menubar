@@ -217,10 +217,10 @@ struct UpcomingMeetingView: View {
                         }
                     } else {
                         Text(calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) })
-                            ? "No meetings in the next 24 hours."
-                            : "Choose calendars in Options to see meetings.")
-                           .font(.caption).foregroundStyle(.secondary)
-                           .fixedSize(horizontal: false, vertical: true)
+                             ? "No meetings in the next 24 hours."
+                             : "Choose calendars in Options to see meetings.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(minHeight: 46, alignment: .topLeading)
                     }
                 }

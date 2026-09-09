@@ -13,6 +13,8 @@ struct UpdateOptionsView: View {
             HStack(spacing: 8) {
                 Button(updates.actionTitle) { updates.performAction() }
                     .disabled(!updates.canPerformAction || version == nil)
+                    .opacity(updates.status == .installing ? 0 : 1)
+                    .accessibilityHidden(updates.status == .installing)
                 if updateInProgress {
                     ProgressView().controlSize(.small).accessibilityHidden(true)
                     Text(updates.status.message)
