@@ -8,22 +8,20 @@ struct CalendarOptionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Calendars").font(.headline)
+            Text("Display").font(.callout.weight(.medium))
             Toggle("Show upcoming meetings", isOn: Binding(
                 get: { calendar.enabled },
                 set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
             ))
             .toggleStyle(.checkbox)
+            Toggle("Show next meeting in the menu bar", isOn: Binding(
+                get: { calendar.menuBarPreview },
+                set: { calendar.setMenuBarPreview($0) }
+            ))
+            .toggleStyle(.checkbox)
 
-            if calendar.enabled {
-                Toggle("Show next meeting in the menu bar", isOn: Binding(
-                    get: { calendar.menuBarPreview },
-                    set: { calendar.setMenuBarPreview($0) }
-                ))
-                .toggleStyle(.checkbox)
-                .padding(.top, 2)
+            Group {
                 if calendar.authorization == .fullAccess {
-                    Text("Choose calendars").font(.callout.weight(.medium))
-                        .padding(.top, 4)
                     if calendar.isLoading && calendar.calendars.isEmpty && !calendar.hasLoaded {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(0..<3, id: \.self) { _ in
@@ -54,6 +52,8 @@ struct CalendarOptionsView: View {
                                     )) {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(choice.title)
+                                                .lineLimit(1)
+                                                .help(choice.title)
                                             Text(choice.account).font(.caption).foregroundStyle(.secondary)
                                         }
                                         .fixedSize(horizontal: false, vertical: true)
@@ -90,6 +90,8 @@ struct CalendarOptionsView: View {
                     Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .disabled(!calendar.enabled)
+            .opacity(calendar.enabled ? 1 : 0.5)
         }
         .task { await calendar.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
