@@ -18,7 +18,7 @@ struct CalendarOptionsView: View {
                 if calendar.authorization == .fullAccess {
                     Text("Choose calendars").font(.callout.weight(.medium))
                         .padding(.top, 4)
-                    if calendar.isLoading && calendar.calendars.isEmpty {
+                    if calendar.isLoading && calendar.calendars.isEmpty && !calendar.hasLoaded {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(0..<3, id: \.self) { _ in
                                 Toggle(isOn: .constant(false)) {
@@ -127,12 +127,8 @@ private struct CalendarReminderOptionsView: View {
                         }
                         .padding(.top, 4)
                     } else if reminders.message == nil {
-                        if reminders.isUpdating {
-                            ProgressView("Scheduling reminders…").controlSize(.small)
-                        } else {
-                            Text("No upcoming reminders scheduled.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+                        Text("No upcoming reminders scheduled.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -173,7 +169,7 @@ struct UpcomingMeetingView: View {
                     }
                     if calendar.authorization != .fullAccess {
                         Button("Calendar access needed…", action: configure)
-                    } else if calendar.isLoading && calendar.events.isEmpty {
+                    } else if calendar.isLoading && calendar.events.isEmpty && !calendar.hasLoaded {
                         HStack(alignment: .top, spacing: 8) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Event title").lineLimit(2)
@@ -221,7 +217,6 @@ struct UpcomingMeetingView: View {
                              : "Choose calendars in Options to see meetings.")
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                            .frame(minHeight: 46, alignment: .topLeading)
                     }
                 }
                 Divider()

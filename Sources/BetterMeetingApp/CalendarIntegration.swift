@@ -57,6 +57,7 @@ final class CalendarIntegration: ObservableObject {
     @Published private(set) var selectedIDs: Set<String>
     @Published private(set) var events: [CalendarEvent] = []
     @Published private(set) var isLoading = false
+    @Published private(set) var hasLoaded = false
     @Published private(set) var requestingAccess = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var notifyAtStart: Bool
@@ -157,6 +158,7 @@ final class CalendarIntegration: ObservableObject {
         }
         calendars = snapshot.calendars
         events = snapshot.events
+        hasLoaded = true
         reminders.update(events: events, enabled: notifyAtStart, now: now)
     }
 

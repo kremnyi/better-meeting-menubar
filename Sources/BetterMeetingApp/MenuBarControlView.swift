@@ -101,10 +101,12 @@ struct MenuBarControlView: View {
 
             modelSetupStatus
 
-            Text(model.completionMessage ?? "")
-                .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
+            if let message = model.completionMessage {
+                Text(message)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             Divider()
 
