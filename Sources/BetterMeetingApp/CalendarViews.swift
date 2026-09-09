@@ -174,7 +174,24 @@ struct UpcomingMeetingView: View {
                     if calendar.authorization != .fullAccess {
                         Button("Calendar access needed…", action: configure)
                     } else if calendar.isLoading && calendar.events.isEmpty {
-                        ProgressView().controlSize(.small).accessibilityLabel("Loading upcoming meetings")
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Event title").lineLimit(2)
+                                Text("In 5 minutes · 10:00 – 11:00")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text("Calendar").font(.caption).foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "record.circle")
+                                .font(.system(size: 16))
+                                .frame(width: 24, height: 24)
+                        }
+                        .redacted(reason: .placeholder)
+                        .disabled(true)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Loading upcoming meetings")
                     } else if let event = calendar.events.first {
                         HStack(alignment: .top, spacing: 8) {
                             VStack(alignment: .leading, spacing: 3) {
@@ -200,10 +217,11 @@ struct UpcomingMeetingView: View {
                         }
                     } else {
                         Text(calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) })
-                             ? "No meetings in the next 24 hours."
-                             : "Choose calendars in Options to see meetings.")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            ? "No meetings in the next 24 hours."
+                            : "Choose calendars in Options to see meetings.")
+                           .font(.caption).foregroundStyle(.secondary)
+                           .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: 46, alignment: .topLeading)
                     }
                 }
                 Divider()

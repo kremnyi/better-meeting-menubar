@@ -544,7 +544,7 @@ final class AppModel: ObservableObject {
     }
 
     var historyListHeight: CGFloat {
-        CGFloat(max(2, min(completedMeetings.count, 6))) * 48
+        6 * 48
     }
 
     private func searchHistory() {
