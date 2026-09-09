@@ -208,8 +208,8 @@ struct MenuBarControlView: View {
                                 }
                             }
                         }
-                        .padding(.trailing, 16)
                     }
+                    .scrollIndicators(.hidden)
                 }
             }
             .font(.callout)
