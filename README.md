@@ -2,13 +2,14 @@
 
 Record a display, system audio, and microphone from the macOS menu bar. After
 recording stops, Whisper transcribes the audio locally. Each meeting gets a
-folder with the video, audio, and transcript, accessible from a Finder button.
+folder with the video, audio, and transcript; clicking the finished meeting in
+the menu opens its files in Finder.
 
 Requires Apple Silicon and macOS 15+. Downloads approximately 1.6 GB of speech
 model files during initial setup. Transcription runs locally and works offline
 afterward.
 
-<img src="docs/menu-bar.png" alt="Better Meeting menu with Options at the bottom left and Finder buttons for recent meetings" width="304">
+<img src="docs/menu-bar.png" alt="Better Meeting menu with a search field, meeting rows with action buttons, and an Open meetings folder button" width="304">
 
 The app's menu, shown with fictional meetings.
 
@@ -67,8 +68,8 @@ updates. Uninstalling the app keeps saved meetings.
 4. Start recording and grant **Screen & System Audio Recording** and
    **Microphone** access. If access is blocked, click **Open System Settings** to enable it,
    then use **Restart Better Meeting** for screen access or **Try again** for microphone access.
-5. Stop recording and wait for transcription. Click the folder button beside the
-   finished meeting to open its files in Finder.
+5. Stop recording and wait for transcription. Click the finished meeting to
+   open its files in Finder.
 
 The app downloads and prepares the selected speech model in the background when
 needed. The menu shows progress; you can record during setup, but transcription
@@ -99,6 +100,20 @@ You can change notification access in macOS **System Settings → Notifications
 To open the app automatically when you sign in, enable **Options → Launch at login**.
 If macOS requires approval, use **Open Login Items…** below the checkbox and allow
 Better Meeting to open at login.
+
+## Calendar integration
+
+The menu can show your next meeting from the macOS Calendar app. Enable
+**Options → Calendars** and choose which calendars to read. The menu shows the
+next event within 24 hours with a **Record this meeting** button that starts a
+recording named after the event. With **Notify at start** enabled, the app also
+sends a notification when the event starts.
+
+The integration is off by default, reads events only, and never edits them.
+macOS requires full calendar access for reading; the app offers to request it
+when you first enable the feature. Event details stay on your Mac. Links
+between recordings and calendar events are stored in the meeting folder; see
+[docs/calendar-data.md](docs/calendar-data.md) for the data model.
 
 ## Recording settings
 
@@ -169,13 +184,15 @@ shows the error. Cancellation keeps completed passes for a later retry.
 
 ## Saved meetings
 
-The menu shows the 10 most recent completed meetings. Search finds matching titles
+The menu lists all completed meetings, most recent first; scroll to see older
+ones. Search finds matching titles
 and saved transcript text across all completed meetings in the selected folder,
 including older meetings and manual Markdown edits. Search runs locally.
 
-Right-click a completed meeting to **Copy Transcript** or **Rename…**. Copy uses
-the saved Markdown, including any edits. Rename updates the folder, title, and
-metadata while keeping the transcript body and media files.
+Use the **•••** button on a meeting row, or right-click the row, to open
+**Copy Transcript**, **Rename…**, **Re-transcribe…**, and **Export bundle…**.
+Copy uses the saved Markdown, including any edits. Rename updates the folder,
+title, and metadata while keeping the transcript body and media files.
 
 ### Re-transcribe a meeting
 
@@ -183,6 +200,15 @@ metadata while keeping the transcript body and media files.
 It reuses matching passes and keeps the current transcript available until the
 replacement is ready. A successful run replaces the transcript, including manual
 edits, while preserving the meeting name. Cancellation or failure keeps the old files.
+
+### Transcribe all unfinished recordings
+
+When recordings failed, were cancelled, or are waiting for transcription, the
+menu shows **Transcribe all** with their count. Choosing it transcribes them in
+order; progress shows **Transcribing 2 of 3** plus the current meeting and the
+number still waiting. Cancel stops the queue and reports how many finished;
+every recording keeps its completed language passes. If you quit while the
+queue runs, the app asks whether to wait until it finishes.
 
 ### Retry or cancel transcription
 
@@ -234,7 +260,8 @@ remains. Typed titles and titles from older folders are preserved.
 
 ## Screenshots and export bundles
 
-Right-click a finished meeting and choose **Export bundle…**. The app reads the
+Choose **Export bundle…** from a finished meeting's **•••** menu or right-click.
+The app reads the
 saved video, extracts screenshots and screen text, and opens `artifacts/` in Finder.
 Enable **Options → Files → Include screenshots and screen text** to run this
 after each transcript is saved. Automatic export is off by default.
