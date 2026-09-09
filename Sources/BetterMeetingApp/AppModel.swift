@@ -282,7 +282,6 @@ final class AppModel: ObservableObject {
             } catch {
                 modelReady = false
                 if error is CancellationError {
-                    modelSetupError = nil
                     modelSetupStatus = "Speech model download cancelled"
                 } else {
                     modelSetupError = error.localizedDescription
@@ -357,13 +356,10 @@ final class AppModel: ObservableObject {
                 state = .idle
                 completionMessage = cancelled
                     ? "Transcription cancelled. \(completed) of \(recordings.count) finished; remaining recordings are kept."
-                    : "Transcribed \(completed) of \(recordings.count) recordings."
+                : "Transcribed \(completed) of \(recordings.count) recordings."
                 processingPhase = nil
                 processingFraction = nil
-                activeFolder = nil
-                recordedAt = nil
-                meetingTitle = ""
-                elapsed = 0
+                resetRun()
             }
             transcriptionBatchTotal = 0
             transcriptionBatchIndex = 0
@@ -849,9 +845,7 @@ final class AppModel: ObservableObject {
             privacyPermission = nil
             processingFraction = nil
             processingPhase = nil
-            activeFolder = nil
-            self.recordedAt = nil
-            meetingTitle = ""
+            resetRun()
             if !inBatch { completeTermination(!Task.isCancelled) }
             return true
         } catch {
@@ -862,13 +856,10 @@ final class AppModel: ObservableObject {
                 state = .idle
                 completionMessage = replacing == nil
                     ? "Transcription cancelled. Recording kept; choose it from the Transcribe all menu to resume."
-                    : "Re-transcription cancelled. Your existing transcript is unchanged."
+                : "Re-transcription cancelled. Your existing transcript is unchanged."
                 processingPhase = nil
                 processingFraction = nil
-                activeFolder = nil
-                recordedAt = nil
-                meetingTitle = ""
-                elapsed = 0
+                resetRun()
                 refreshHistory()
                 completeTermination(false)
                 return false
@@ -930,6 +921,13 @@ final class AppModel: ObservableObject {
         recordingID = nil
         microphoneLevel = 0
         systemAudioLevel = 0
+    }
+
+    private func resetRun() {
+        activeFolder = nil
+        recordedAt = nil
+        meetingTitle = ""
+        elapsed = 0
     }
 
     private func updateTranscriptionProgress(_ progress: LocalTranscriptionProgress) {
