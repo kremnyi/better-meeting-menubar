@@ -15,6 +15,12 @@ struct CalendarOptionsView: View {
             .toggleStyle(.checkbox)
 
             if calendar.enabled {
+                Toggle("Show next meeting in the menu bar", isOn: Binding(
+                    get: { calendar.menuBarPreview },
+                    set: { calendar.setMenuBarPreview($0) }
+                ))
+                .toggleStyle(.checkbox)
+                .padding(.top, 2)
                 if calendar.authorization == .fullAccess {
                     Text("Choose calendars").font(.callout.weight(.medium))
                         .padding(.top, 4)

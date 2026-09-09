@@ -83,6 +83,42 @@ struct MenuBarStatusIcon: View {
     }
 }
 
+struct MenuBarStatusLabel: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var calendar: CalendarIntegration
+    let state: AppState
+    var processingFrame = 0
+
+    var body: some View {
+        if let event = previewEvent {
+            HStack(spacing: 5) {
+                Image(nsImage: BrandAssets.menuBarIcon)
+                    .frame(width: 18, height: 18)
+                Text(event.title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 110, alignment: .leading)
+                Text("· \(event.relativeStart(at: Date()))")
+            }
+            .font(.system(size: 13))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Better Meeting, next meeting \(event.title)")
+        } else {
+            MenuBarStatusIcon(state: state, processingFrame: processingFrame)
+        }
+    }
+
+    private var previewEvent: CalendarEvent? {
+        guard state == .idle,
+              calendar.menuBarPreview,
+              calendar.enabled,
+              calendar.authorization == .fullAccess,
+              let event = calendar.events.first
+        else { return nil }
+        return event
+    }
+}
+
 extension Color {
     static let signalCoral = Color(red: 0.96, green: 0.25, blue: 0.22)
 }

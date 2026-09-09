@@ -23,7 +23,7 @@ struct BetterMeetingApp: App {
                 .environmentObject(model)
                 .environmentObject(model.updates)
         } label: {
-            MenuBarStatusIcon(state: model.state, processingFrame: processingFrame)
+            MenuBarStatusLabel(model: model, calendar: model.calendar, state: model.state, processingFrame: processingFrame)
         }
         .menuBarExtraStyle(.window)
         .onChange(of: model.automaticUpdateChecks, initial: true) { _, enabled in

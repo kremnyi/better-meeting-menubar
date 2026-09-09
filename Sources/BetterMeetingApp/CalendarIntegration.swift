@@ -66,6 +66,7 @@ final class CalendarIntegration: ObservableObject {
     @Published private(set) var requestingAccess = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var notifyAtStart: Bool
+    @Published private(set) var menuBarPreview: Bool
     let reminders: CalendarReminders
 
     private let defaults: UserDefaults
@@ -79,6 +80,7 @@ final class CalendarIntegration: ObservableObject {
         self.reader = reader
         self.reminders = reminders ?? CalendarReminders()
         notifyAtStart = defaults.bool(forKey: "calendarNotifyAtStart")
+        menuBarPreview = defaults.object(forKey: "calendarMenuBarPreview") as? Bool ?? true
         enabled = defaults.bool(forKey: "calendarIntegrationEnabled")
         selectedIDs = Set(defaults.stringArray(forKey: "selectedCalendarIDs") ?? [])
         authorization = reader.authorizationStatus
@@ -111,6 +113,11 @@ final class CalendarIntegration: ObservableObject {
         await refresh()
     }
 
+    func setMenuBarPreview(_ value: Bool) {
+        menuBarPreview = value
+        defaults.set(value, forKey: "calendarMenuBarPreview")
+    }
+
     func startMonitoring() {
         guard monitoring == nil else { return }
         let changes = NotificationCenter.default.publisher(for: .EKEventStoreChanged).map { _ in () }
@@ -119,7 +126,7 @@ final class CalendarIntegration: ObservableObject {
         let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect().map { _ in () }
         monitoring = Publishers.Merge4(changes, wake, active, timer).sink { [weak self] in
             Task { @MainActor [weak self] in
-                guard let self, self.enabled && self.notifyAtStart else { return }
+            guard let self, self.enabled && (self.notifyAtStart || self.menuBarPreview) else { return }
                 await self.refresh()
             }
         }
