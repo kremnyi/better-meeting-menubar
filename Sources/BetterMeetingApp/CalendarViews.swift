@@ -158,7 +158,7 @@ struct UpcomingMeetingView: View {
             if calendar.enabled {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Upcoming meeting").font(.callout.weight(.medium))
+                        Text("Upcoming meetings").font(.callout.weight(.medium))
                         Spacer()
                         Button(action: configure) {
                             Image(systemName: "calendar").frame(width: 24, height: 20)

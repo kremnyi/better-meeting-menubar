@@ -186,7 +186,7 @@ struct MenuBarControlView: View {
                 }
             }
 
-            Text("Meetings")
+            Text("Recorded meetings")
                 .font(.callout.weight(.medium))
 
             MeetingSearchField(text: $model.historyQuery)
