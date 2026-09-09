@@ -101,12 +101,10 @@ struct MenuBarControlView: View {
             modelSetupStatus
 
             if let message = model.completionMessage {
-                HStack(alignment: .top) {
-                    Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
-                    Button { model.completionMessage = nil } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Dismiss status")
-                }
+                Text(message)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Divider()

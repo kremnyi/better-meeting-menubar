@@ -641,7 +641,6 @@ final class AppModel: ObservableObject {
         activeFolder = nil
         recordedAt = nil
 
-        completionMessage = nil
         let manualTitle = meetingTitle
         Task {
             do {
@@ -879,6 +878,7 @@ final class AppModel: ObservableObject {
 
     func recordingDidStart(at startDate: Date) {
         stopTimer()
+        completionMessage = nil
         let recordingID = UUID()
         self.recordingID = recordingID
         elapsed = 0

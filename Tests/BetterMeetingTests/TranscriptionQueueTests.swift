@@ -55,6 +55,16 @@ final class TranscriptionQueueTests: XCTestCase {
             XCTAssertFalse(model.isTranscribingBatch)
             XCTAssertEqual(model.state, .idle)
             XCTAssertNil(model.processingTask)
+            model.refreshHistory()
+            await model.historyRefreshTask?.value
+            model.meetingTitle = "Next meeting"
+            XCTAssertEqual(model.completionMessage, "Transcribed 3 of 3 recordings.")
+            for scheme: ColorScheme in [.light, .dark] {
+                try render(model, name: "completion-\(scheme)", scheme: scheme)
+            }
+            model.recordingDidStart(at: Date())
+            XCTAssertNil(model.completionMessage)
+            model.fail(AppError.missingRecording) // Stop the synthetic recording timer; no capture was started.
         }
     }
 
@@ -105,6 +115,7 @@ final class TranscriptionQueueTests: XCTestCase {
     func testEmptyQueueAndNativeQueueLayouts() async throws {
         _ = NSApplication.shared
         try await withMeetings(count: 0) { model in
+            XCTAssertNil(model.completionMessage, "A new app model starts without a previous session's status")
             model.transcribeAllRecordings { _ in XCTFail("No unfinished meetings"); return false }
             XCTAssertNil(model.processingTask)
             XCTAssertFalse(model.isTranscribingBatch)
