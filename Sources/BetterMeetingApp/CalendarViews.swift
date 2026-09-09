@@ -19,7 +19,22 @@ struct CalendarOptionsView: View {
                     Text("Choose calendars").font(.callout.weight(.medium))
                         .padding(.top, 4)
                     if calendar.isLoading && calendar.calendars.isEmpty {
-                        ProgressView().controlSize(.small).accessibilityLabel("Loading calendars")
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(0..<3, id: \.self) { _ in
+                                Toggle(isOn: .constant(false)) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Calendar")
+                                        Text("Account").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .toggleStyle(.checkbox)
+                            }
+                        }
+                        .redacted(reason: .placeholder)
+                        .disabled(true)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Loading calendars")
                     } else if calendar.calendars.isEmpty {
                         Text("No calendars available. Check that your account is enabled in macOS Calendar.")
                             .fixedSize(horizontal: false, vertical: true)

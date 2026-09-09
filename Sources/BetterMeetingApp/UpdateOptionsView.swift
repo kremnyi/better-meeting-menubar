@@ -11,13 +11,13 @@ struct UpdateOptionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
+                Button(updates.actionTitle) { updates.performAction() }
+                    .disabled(!updates.canPerformAction || version == nil)
                 if updateInProgress {
                     ProgressView().controlSize(.small).accessibilityHidden(true)
-                    Text(updates.status.message).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
+                    Text(updates.status.message)
+                        .foregroundStyle(.secondary)
                 } else {
-                    Button(updates.actionTitle) { updates.performAction() }
-                        .disabled(!updates.canPerformAction || version == nil)
                     Spacer(minLength: 8)
                     Text(updates.status.message)
                         .font(.caption).foregroundStyle(.secondary)
