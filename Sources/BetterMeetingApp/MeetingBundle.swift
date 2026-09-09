@@ -22,12 +22,16 @@ enum MeetingBundle {
             throw MeetingActionError.invalidMeeting
         }
         let markdown = try String(contentsOf: folder.appendingPathComponent("transcript.md"), encoding: .utf8)
+        let recording = folder.appendingPathComponent("recording.mp4")
+        guard fm.fileExists(atPath: recording.path) else {
+            throw ScreenExtractionError.missingRecording
+        }
         let staging = folder.appendingPathComponent(".artifacts-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? fm.removeItem(at: staging) }
         let languages = Array(Set(segments.compactMap(\.language))).sorted()
         let screens = try await ScreenExtractor.extract(
-            video: folder.appendingPathComponent("recording.mp4"), to: staging,
+            video: recording, to: staging,
             languages: languages.isEmpty ? TranscriptionLanguage.defaultCandidates : languages,
             progress: progress
         )

@@ -154,9 +154,10 @@ enum ScreenExtractor {
 }
 
 enum ScreenExtractionError: LocalizedError {
-    case invalidVideo, imageEncoding
+    case missingRecording, invalidVideo, imageEncoding
     var errorDescription: String? {
         switch self {
+        case .missingRecording: "This meeting has no screen recording to export."
         case .invalidVideo: "The recording has no readable video."
         case .imageEncoding: "A screenshot could not be saved. Check the meeting folder and free disk space."
         }

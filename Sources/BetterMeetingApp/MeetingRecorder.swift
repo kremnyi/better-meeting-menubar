@@ -14,6 +14,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private var recordingOutput: SCRecordingOutput?
     private var startContinuation: CheckedContinuation<Void, Error>?
     private var stopContinuation: CheckedContinuation<Void, Error>?
+    private var startCaptureTask: Task<Void, Never>?
     private var levels: [SCStreamOutputType: (value: Double, time: Date)] = [:]
 
     func audioLevel(microphone: Bool) -> Double {
@@ -102,7 +103,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
 
         try await withCheckedThrowingContinuation { continuation in
             startContinuation = continuation
-            Task {
+            startCaptureTask = Task {
                 do {
                     try await stream.startCapture()
                 } catch {
@@ -272,7 +273,14 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         stream = nil
         recordingOutput = nil
         levels.removeAll()
-        Task { try? await previousStream?.stopCapture() }
+        // ponytail: settle the start task first so stopCapture never overlaps a
+        // still-in-flight startCapture when an early delegate failure triggers cleanUp.
+        let startTask = startCaptureTask
+        startCaptureTask = nil
+        Task {
+            _ = await startTask?.value
+            try? await previousStream?.stopCapture()
+        }
     }
 }
 

@@ -216,6 +216,10 @@ the affected cache. Finished transcripts are not regenerated automatically.
 `transcript.md` has timestamps and a link to the video. `transcript.json` stores
 segment times, text, language tags, and optional speaker IDs. `metadata.json` stores the title,
 recording date, duration, file names, and transcription status.
+`pass_<language>.json` files are per-language transcription caches reused when the same
+recording is transcribed again; they are safe to delete. `previous-*` files are backup
+copies kept when a meeting is renamed or re-transcribed, so the earlier transcript can
+be restored if something goes wrong.
 
 For unnamed meetings, Apple's `NaturalLanguage` framework looks for a person,
 company, or product and a repeated topic. A discussion with Anna about a pricing

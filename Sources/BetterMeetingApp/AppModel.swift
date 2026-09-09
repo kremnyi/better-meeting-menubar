@@ -281,8 +281,13 @@ final class AppModel: ObservableObject {
                 modelSetupStatus = "Speech model ready"
             } catch {
                 modelReady = false
-                modelSetupError = error.localizedDescription
-                modelSetupStatus = "Speech model unavailable"
+                if error is CancellationError {
+                    modelSetupError = nil
+                    modelSetupStatus = "Speech model download cancelled"
+                } else {
+                    modelSetupError = error.localizedDescription
+                    modelSetupStatus = "Speech model unavailable"
+                }
                 throw error
             }
         }
