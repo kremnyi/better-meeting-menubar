@@ -24,6 +24,7 @@ protocol CalendarReading {
 @MainActor
 final class EventKitCalendarReader: CalendarReading {
     private lazy var store = EKEventStore()
+    private var lastRefreshSources = Date.distantPast
     var authorizationStatus: EKAuthorizationStatus { EKEventStore.authorizationStatus(for: .event) }
 
     func requestAccess() async throws -> Bool { try await store.requestFullAccessToEvents() }
@@ -31,6 +32,10 @@ final class EventKitCalendarReader: CalendarReading {
     func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot {
         guard authorizationStatus == .fullAccess else { return CalendarSnapshot(calendars: [], events: []) }
         let store = store
+        if now.timeIntervalSince(lastRefreshSources) >= 60 {
+            lastRefreshSources = now
+            store.refreshSourcesIfNecessary()
+        }
         return await Task.detached(priority: .userInitiated) {
             let calendars = store.calendars(for: .event)
             let choices = calendars.map {
