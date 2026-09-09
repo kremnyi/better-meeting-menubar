@@ -101,12 +101,7 @@ struct MenuBarControlView: View {
 
             modelSetupStatus
 
-            if let message = model.completionMessage {
-                Text(message)
-                    .font(.callout)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            completionStatus
 
             Divider()
 
@@ -118,6 +113,25 @@ struct MenuBarControlView: View {
             }
 
             historySection
+        }
+    }
+
+    @ViewBuilder
+    private var completionStatus: some View {
+        if let message = model.completionMessage {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(message)
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let folder = model.completionFolder {
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([folder])
+                    }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -574,6 +588,7 @@ private struct MeetingSearchField: NSViewRepresentable {
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
         field.placeholderString = "Search meetings"
+        field.delegate = context.coordinator
         field.toolTip = "Search titles, transcripts, and calendar attendees"
         field.setAccessibilityLabel("Search all meetings")
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -591,10 +606,17 @@ private struct MeetingSearchField: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
 
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
         var text: Binding<String>
 
         init(text: Binding<String>) { self.text = text }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard commandSelector == #selector(NSResponder.cancelOperation(_:)) else { return false }
+            control.stringValue = ""
+            text.wrappedValue = ""
+            return true
+        }
 
         @objc func search(_ field: NSSearchField) {
             text.wrappedValue = field.stringValue
