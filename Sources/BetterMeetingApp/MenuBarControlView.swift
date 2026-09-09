@@ -7,6 +7,7 @@ struct MenuBarControlView: View {
     @State var captureOptionsPresented = false
     @State private var calendarOptionsPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
+    @State private var hoveredMeetingID: MeetingHistoryItem.ID?
 
     private var updateReady: Bool {
         if case .ready = updates.status { true } else { false }
@@ -230,57 +231,79 @@ struct MenuBarControlView: View {
 
     func historyRow(_ item: MeetingHistoryItem, isSaved: Bool, canEdit: Bool) -> some View {
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(item.title)
-                        .lineLimit(1)
-                    if isSaved {
-                        Label("Saved", systemImage: "checkmark.circle.fill")
-                            .labelStyle(.iconOnly)
-                            .foregroundStyle(.green)
-                            .help("Saved")
-                    }
-                }
-                .font(.callout)
-
-                HStack(spacing: 4) {
-                    Text(item.recordedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
-                    Text("·")
-                    Text(Timecode.string(item.duration))
-                        .monospacedDigit()
-                }
-                .font(.callout)
-                .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
             Button {
                 NSWorkspace.shared.open(item.folderURL)
             } label: {
-                Image(systemName: "folder")
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(item.title)
+                            .lineLimit(1)
+                        if isSaved {
+                            Label("Saved", systemImage: "checkmark.circle.fill")
+                                .labelStyle(.iconOnly)
+                                .foregroundStyle(.green)
+                                .help("Saved")
+                        }
+                    }
+                    .font(.callout)
+
+                    HStack(spacing: 4) {
+                        Text(item.recordedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                        Text("·")
+                        Text(Timecode.string(item.duration))
+                            .monospacedDigit()
+                    }
+                    .font(.callout)
+                    .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
-            .help("Show in Finder")
-            .accessibilityLabel("Show \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard)), in Finder")
+            .buttonStyle(.plain)
+            .help("Open meeting folder")
+            .accessibilityLabel("Open \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard)), in Finder")
+
+            Menu {
+                meetingActions(item, canEdit: canEdit)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("More actions for \(item.title)")
+            .help("Copy, rename, re-transcribe, or export")
         }
         .frame(minHeight: 47)
         .contentShape(Rectangle())
-        .contextMenu {
-            Button("Copy Transcript") {
-                do { try model.copyTranscript(item) }
-                catch { NSAlert(error: error).runModal() }
-            }
-            Button("Rename…") { model.renameMeeting(item) }
-                .disabled(!canEdit)
-            Button("Re-transcribe…") { retranscribingMeeting = item }
-                .disabled(!canEdit)
-            Button("Export bundle…") { model.exportBundle(item) }
-                .disabled(!canEdit)
+        .background(
+            hoveredMeetingID == item.id ? Color.primary.opacity(0.06) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .onHover { hovering in
+            hoveredMeetingID = hovering ? item.id : nil
         }
+        .contextMenu {
+            meetingActions(item, canEdit: canEdit)
+        }
+    }
+
+    @ViewBuilder
+    private func meetingActions(_ item: MeetingHistoryItem, canEdit: Bool) -> some View {
+        Button("Copy Transcript") {
+            do { try model.copyTranscript(item) }
+            catch { NSAlert(error: error).runModal() }
+        }
+        Button("Rename…") { model.renameMeeting(item) }
+            .disabled(!canEdit)
+        Button("Re-transcribe…") { retranscribingMeeting = item }
+            .disabled(!canEdit)
+        Button("Export bundle…") { model.exportBundle(item) }
+            .disabled(!canEdit)
     }
 
     private var preparingContent: some View {
@@ -340,18 +363,10 @@ struct MenuBarControlView: View {
         VStack(alignment: .leading, spacing: 12) {
             captureSummary
 
-            TextField("Meeting name (optional)", text: .constant(""))
-                .textFieldStyle(.roundedBorder)
-                .disabled(true)
-
-            Button {} label: {
-                Label("Start recording", systemImage: "record.circle")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.gray)
-            .disabled(true)
+            Text("Recording is unavailable while transcription runs.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Divider()
 
