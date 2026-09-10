@@ -13,7 +13,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/argmaxinc/argmax-oss-swift.git",
-            from: "1.0.0"
+            exact: "1.1.0"
         ),
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),
     ],
