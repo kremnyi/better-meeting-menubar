@@ -235,6 +235,17 @@ enum MeetingArtifacts {
         return (try? decoder.decode(MeetingManifest.self, from: data))?.speechSettings
     }
 
+    // A folder without media holds nothing recoverable; drop it after a failed start.
+    @discardableResult
+    static func removeFolderWithoutMedia(_ folder: URL) -> Bool {
+        let files = ["recording.mp4", "audio.m4a"]
+        guard !files.contains(where: {
+            FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
+        }) else { return false }
+        try? FileManager.default.removeItem(at: folder)
+        return true
+    }
+
     static func meetings(in root: URL) -> [MeetingHistoryItem] {
         let folders = (try? FileManager.default.contentsOfDirectory(
             at: root,

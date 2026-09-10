@@ -681,9 +681,17 @@ final class AppModel: ObservableObject {
                 )
                 recordingDidStart(at: startedAt)
             } catch {
+                discardUnstartedFolder()
                 fail(error)
             }
         }
+    }
+
+    private func discardUnstartedFolder() {
+        guard let folder = activeFolder,
+              MeetingArtifacts.removeFolderWithoutMedia(folder) else { return }
+        activeFolder = nil
+        recordedAt = nil
     }
 
     private func captureStoppedExternally(with error: Error?) {

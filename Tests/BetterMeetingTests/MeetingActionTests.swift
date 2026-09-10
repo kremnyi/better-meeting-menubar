@@ -67,6 +67,21 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertFalse(try fm.contentsOfDirectory(atPath: folder.path).contains { $0.hasPrefix(".transcript-") })
     }
 
+    func testFailedStartDropsOnlyFoldersWithoutMedia() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let fm = FileManager.default
+        defer { try? fm.removeItem(at: root) }
+        for name in ["recording.mp4", "audio.m4a"] {
+            let folder = try MeetingArtifacts.createDirectory(in: root, title: name, recordedAt: Date())
+            try Data([1]).write(to: folder.appendingPathComponent(name))
+            XCTAssertFalse(MeetingArtifacts.removeFolderWithoutMedia(folder))
+            XCTAssertTrue(fm.fileExists(atPath: folder.path), "Saved media must survive a failed start")
+        }
+        let empty = try MeetingArtifacts.createDirectory(in: root, title: "Never started", recordedAt: Date())
+        XCTAssertTrue(MeetingArtifacts.removeFolderWithoutMedia(empty))
+        XCTAssertFalse(fm.fileExists(atPath: empty.path))
+    }
+
     func testRenamePreservesMeetingContents() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
