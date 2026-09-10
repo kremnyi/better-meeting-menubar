@@ -192,6 +192,38 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(model.terminationReply(confirm: { _ in .alertSecondButtonReturn }), .terminateNow)
     }
 
+    @MainActor
+    func testConcurrentRefreshesSerializeAndCoalesce() async throws {
+        let suite = "CalendarCoalesce.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let reader = CalendarReaderFixture()
+        reader.authorizationStatus = .fullAccess
+        let calendar = CalendarIntegration(defaults: defaults, reader: reader)
+        calendar.setEnabled(true)
+        calendar.select("fixture-calendar", enabled: true)
+        reader.events = [try calendarEventFixture()]
+
+        let firstStarted = expectation(description: "first load started")
+        var release: CheckedContinuation<Void, Never>?
+        reader.beforeReturn = {
+            reader.beforeReturn = nil
+            firstStarted.fulfill()
+            await withCheckedContinuation { release = $0 }
+        }
+        let first = Task { await calendar.refresh() }
+        await fulfillment(of: [firstStarted], timeout: 2)
+        let second = Task { await calendar.refresh() }
+        await Task.yield()
+        XCTAssertEqual(reader.loads, 1, "A refresh while a load is in flight must wait instead of loading in parallel")
+        XCTAssertTrue(calendar.events.isEmpty)
+        release?.resume()
+        await first.value
+        await second.value
+        XCTAssertEqual(reader.loads, 2, "The waiting refresh loads once after the in-flight load finishes")
+        XCTAssertEqual(calendar.events.count, 1)
+    }
+
     private let sidecar = """
     {"schemaVersion":1,"meetingId":"fixture","event":{
       "title":"Portfolio discussion","attendees":[
@@ -418,7 +450,7 @@ private final class CalendarReaderFixture: CalendarReading {
     var loads = 0
     var selectedIDs: Set<String> = []
     var events: [CalendarEvent] = []
-    var beforeReturn: (() -> Void)?
+    var beforeReturn: (() async -> Void)?
 
     func requestAccess() async throws -> Bool {
         requests += 1
@@ -429,7 +461,7 @@ private final class CalendarReaderFixture: CalendarReading {
     func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot {
         loads += 1
         self.selectedIDs = selectedIDs
-        beforeReturn?()
+        await beforeReturn?()
         return CalendarSnapshot(
             calendars: [CalendarChoice(id: "fixture-calendar", title: "Work", account: "Example account")],
             events: events.filter { selectedIDs.contains($0.providerCalendarId) }

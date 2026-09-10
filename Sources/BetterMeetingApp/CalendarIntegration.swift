@@ -72,6 +72,8 @@ final class CalendarIntegration: ObservableObject {
     private let defaults: UserDefaults
     private let reader: any CalendarReading
     private var revision = 0
+    private var loadTask: Task<Void, Never>?
+    private var loadToken = 0
     private var monitoring: AnyCancellable?
 
     init(defaults: UserDefaults = .standard, reader: (any CalendarReading)? = nil, reminders: CalendarReminders? = nil) {
@@ -149,6 +151,23 @@ final class CalendarIntegration: ObservableObject {
     func refresh(now: Date = Date()) async {
         revision += 1
         let currentRevision = revision
+        // Coalesce bursts from timers and notifications: wait for the load already
+        // running, then load again only if no later call superseded this one.
+        if let loadTask { await loadTask.value }
+        guard revision == currentRevision else { return }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRefresh(now: now, revision: currentRevision)
+        }
+        loadTask = task
+        loadToken += 1
+        let token = loadToken
+        await task.value
+        if loadToken == token { loadTask = nil }
+    }
+
+    private func performRefresh(now: Date, revision currentRevision: Int) async {
+        guard revision == currentRevision else { return }
         authorization = reader.authorizationStatus
         guard enabled, authorization == .fullAccess else {
             events = []
