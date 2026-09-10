@@ -94,7 +94,7 @@ struct MenuBarStatusLabel: View {
             HStack(spacing: 5) {
                 Image(nsImage: BrandAssets.menuBarIcon)
                     .frame(width: 18, height: 18)
-                Text(event.title)
+                Text(Self.truncatedTitle(event.title))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: 110, alignment: .leading)
@@ -102,10 +102,25 @@ struct MenuBarStatusLabel: View {
             }
             .font(.system(size: 13))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Better Meeting, next meeting \(event.title)")
+            .accessibilityLabel("Better Meeting, next meeting \(Self.truncatedTitle(event.title))")
         } else {
             MenuBarStatusIcon(state: state, processingFrame: processingFrame)
         }
+    }
+
+    // macOS 26 MenuBarExtra sizes the status item from the label's unbounded ideal
+    // width and ignores inner maxWidth frames, so the string itself must be capped.
+    static func truncatedTitle(_ title: String, maxWidth: CGFloat = 110) -> String {
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13)]
+        func width(_ s: String) -> CGFloat { (s as NSString).size(withAttributes: attrs).width }
+        if width(title) <= maxWidth { return title }
+        var low = 0
+        var high = title.count
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if width(String(title.prefix(mid)) + "…") <= maxWidth { low = mid } else { high = mid - 1 }
+        }
+        return String(title.prefix(low)) + "…"
     }
 
     private var previewEvent: CalendarEvent? {
