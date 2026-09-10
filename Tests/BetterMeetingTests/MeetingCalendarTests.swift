@@ -178,6 +178,20 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertTrue(center.pending.isEmpty)
     }
 
+    @MainActor
+    func testQuitDuringSetupCancelsStartAndTerminates() throws {
+        _ = NSApplication.shared
+        let suite = "SetupQuit.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = AppModel(defaults: defaults)
+        model.startCalendarRecording(try calendarEventFixture())
+        XCTAssertEqual(model.state, .preparing)
+        XCTAssertEqual(model.terminationReply(confirm: { _ in .alertFirstButtonReturn }), .terminateCancel)
+        XCTAssertEqual(model.terminationReply(confirm: { _ in .alertSecondButtonReturn }), .terminateNow)
+    }
+
     private let sidecar = """
     {"schemaVersion":1,"meetingId":"fixture","event":{
       "title":"Portfolio discussion","attendees":[

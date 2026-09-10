@@ -138,6 +138,7 @@ final class AppModel: ObservableObject {
     private var timer: Timer?
     private var audioWarningTask: Task<Void, Never>?
     private var quitWhenFinished = false
+    private var startTask: Task<Void, Never>?
     private(set) var processingTask: Task<Void, Never>?
     private(set) var historySearchTask: Task<Void, Never>?
     private(set) var historyRefreshTask: Task<Void, Never>?
@@ -474,10 +475,13 @@ final class AppModel: ObservableObject {
         let alert = NSAlert()
         if state == .preparing {
             alert.messageText = "Setup is still running"
-            alert.informativeText = "Wait for setup to finish before quitting."
+            alert.informativeText = "Quit now to stop setup. A recording that already started is saved when possible."
             alert.addButton(withTitle: "Keep open")
-            _ = confirm(alert)
-            return .terminateCancel
+            alert.addButton(withTitle: "Quit Anyway")
+            guard confirm(alert) == .alertSecondButtonReturn else { return .terminateCancel }
+            startTask?.cancel()
+            discardUnstartedFolder()
+            return .terminateNow
         }
         alert.messageText = state == .recording ? "Finish this recording and quit?" : "Quit when transcription finishes?"
         if isTranscribingBatch { alert.messageText = "Quit when all queued transcriptions finish?" }
@@ -649,8 +653,10 @@ final class AppModel: ObservableObject {
         recordedAt = nil
 
         let manualTitle = meetingTitle
-        Task {
+        startTask = Task {
+            defer { startTask = nil }
             do {
+                try Task.checkCancellation()
                 try await recorder.requestPermissions()
                 await MeetingNotifications.requestPermission()
 
