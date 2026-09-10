@@ -242,8 +242,12 @@ enum MeetingArtifacts {
         guard !files.contains(where: {
             FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
         }) else { return false }
-        try? FileManager.default.removeItem(at: folder)
-        return true
+        do {
+            try FileManager.default.removeItem(at: folder)
+            return true
+        } catch {
+            return false
+        }
     }
 
     static func meetings(in root: URL) -> [MeetingHistoryItem] {

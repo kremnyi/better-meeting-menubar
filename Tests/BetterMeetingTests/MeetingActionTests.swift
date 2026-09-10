@@ -80,6 +80,15 @@ final class MeetingActionTests: XCTestCase {
         let empty = try MeetingArtifacts.createDirectory(in: root, title: "Never started", recordedAt: Date())
         XCTAssertTrue(MeetingArtifacts.removeFolderWithoutMedia(empty))
         XCTAssertFalse(fm.fileExists(atPath: empty.path))
+
+        let locked = try MeetingArtifacts.createDirectory(in: root, title: "Locked", recordedAt: Date())
+        try fm.setAttributes([.immutable: true], ofItemAtPath: locked.path)
+        defer { try? fm.setAttributes([.immutable: false], ofItemAtPath: locked.path) }
+        XCTAssertFalse(MeetingArtifacts.removeFolderWithoutMedia(locked),
+                       "A folder that survives deletion must not report success")
+        XCTAssertTrue(fm.fileExists(atPath: locked.path))
+        try fm.setAttributes([.immutable: false], ofItemAtPath: locked.path)
+        XCTAssertTrue(MeetingArtifacts.removeFolderWithoutMedia(locked))
     }
 
     func testRenamePreservesMeetingContents() throws {

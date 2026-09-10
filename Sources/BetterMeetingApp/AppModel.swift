@@ -694,7 +694,8 @@ final class AppModel: ObservableObject {
     }
 
     private func discardUnstartedFolder() {
-        guard let folder = activeFolder,
+        // Capture may start while a confirmation is open; never discard a live recording.
+        guard state == .preparing, let folder = activeFolder,
               MeetingArtifacts.removeFolderWithoutMedia(folder) else { return }
         activeFolder = nil
         recordedAt = nil
