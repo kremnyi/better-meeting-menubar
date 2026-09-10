@@ -11,6 +11,15 @@ swift test
 open "dist/Better Meeting.app"
 ```
 
+If `swift test` fails with `no such module 'XCTest'`, the Command Line Tools are
+selected instead of Xcode. Point the shell at Xcode for the session:
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+```
+
+`build-app.sh` already selects Xcode when it is installed.
+
 The build script packages the executable, icons, permission descriptions,
 frameworks, and license notices. Use the app bundle for recording;
 `swift run BetterMeeting` does not include those resources. The app runs in the
