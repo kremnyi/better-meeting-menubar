@@ -89,48 +89,46 @@ struct MenuBarStatusLabel: View {
     let state: AppState
     var processingFrame = 0
 
+    // Menu bar space is scarce and macOS 26 sizes MenuBarExtra from the label's
+    // unbounded ideal width, so the preview shows only actionable meetings
+    // (in progress, or starting within previewLeadTime) and carries no title:
+    // event names are too long to ever fit, so the label states the time only.
+    static let previewLeadTime: TimeInterval = 60 * 60
+
     var body: some View {
         if let event = previewEvent {
+            let now = Date()
+            let relative = event.relativeStart(at: now)
             HStack(spacing: 5) {
                 Image(nsImage: BrandAssets.menuBarIcon)
                     .frame(width: 18, height: 18)
-                Text(Self.truncatedTitle(event.title))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: 110, alignment: .leading)
-                Text("· \(event.relativeStart(at: Date()))")
+                Text(relative)
+                    .foregroundStyle(event.scheduledStart <= now ? Color.signalCoral : Color.primary)
             }
             .font(.system(size: 13))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Better Meeting, next meeting \(Self.truncatedTitle(event.title))")
+            .accessibilityLabel("Better Meeting, next meeting \(event.title), \(relative)")
         } else {
             MenuBarStatusIcon(state: state, processingFrame: processingFrame)
         }
     }
 
-    // macOS 26 MenuBarExtra sizes the status item from the label's unbounded ideal
-    // width and ignores inner maxWidth frames, so the string itself must be capped.
-    static func truncatedTitle(_ title: String, maxWidth: CGFloat = 110) -> String {
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13)]
-        func width(_ s: String) -> CGFloat { (s as NSString).size(withAttributes: attrs).width }
-        if width(title) <= maxWidth { return title }
-        var low = 0
-        var high = title.count
-        while low < high {
-            let mid = (low + high + 1) / 2
-            if width(String(title.prefix(mid)) + "…") <= maxWidth { low = mid } else { high = mid - 1 }
+    // Picks the first actionable meeting: in progress, or starting within
+    // previewLeadTime. Tomorrow's meetings surface only in that final hour.
+    static func actionablePreviewEvent(from events: [CalendarEvent], at now: Date) -> CalendarEvent? {
+        events.first { event in
+            if event.scheduledStart <= now { return event.scheduledEnd > now }
+            return event.scheduledStart.timeIntervalSince(now) <= previewLeadTime
         }
-        return String(title.prefix(low)) + "…"
     }
 
     private var previewEvent: CalendarEvent? {
         guard state == .idle,
               calendar.menuBarPreview,
               calendar.enabled,
-              calendar.authorization == .fullAccess,
-              let event = calendar.events.first
+              calendar.authorization == .fullAccess
         else { return nil }
-        return event
+        return Self.actionablePreviewEvent(from: calendar.events, at: Date())
     }
 }
 

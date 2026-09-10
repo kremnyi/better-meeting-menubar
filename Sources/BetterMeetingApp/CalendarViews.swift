@@ -248,10 +248,10 @@ struct UpcomingMeetingView: View {
 extension CalendarEvent {
     func relativeStart(at now: Date, calendar: Calendar = .current) -> String {
         if scheduledEnd <= now { return "Ended" }
-        if scheduledStart <= now { return "In progress" }
+        if scheduledStart <= now { return "until " + scheduledEnd.formatted(date: .omitted, time: .shortened) }
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
                                            to: calendar.startOfDay(for: scheduledStart)).day
-        if days == 1 { return "Tomorrow" }
+        if days == 1 { return "Tomorrow " + scheduledStart.formatted(date: .omitted, time: .shortened) }
         if days != 0 { return scheduledStart.formatted(date: .abbreviated, time: .omitted) }
         let minutes = Int(ceil(scheduledStart.timeIntervalSince(now) / 60))
         if minutes < 60 { return "Starts in \(minutes) min" }

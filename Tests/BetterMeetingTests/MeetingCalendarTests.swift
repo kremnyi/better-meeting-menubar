@@ -94,9 +94,28 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(event.relativeStart(at: now, calendar: calendar), "Starts in 18 min")
         XCTAssertEqual(event.relativeStart(at: event.scheduledStart.addingTimeInterval(-30), calendar: calendar), "Starts in 1 min")
         XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar), "Starts in 1 hr 18 min")
-        XCTAssertEqual(event.relativeStart(at: event.scheduledStart, calendar: calendar), "In progress")
+        let inProgress = event.relativeStart(at: event.scheduledStart, calendar: calendar)
+        XCTAssertTrue(inProgress.hasPrefix("until "), "In progress should state the end time")
         XCTAssertEqual(event.relativeStart(at: event.scheduledEnd, calendar: calendar), "Ended")
-        XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-86400), calendar: calendar), "Tomorrow")
+        let tomorrowText = event.relativeStart(at: now.addingTimeInterval(-86400), calendar: calendar)
+        XCTAssertTrue(tomorrowText.hasPrefix("Tomorrow "), "Tomorrow should include the start time")
+        XCTAssertNotEqual(tomorrowText, "Tomorrow")
+    }
+
+    func testMenuPreviewPicksActionableMeetingsOnly() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-09T12:00:00Z"))
+        let tomorrow = try calendarEventFixture(id: "tomorrow", date: now.addingTimeInterval(20 * 3600))
+        let laterToday = try calendarEventFixture(id: "later", date: now.addingTimeInterval(2 * 3600))
+        let soon = try calendarEventFixture(id: "soon", date: now.addingTimeInterval(30 * 60))
+        XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [laterToday, soon], at: now), soon,
+                       "Today's meeting within the lead time wins over a distant one")
+        XCTAssertNil(MenuBarStatusLabel.actionablePreviewEvent(from: [laterToday, tomorrow], at: now),
+                     "Meetings more than an hour out stay out of the menu bar")
+        let ongoing = try calendarEventFixture(id: "ongoing", date: now.addingTimeInterval(-600))
+        XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [ongoing, soon], at: now), ongoing,
+                       "An in-progress meeting outranks the next one")
+        XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [tomorrow], at: now.addingTimeInterval(19 * 3600)), tomorrow,
+                       "Tomorrow's meeting appears only in its final hour")
     }
 
     @MainActor
