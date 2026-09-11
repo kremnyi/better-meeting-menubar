@@ -96,7 +96,6 @@ actor LocalTranscriber {
         settings: SpeechSettings = SpeechSettings(),
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
-        try settings.validate()
         let audioFile = try AVAudioFile(forReading: audioURL)
         let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
 

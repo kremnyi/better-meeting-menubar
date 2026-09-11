@@ -26,9 +26,8 @@ final class TranscriptionPassTests: XCTestCase {
     }
 
     func testInterruptedPassesResumeAndChangedInputsInvalidateCache() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let audio = root.appendingPathComponent("audio.m4a")
         try Data([1, 2, 3]).write(to: audio)
         let languages = ["uk", "ru", "en"]
@@ -114,9 +113,8 @@ final class TranscriptionPassTests: XCTestCase {
     }
 
     func testCancellationKeepsOnlyCompletedPasses() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let audio = root.appendingPathComponent("audio.m4a")
         try Data([1]).write(to: audio)
         let task = Task {
@@ -139,10 +137,8 @@ final class TranscriptionPassTests: XCTestCase {
 
     @MainActor
     func testLanguagePreferencePersists() throws {
-        let suite = "BetterMeetingLanguages.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingLanguages")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["uk", "ru", "en"])
         defaults.set("auto", forKey: "transcriptionLanguage")
         defaults.set(["pl", "en"], forKey: "candidateLanguages")
@@ -173,9 +169,8 @@ final class TranscriptionPassTests: XCTestCase {
     }
 
     func testVocabularyChangesInvalidatePassCache() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let audio = root.appendingPathComponent("audio.m4a")
         try Data([1]).write(to: audio)
         for (hints, shouldRun) in [("", true), ("Anna, Approck", true), (" Anna, Approck ", false), ("", true)] {
@@ -224,9 +219,8 @@ final class TranscriptionPassTests: XCTestCase {
         }
         let cache = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/model-check")
         let transcriber = LocalTranscriber(downloadBase: cache)
-        let silentFolder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: silentFolder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: silentFolder) }
+        let silentFolder = makeTempRoot()
+        defer { removeTempRoot(silentFolder) }
         let silentAudio = silentFolder.appendingPathComponent("silence.wav")
         let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480000))

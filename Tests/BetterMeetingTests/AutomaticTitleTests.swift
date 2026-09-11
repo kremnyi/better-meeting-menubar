@@ -16,8 +16,8 @@ final class AutomaticTitleTests: XCTestCase {
     }
 
     func testUnnamedMeetingCanBeRetriedAndRenamedWithoutLosingFiles() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let date = Date(timeIntervalSince1970: 1_788_530_400)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: " \n ", recordedAt: date)
         let recording = Data("saved recording".utf8)
@@ -60,8 +60,8 @@ final class AutomaticTitleTests: XCTestCase {
     }
 
     func testDateFallbackManualTitlesAndRenameCollisions() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let date = Date(timeIntervalSince1970: 1_788_530_400)
         let unnamed = try MeetingArtifacts.createDirectory(in: root, title: "", recordedAt: date)
         try MeetingArtifacts.write(title: "", recordedAt: date, duration: 0, segments: [], to: unnamed)
@@ -86,8 +86,8 @@ final class AutomaticTitleTests: XCTestCase {
     }
 
     func testLongUnicodeFolderNamesKeepTitlesAndHandleCollisions() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let date = Date()
         let emoji = "👨‍👩‍👧‍👦"
         let title = String(repeating: emoji, count: 40)

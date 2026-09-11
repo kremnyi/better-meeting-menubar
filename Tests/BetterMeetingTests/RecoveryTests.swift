@@ -10,8 +10,8 @@ import XCTest
 
 final class RecoveryTests: XCTestCase {
     func testUnfinishedAndLegacyRecordingsSurviveReload() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let date = Date(timeIntervalSince1970: 1_788_530_400)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Product / sync", recordedAt: date)
         XCTAssertTrue(MeetingArtifacts.meetings(in: root).isEmpty, "A failed start with no recording is not recoverable")
@@ -47,9 +47,8 @@ final class RecoveryTests: XCTestCase {
     }
 
     func testFailedExportKeepsExistingAudio() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let audioURL = root.appendingPathComponent("audio.m4a")
         let original = Data("saved meeting audio".utf8)
         try original.write(to: audioURL)
@@ -70,9 +69,8 @@ final class RecoveryTests: XCTestCase {
     }
 
     func testSuccessfulExportReplacesExistingAudio() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let sourceURL = root.appendingPathComponent("source.wav")
         let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
@@ -98,8 +96,8 @@ final class RecoveryTests: XCTestCase {
     }
 
     func testEmptyModelDirectoriesAreNotAReadyCache() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         for name in ["MelSpectrogram", "AudioEncoder", "TextDecoder"] {
             try FileManager.default.createDirectory(at: root.appendingPathComponent("\(name).mlmodelc"), withIntermediateDirectories: true)
         }
@@ -108,8 +106,8 @@ final class RecoveryTests: XCTestCase {
 
     func testFailedCoreMLLoadClearsOnlyThatModelForRetry() async throws {
         let fm = FileManager.default
-        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? fm.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let folder = root.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(SpeechModel.turbo.rawValue)")
         for name in ["MelSpectrogram", "AudioEncoder", "TextDecoder"] {
             let component = folder.appendingPathComponent("\(name).mlmodelc")
@@ -143,10 +141,8 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testBackgroundModelSetupCanRetryWithoutTakingOverRecording() async throws {
-        let suite = "BetterMeetingSetup.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingSetup")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let model = AppModel(defaults: defaults)
         model.meetingTitle = "Next meeting"
         var attempts = 0
@@ -187,14 +183,8 @@ final class RecoveryTests: XCTestCase {
     @MainActor
     func testQuitAfterProcessingKeepsTheNormalEventLoop() async throws {
         _ = NSApplication.shared
-        let suite = "BetterMeetingQuit.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingQuit")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Quit check", recordedAt: Date())
         try Data([1]).write(to: folder.appendingPathComponent("audio.m4a"))
         let model = AppModel(defaults: defaults)
@@ -287,14 +277,8 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testHistoryRemainsSearchableDuringProcessingAndCancellationShowsRecovery() async throws {
-        let suite = "BetterMeetingProcessing.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingProcessing")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let date = Date(timeIntervalSince1970: 1_788_530_400)
         let saved = try MeetingArtifacts.createDirectory(in: root, title: "Product sync", recordedAt: date)
         try MeetingArtifacts.write(title: "Product sync", recordedAt: date, duration: 720, segments: [], to: saved)
@@ -350,10 +334,8 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testPermissionFailuresKeepRecoveryVisible() throws {
-        let suite = "BetterMeetingPermissions.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingPermissions")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
         for (error, permission, title): (RecorderError, PrivacyPermission, String) in [
@@ -383,10 +365,8 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testPopoversDoNotResizeMenu() async throws {
-        let suite = "BetterMeetingLayout.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingLayout")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
@@ -411,13 +391,14 @@ final class RecoveryTests: XCTestCase {
     func testOptionsAndUpdateLayouts() throws {
         let suite = "BetterMeetingPanelLayout.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite).appendingPathComponent("Better Meetings"), forKey: "outputFolder")
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let root = makeTempRoot(suite)
+        defaults.set(root.appendingPathComponent("Better Meetings"), forKey: "outputFolder")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
         let meeting = MeetingHistoryItem(
             title: "Design review", recordedAt: Date(), duration: 60,
-            folderURL: FileManager.default.temporaryDirectory.appendingPathComponent(suite),
+            folderURL: root,
             needsTranscription: false, titleWasProvided: true
         )
         var panels: [(String, AnyView, CGFloat, AppUpdater.Status)] = [
@@ -497,14 +478,8 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testSearchDoesNotResizeMenu() async throws {
-        let suite = "BetterMeetingSearchLayout.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
-        defaults.set(root, forKey: "outputFolder")
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingSearchLayout")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         for index in 0..<7 {
             let date = Date(timeIntervalSince1970: Double(index * 60))
             let folder = try MeetingArtifacts.createDirectory(in: root, title: "Meeting \(index)", recordedAt: date)
@@ -556,16 +531,16 @@ final class RecoveryTests: XCTestCase {
     @MainActor
     func testSavedMeetingKeepsTheSameRowHeight() {
         _ = NSApplication.shared
-        let item = MeetingHistoryItem(
-            title: "2026-09-05 14.39.08", recordedAt: Date(timeIntervalSince1970: 1_788_611_948),
-            duration: 34, folderURL: URL(fileURLWithPath: "/tmp/layout-preview"),
-            needsTranscription: false, titleWasProvided: false
-        )
-        for saved in [false, true] {
+        for (saved, unfinished) in [(false, false), (true, false), (false, true)] {
+            let item = MeetingHistoryItem(
+                title: "2026-09-05 14.39.08", recordedAt: Date(timeIntervalSince1970: 1_788_611_948),
+                duration: 34, folderURL: URL(fileURLWithPath: "/tmp/layout-preview"),
+                needsTranscription: unfinished, titleWasProvided: false
+            )
             let row = NSHostingView(rootView: MenuBarControlView().historyRow(item, isSaved: saved, canEdit: true)
                 .environment(\.locale, Locale(identifier: "en_US"))
                 .frame(width: 264))
-            XCTAssertEqual(row.fittingSize.height, 47, "The saved indicator must not wrap meeting details")
+            XCTAssertEqual(row.fittingSize.height, 47, "The status indicators must not wrap meeting details")
         }
     }
 
@@ -576,12 +551,9 @@ final class RecoveryTests: XCTestCase {
         }
         let suite = "BetterMeetingPreview.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite).appendingPathComponent("Better Meetings")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
-        }
-        defaults.set(root, forKey: "outputFolder")
+        let root = makeTempRoot(suite)
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        defaults.set(root.appendingPathComponent("Better Meetings"), forKey: "outputFolder")
         for (index, title) in ["Product sync", "Release planning", "Design review"].enumerated() {
             let date = Date(timeIntervalSince1970: 1_788_530_400 - Double(index * 3_600))
             let folder = try MeetingArtifacts.createDirectory(in: root, title: title, recordedAt: date)
@@ -634,11 +606,8 @@ final class RecoveryTests: XCTestCase {
     func testPreferencesPersistAndHistoryKeepsOlderUnfinishedMeetings() async throws {
         let suite = "BetterMeetingTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let root = makeTempRoot()
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         for index in 0..<12 {
             let date = Date(timeIntervalSince1970: Double(index * 60))
             let folder = try MeetingArtifacts.createDirectory(in: root, title: "Meeting \(index)", recordedAt: date)
@@ -664,9 +633,9 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(reopened.selectedMicrophoneID, "test-mic")
         XCTAssertEqual(reopened.captureResolution, .pixels1920)
         XCTAssertEqual(reopened.captureQuality, .smooth)
-        XCTAssertEqual(reopened.transcriptionHistory.count, 11)
+        XCTAssertEqual(reopened.transcriptionHistory.count, 12)
         XCTAssertEqual(reopened.transcriptionHistory.first?.title, "Meeting 11")
-        XCTAssertEqual(reopened.transcriptionHistory.last?.title, "Meeting 1")
+        XCTAssertEqual(reopened.transcriptionHistory.last?.title, "Meeting 0", "Unfinished recordings stay in the list")
         XCTAssertEqual(reopened.unfinishedRecordings.map(\.title), ["Meeting 0"])
         XCTAssertEqual(reopened.terminationReply(), .terminateNow)
         defaults.set(999, forKey: "captureResolution")
@@ -702,13 +671,11 @@ final class RecoveryTests: XCTestCase {
     @MainActor
     func testRecordingAudioWarningClearsWithoutResizingOrRepeating() throws {
         _ = NSApplication.shared
-        let suite = "BetterMeetingAudioWarning.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingAudioWarning")
         let model = AppModel(defaults: defaults)
         defer {
             model.fail(AppError.missingRecording)
-            defaults.removePersistentDomain(forName: suite)
+            removeTempDefaults(defaults, suite: suite, root: root)
         }
         model.recordingDidStart(at: Date())
         var warnings = 0
@@ -801,14 +768,8 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testSearchFindsOlderTitlesAndEditedTranscripts() async throws {
-        let suite = "BetterMeetingSearch.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingSearch")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         var oldest: URL?
         for index in 0..<12 {
             let date = Date(timeIntervalSince1970: Double(index * 60))
@@ -838,11 +799,8 @@ final class RecoveryTests: XCTestCase {
     func testHistoryRefreshKeepsResultsAndIgnoresAnOldFolderScan() async throws {
         let suite = "BetterMeetingHistory.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let root = makeTempRoot(suite)
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let oldRoot = root.appendingPathComponent("old")
         let newRoot = root.appendingPathComponent("new")
         for (destination, title) in [(oldRoot, "Old meeting"), (newRoot, "New meeting")] {

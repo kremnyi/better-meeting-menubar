@@ -44,9 +44,8 @@ final class SpeakerLabelsTests: XCTestCase {
     }
 
     func testCacheReuseInvalidationAndFailedDetection() async throws {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
+        let folder = makeTempRoot()
+        defer { removeTempRoot(folder) }
         let audio = folder.appendingPathComponent("audio.m4a")
         let cache = folder.appendingPathComponent("speaker_turns.json")
         try Data([1]).write(to: audio)

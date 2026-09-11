@@ -9,10 +9,6 @@ struct MenuBarControlView: View {
     @State private var retranscribingMeeting: MeetingHistoryItem?
     @State private var hoveredMeetingID: MeetingHistoryItem.ID?
 
-    private var updateReady: Bool {
-        if case .ready = updates.status { true } else { false }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             content
@@ -24,25 +20,20 @@ struct MenuBarControlView: View {
                 Button {
                     captureOptionsPresented.toggle()
                 } label: {
-                    HStack(spacing: 6) {
-                        Label("Options", systemImage: "slider.horizontal.3")
-                        Circle()
-                            .fill(.blue)
-                            .frame(width: 6, height: 6)
-                            .opacity(updateReady ? 1 : 0)
-                            .accessibilityHidden(true)
-                    }
+                    Label("Options", systemImage: "slider.horizontal.3")
                 }
                 .buttonStyle(.plain)
                 .font(.callout)
-                .help(updateReady ? "Update ready to install" : "Recording and app options")
-                .accessibilityLabel(updateReady ? "Options, update ready to install" : "Options")
+                .help("Recording and app options")
+                .accessibilityLabel("Options")
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
                     CaptureOptionsView(calendarsPresented: calendarOptionsPresented)
                 }
                 .onChange(of: captureOptionsPresented) { _, presented in
                     if !presented { calendarOptionsPresented = false }
                 }
+
+                updateStatus
 
                 Spacer()
 
@@ -67,6 +58,31 @@ struct MenuBarControlView: View {
         .onAppear {
             model.refreshHistory()
             model.refreshInputs()
+        }
+    }
+
+    @ViewBuilder
+    private var updateStatus: some View {
+        switch updates.status {
+        case .downloading, .preparing, .installing:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
+                Text(updates.status.message)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        case .ready, .failed:
+            Button(updates.status == .failed ? "Update failed — View details" : updates.status.message) {
+                captureOptionsPresented = true
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .help("Open update options")
+        default:
+            EmptyView()
         }
     }
 
@@ -166,7 +182,7 @@ struct MenuBarControlView: View {
                         Button {
                             model.transcribeAllRecordings()
                         } label: {
-                            Text("Transcribe all \(model.unfinishedRecordings.count)")
+                            Text("Transcribe all")
                                 .padding(.horizontal, 10)
                                 .frame(height: 28)
                                 .contentShape(Rectangle())
@@ -257,6 +273,16 @@ struct MenuBarControlView: View {
                                 .labelStyle(.iconOnly)
                                 .foregroundStyle(.green)
                                 .help("Saved")
+                        }
+                        if item.needsTranscription {
+                            Text("Not transcribed")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Color.secondary.opacity(0.15), in: Capsule())
                         }
                     }
                     .font(.callout)
@@ -536,12 +562,20 @@ struct MenuBarControlView: View {
 
     private var captureSummary: some View {
         let notice = model.captureAccessNotice
-        return Label(notice.text, systemImage: model.captureAccessSymbol)
-            .font(notice.isSecondary ? .caption : .callout)
-            .foregroundStyle(model.privacyPermission != nil ? Color.orange : notice.isSecondary ? .secondary : .primary)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity)
+        return VStack(spacing: 6) {
+            Label(notice.text, systemImage: model.captureAccessSymbol)
+                .font(notice.isSecondary ? .caption : .callout)
+                .foregroundStyle(model.privacyPermission != nil ? Color.orange : notice.isSecondary ? .secondary : .primary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+
+            if let settingsURL = model.captureAccessSettingsURL {
+                Button("Open System Settings") { NSWorkspace.shared.open(settingsURL) }
+                    .buttonStyle(.link)
+                    .controlSize(.small)
+            }
+        }
     }
 
     private func errorView(_ message: String) -> some View {

@@ -13,15 +13,9 @@ private final class NotificationMenuClicks: NSObject {
 final class MeetingActionTests: XCTestCase {
     @MainActor
     func testRetranscriptionPreservesSavedFilesOnCancellationAndFailure() async throws {
-        let suite = "BetterMeetingReplace.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingReplace")
         let fm = FileManager.default
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? fm.removeItem(at: root)
-        }
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Keep this title", recordedAt: Date())
         try MeetingArtifacts.write(title: "Keep this title", recordedAt: Date(), duration: 12, segments: [], titleWasProvided: false, to: folder)
         try "# Keep this title\n\nEdited notes".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
@@ -68,9 +62,9 @@ final class MeetingActionTests: XCTestCase {
     }
 
     func testFailedStartDropsOnlyFoldersWithoutMedia() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = makeTempRoot()
         let fm = FileManager.default
-        defer { try? fm.removeItem(at: root) }
+        defer { removeTempRoot(root) }
         for name in ["recording.mp4", "audio.m4a"] {
             let folder = try MeetingArtifacts.createDirectory(in: root, title: name, recordedAt: Date())
             try Data([1]).write(to: folder.appendingPathComponent(name))
@@ -92,8 +86,8 @@ final class MeetingActionTests: XCTestCase {
     }
 
     func testRenamePreservesMeetingContents() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let date = Date(timeIntervalSince1970: 1_788_530_400)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Original", recordedAt: date)
         try MeetingArtifacts.write(title: "Original", recordedAt: date, duration: 20, segments: [], to: folder)
@@ -122,8 +116,8 @@ final class MeetingActionTests: XCTestCase {
     }
 
     func testNotificationFollowsRenamedFolder() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Original", recordedAt: date)
         let notification = try MeetingNotifications.content(title: "Original", folder: folder, failed: false)
@@ -141,9 +135,7 @@ final class MeetingActionTests: XCTestCase {
     @MainActor
     func testAudioWarningNotificationOpensControlsAndIgnoresStaleRecordings() throws {
         _ = NSApplication.shared
-        let suite = "BetterMeetingAudioNotification.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingAudioNotification")
         let model = AppModel(defaults: defaults)
         let delegate = AppDelegate()
         delegate.model = model
@@ -158,7 +150,7 @@ final class MeetingActionTests: XCTestCase {
             window.orderOut(nil)
             NSStatusBar.system.removeStatusItem(item)
             model.fail(AppError.missingRecording)
-            defaults.removePersistentDomain(forName: suite)
+            removeTempDefaults(defaults, suite: suite, root: root)
         }
         model.recordingDidStart(at: Date())
         let request = MeetingNotifications.audioWarning(recordingID: try XCTUnwrap(model.recordingID))
@@ -193,12 +185,9 @@ final class MeetingActionTests: XCTestCase {
     }
 
     func testFailedRenameRestoresOriginalFiles() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = makeTempRoot()
         let fm = FileManager.default
-        defer {
-            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
-            try? fm.removeItem(at: root)
-        }
+        defer { removeTempRoot(root) }
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Original", recordedAt: date)
         try MeetingArtifacts.write(title: "Original", recordedAt: date, duration: 0, segments: [], to: folder)
@@ -215,15 +204,11 @@ final class MeetingActionTests: XCTestCase {
 
     @MainActor
     func testCopyUsesSavedMarkdownAndKeepsClipboardOnReadFailure() async throws {
-        let suite = "BetterMeetingActions.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defaults.set(root, forKey: "outputFolder")
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingActions")
         let pasteboard = NSPasteboard(name: NSPasteboard.Name(suite))
         defer {
-            defaults.removePersistentDomain(forName: suite)
+            removeTempDefaults(defaults, suite: suite, root: root)
             pasteboard.releaseGlobally()
-            try? FileManager.default.removeItem(at: root)
         }
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Copy me", recordedAt: date)

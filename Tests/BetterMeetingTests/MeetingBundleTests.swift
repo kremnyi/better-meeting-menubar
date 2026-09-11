@@ -29,8 +29,8 @@ final class MeetingBundleTests: XCTestCase {
     }
 
     func testPortableBundleReplacementAndFailurePreserveMeeting() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Product review", recordedAt: date)
         let video = folder.appendingPathComponent("recording.mp4")

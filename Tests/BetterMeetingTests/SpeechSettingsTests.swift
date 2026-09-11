@@ -3,9 +3,8 @@ import XCTest
 
 final class SpeechSettingsTests: XCTestCase {
     func testModelAndDecodingChangesInvalidatePasses() async throws {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: folder) }
+        let folder = makeTempRoot()
+        defer { removeTempRoot(folder) }
         let audio = folder.appendingPathComponent("audio.m4a")
         try Data([1]).write(to: audio)
         var settings = SpeechSettings()
@@ -48,14 +47,8 @@ final class SpeechSettingsTests: XCTestCase {
 
     @MainActor
     func testSettingsPersistWithDefaultsAndMeeting() throws {
-        let suite = "SpeechSettings.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let (defaults, suite, root) = try makeTempDefaults("SpeechSettings")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let model = AppModel(defaults: defaults)
         XCTAssertEqual(model.speechSettings.model, .turbo)
         XCTAssertFalse(model.speechSettings.speakerLabels == true)

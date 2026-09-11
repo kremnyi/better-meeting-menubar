@@ -53,6 +53,18 @@ enum ProcessingPhase: Equatable {
     }
 }
 
+private extension LocalTranscriptionProgress {
+    /// Setup and transcription share one progress enum; only model steps map onto a processing phase.
+    var modelStep: (phase: ProcessingPhase, fraction: Double?)? {
+        switch self {
+        case .preparingModel: (.preparingModel, nil)
+        case .downloadingModel(let fraction): (.downloadingModel, fraction)
+        case .loadingModel: (.loadingModel, nil)
+        case .transcribing: nil
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var meetingTitle = ""
@@ -226,12 +238,32 @@ final class AppModel: ObservableObject {
             return ("Stop here or from the macOS recording menu", true)
         }
 
-        let microphoneReady = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        if CGPreflightScreenCaptureAccess() && microphoneReady {
+        let screenReady = CGPreflightScreenCaptureAccess()
+        let microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+        if screenReady && microphone == .authorized {
             return ("Screen, system audio, and mic ready", true)
         }
 
-        return ("Start recording to grant access", false)
+        if !screenReady {
+            return (microphone == .authorized
+                ? "Screen Recording access needed"
+                : "Screen Recording and microphone access needed", false)
+        }
+
+        return microphone == .notDetermined
+            ? ("Start recording to grant microphone access", false)
+            : ("Microphone access needed", false)
+    }
+
+    var captureAccessSettingsURL: URL? {
+        guard state == .idle else { return nil }
+        if !CGPreflightScreenCaptureAccess() {
+            return PrivacyPermission.screenRecording.settingsURL
+        }
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .denied, .restricted: return PrivacyPermission.microphone.settingsURL
+        default: return nil
+        }
     }
 
     var captureAccessSymbol: String {
@@ -303,20 +335,9 @@ final class AppModel: ObservableObject {
     }
 
     private func updateModelSetupProgress(_ progress: LocalTranscriptionProgress) {
-        guard modelPreparationTask != nil else { return }
-        switch progress {
-        case .preparingModel:
-            modelSetupStatus = "Checking speech model…"
-            modelSetupFraction = nil
-        case .downloadingModel(let fraction):
-            modelSetupStatus = "Downloading speech model…"
-            modelSetupFraction = fraction
-        case .loadingModel:
-            modelSetupStatus = "Loading speech model…"
-            modelSetupFraction = nil
-        case .transcribing:
-            return
-        }
+        guard modelPreparationTask != nil, let step = progress.modelStep else { return }
+        modelSetupStatus = step.phase.statusText
+        modelSetupFraction = step.fraction
         if state == .processing,
            [.preparingModel, .downloadingModel, .loadingModel].contains(processingPhase) {
             updateTranscriptionProgress(progress)
@@ -435,13 +456,7 @@ final class AppModel: ObservableObject {
                     ? "Export cancelled. Existing meeting files and bundle are kept."
                     : "Export failed: \(error.localizedDescription)"
             }
-            state = .idle
-            elapsed = 0
-            processingPhase = nil
-            processingFraction = nil
-            processingTask = nil
-            cancellingTranscription = false
-            completeTermination(succeeded)
+            endProcessing(succeeded: succeeded)
         }
     }
 
@@ -565,15 +580,19 @@ final class AppModel: ObservableObject {
         6 * 48
     }
 
+    private var meetingsByRecency: [MeetingHistoryItem] {
+        (completedMeetings + unfinishedRecordings).sorted { $0.recordedAt > $1.recordedAt }
+    }
+
     private func searchHistory() {
         historySearchTask?.cancel()
         let query = historyQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
             searchingHistory = false
-            transcriptionHistory = completedMeetings
+            transcriptionHistory = meetingsByRecency
             return
         }
-        let meetings = (completedMeetings + unfinishedRecordings).sorted { $0.recordedAt > $1.recordedAt }
+        let meetings = meetingsByRecency
         searchingHistory = true
         historySearchTask = Task.detached(priority: .userInitiated) { [weak self] in
             let matches = MeetingArtifacts.search(meetings, query: query)
@@ -871,31 +890,19 @@ final class AppModel: ObservableObject {
                 title: meeting?.title ?? folder.lastPathComponent,
                 folder: folder, failed: false
             )
-            elapsed = 0
-            if !inBatch { state = .idle }
-            statusText = "Ready to record your display and audio."
-            errorMessage = nil
-            privacyPermission = nil
-            processingFraction = nil
-            processingPhase = nil
-            resetRun()
-            if !inBatch { completeTermination(!Task.isCancelled) }
+            endProcessing(succeeded: !Task.isCancelled, inBatch: inBatch)
             return true
         } catch {
             if let activeFolder {
                 completedFolder = activeFolder
             }
             if Task.isCancelled {
-                state = .idle
                 completionFolder = activeFolder
                 completionMessage = replacing == nil
                     ? "Transcription cancelled. Recording kept; choose it from the Transcribe all menu to resume."
-                : "Re-transcription cancelled. Your existing transcript is unchanged."
-                processingPhase = nil
-                processingFraction = nil
-                resetRun()
+                    : "Re-transcription cancelled. Your existing transcript is unchanged."
                 refreshHistory()
-                completeTermination(false)
+                endProcessing(succeeded: false)
                 return false
             }
             fail(error)
@@ -965,18 +972,29 @@ final class AppModel: ObservableObject {
         elapsed = 0
     }
 
+    /// Shared teardown once a processing run ends, whatever the outcome.
+    private func endProcessing(succeeded: Bool, inBatch: Bool = false) {
+        elapsed = 0
+        statusText = "Ready to record your display and audio."
+        errorMessage = nil
+        privacyPermission = nil
+        processingPhase = nil
+        processingFraction = nil
+        resetRun()
+        guard !inBatch else { return }
+        state = .idle
+        processingTask = nil
+        cancellingTranscription = false
+        completeTermination(succeeded)
+    }
+
     private func updateTranscriptionProgress(_ progress: LocalTranscriptionProgress) {
         guard !cancellingTranscription else { return }
         guard state == .processing, !isExportingBundle, processingPhase != .labelingSpeakers else { return }
 
-        switch progress {
-        case .preparingModel:
-            setProcessingPhase(.preparingModel)
-        case .downloadingModel(let fraction):
-            setProcessingPhase(.downloadingModel, fraction: fraction)
-        case .loadingModel:
-            setProcessingPhase(.loadingModel)
-        case .transcribing(let fraction, let language, let pass, let total):
+        if let step = progress.modelStep {
+            setProcessingPhase(step.phase, fraction: step.fraction)
+        } else if case .transcribing(let fraction, let language, let pass, let total) = progress {
             setProcessingPhase(.transcribing, fraction: fraction)
             let name = TranscriptionLanguage(rawValue: language)?.label ?? language
             statusText = "Transcribing \(name) · pass \(pass) of \(total)…"

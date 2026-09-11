@@ -8,14 +8,8 @@ final class TranscriptionQueueTests: XCTestCase {
     private func withMeetings(
         count: Int = 3, _ check: (AppModel) async throws -> Void
     ) async throws {
-        let suite = "BetterMeetingQueue.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingQueue")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         for index in 0...count {
             let date = Date(timeIntervalSince1970: 1_788_530_400 - Double(index * 3_600))
             let folder = try MeetingArtifacts.createDirectory(in: root, title: "Meeting \(index)", recordedAt: date)

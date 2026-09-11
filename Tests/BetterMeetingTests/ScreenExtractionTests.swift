@@ -20,9 +20,8 @@ final class ScreenExtractionTests: XCTestCase {
     }
 
     func testRealVideoFrameExtractionAndVisionOCR() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let video = root.appendingPathComponent("recording.mp4")
         try await Self.makeVideo(at: video)
         let events = try await ScreenExtractor.extract(video: video, to: root, languages: ["en", "uk"]) { _ in }

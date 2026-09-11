@@ -63,7 +63,6 @@ final class CalendarReminders: ObservableObject {
     @Published private(set) var message: String?
     @Published private(set) var requestingAccess = false
     @Published private(set) var scheduledEvents: [CalendarEvent] = []
-    @Published private(set) var isUpdating = false
     private let center: (any CalendarReminderCenter)?
     private var revision = 0
     private(set) var task: Task<Void, Never>?
@@ -84,7 +83,6 @@ final class CalendarReminders: ObservableObject {
 
     func update(events: [CalendarEvent], enabled: Bool, now: Date = Date()) {
         revision += 1
-        isUpdating = enabled
         if !enabled { scheduledEvents = [] }
         let version = revision
         let previous = task
@@ -99,7 +97,6 @@ final class CalendarReminders: ObservableObject {
     private func reconcile(events: [CalendarEvent], enabled: Bool, now: Date, version: Int) async {
         guard let center else {
             scheduledEvents = []
-            isUpdating = false
             message = enabled ? "Notifications are unavailable." : nil
             return
         }
@@ -128,6 +125,5 @@ final class CalendarReminders: ObservableObject {
             event.scheduledStart > future && confirmed.contains { CalendarReminder.matches($0, event: event) }
         }.sorted { ($0.scheduledStart, $0.id) < ($1.scheduledStart, $1.id) }
         message = failure
-        isUpdating = false
     }
 }

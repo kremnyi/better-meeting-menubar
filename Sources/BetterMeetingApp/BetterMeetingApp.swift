@@ -120,6 +120,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             window.makeKeyAndOrderFront(nil)
             return
         }
+        clickStatusItem()
+    }
+
+    // This app owns one status item. Use its native button without private SwiftUI APIs.
+    private func clickStatusItem() {
         var views = NSApp.windows.compactMap(\.contentView)
         while let view = views.popLast() {
             if let button = view as? NSStatusBarButton { button.performClick(nil); return }
@@ -134,15 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 window.makeKeyAndOrderFront(nil)
                 return
             }
-            // This app owns one status item. Use its native button without private SwiftUI APIs.
-            var views = NSApp.windows.compactMap(\.contentView)
-            while let view = views.popLast() {
-                if let button = view as? NSStatusBarButton {
-                    button.performClick(nil)
-                    return
-                }
-                views.append(contentsOf: view.subviews)
-            }
+            clickStatusItem()
             return
         }
         guard let folder = MeetingNotifications.folder(from: request.content) else { return }

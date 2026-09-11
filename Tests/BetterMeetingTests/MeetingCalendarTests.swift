@@ -59,7 +59,6 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertNotNil(reminders.message)
         XCTAssertEqual(center.pending.count, 1)
         XCTAssertTrue(reminders.scheduledEvents.isEmpty)
-        XCTAssertFalse(reminders.isUpdating)
     }
 
     @MainActor
@@ -73,7 +72,6 @@ final class MeetingCalendarTests: XCTestCase {
         await reminders.task?.value
         XCTAssertEqual(reminders.scheduledEvents, [first])
         XCTAssertNotNil(reminders.message)
-        XCTAssertFalse(reminders.isUpdating)
 
         center.rejectedIDs = []
         reminders.update(events: [first, failed], enabled: true)
@@ -138,20 +136,13 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertTrue(center.pending.isEmpty)
         XCTAssertTrue(center.delivered.isEmpty)
         XCTAssertTrue(reminders.scheduledEvents.isEmpty)
-        XCTAssertFalse(reminders.isUpdating)
     }
 
     @MainActor
     func testReminderActionsRequireExplicitClickAndCurrentEventWithoutInterruptingCapture() async throws {
         _ = NSApplication.shared
-        let suite = "ReminderAction.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let (defaults, suite, root) = try makeTempDefaults("ReminderAction")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let reader = CalendarReaderFixture()
         reader.authorizationStatus = .fullAccess
         let event = try calendarEventFixture()
@@ -200,10 +191,8 @@ final class MeetingCalendarTests: XCTestCase {
     @MainActor
     func testQuitDuringSetupCancelsStartAndTerminates() throws {
         _ = NSApplication.shared
-        let suite = "SetupQuit.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(FileManager.default.temporaryDirectory.appendingPathComponent(suite), forKey: "outputFolder")
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("SetupQuit")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let model = AppModel(defaults: defaults)
         model.startCalendarRecording(try calendarEventFixture())
         XCTAssertEqual(model.state, .preparing)
@@ -253,9 +242,8 @@ final class MeetingCalendarTests: XCTestCase {
     """
 
     func testCalendarSearchIsCaseInsensitiveAndLeavesSidecarIntact() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
         let url = root.appendingPathComponent("calendar.json")
         try sidecar.write(to: url, atomically: true, encoding: .utf8)
         let item = MeetingHistoryItem(title: "Recording", recordedAt: Date(), duration: 30,
@@ -276,27 +264,21 @@ final class MeetingCalendarTests: XCTestCase {
 
     @MainActor
     func testUnfinishedMeetingCanBeFoundByAttendee() async throws {
-        let suite = "BetterMeetingCalendar.\(UUID().uuidString)"
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingCalendar")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Pending meeting", recordedAt: Date())
         try Data([1]).write(to: folder.appendingPathComponent("audio.m4a"))
         try sidecar.write(to: folder.appendingPathComponent("calendar.json"), atomically: true, encoding: .utf8)
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
-        XCTAssertTrue(model.transcriptionHistory.isEmpty)
+        XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Pending meeting"], "Unfinished recordings stay in the list")
         model.historyQuery = "EXAMPLE.COM"
         await model.historySearchTask?.value
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Pending meeting"])
         XCTAssertTrue(model.transcriptionHistory[0].needsTranscription)
         model.historyQuery = ""
         await model.historySearchTask?.value
-        XCTAssertTrue(model.transcriptionHistory.isEmpty)
+        XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Pending meeting"], "Clearing the search keeps unfinished recordings visible")
     }
 
     @MainActor
@@ -345,12 +327,8 @@ final class MeetingCalendarTests: XCTestCase {
     func testExactOccurrenceOnlyAndPrivateSearchableSnapshot() async throws {
         let suite = "CalendarSnapshot.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let root = makeTempRoot(suite)
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let event = try calendarEventFixture()
         let reader = CalendarReaderFixture()
         reader.authorizationStatus = .fullAccess
@@ -403,14 +381,8 @@ final class MeetingCalendarTests: XCTestCase {
     @MainActor
     func testCalendarNativeLayouts() async throws {
         _ = NSApplication.shared
-        let suite = "CalendarLayout.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
-        defaults.set(root, forKey: "outputFolder")
-        defer {
-            defaults.removePersistentDomain(forName: suite)
-            try? FileManager.default.removeItem(at: root)
-        }
+        let (defaults, suite, root) = try makeTempDefaults("CalendarLayout")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let reader = CalendarReaderFixture()
         let notificationCenter = ReminderCenterFixture()
         let calendar = CalendarIntegration(defaults: defaults, reader: reader, reminders: CalendarReminders(center: notificationCenter))
