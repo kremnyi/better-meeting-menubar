@@ -157,9 +157,9 @@ The feed item carries `sparkle:channel beta`, which hides it from everyone who h
 not enabled **Options → Include beta releases**. The same feed keeps the current
 stable item, so stable users only ever see stable releases.
 
-The opt-in toggle ships with the next stable release. A beta cut before that
-release is only reachable by installing its ZIP manually; later betas arrive
-through Sparkle like any other update.
+Stable 0.3.42 and later carry the toggle, so opted-in users receive beta cuts
+through Sparkle like any other update. Installations older than that can only
+reach a beta by installing its ZIP manually.
 
 1. Set `CFBundleShortVersionString` to the upcoming version with a `b<number>`
    suffix (for example `0.3.42b1`) and increment `CFBundleVersion` past the
