@@ -8,8 +8,19 @@ enum AppState: Equatable {
     case idle
     case preparing
     case recording
-    case processing
     case failed
+}
+
+private struct ProcessingRun {
+    let folder: URL
+    let recordedAt: Date
+    let title: String
+    let titleWasProvided: Bool
+    let replacing: MeetingHistoryItem?
+    let languages: [String]
+    let hints: String
+    let settings: SpeechSettings
+    var stopTask: Task<Void, Error>?
 }
 
 enum ProcessingPhase: Equatable {
@@ -82,6 +93,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var privacyPermission: PrivacyPermission?
     @Published private(set) var processingFraction: Double?
     @Published private(set) var processingPhase: ProcessingPhase?
+    @Published private(set) var processingStatusText = ""
+    @Published private(set) var processingTitle = ""
     @Published private(set) var transcriptionHistory: [MeetingHistoryItem] = []
     @Published var historyQuery = "" {
         didSet { searchHistory() }
@@ -92,6 +105,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var transcriptionBatchIndex = 0
     var isTranscribingBatch: Bool { transcriptionBatchTotal > 0 }
     var transcriptionBatchWaiting: Int { max(0, transcriptionBatchTotal - transcriptionBatchIndex) }
+    var isProcessing: Bool { processingPhase != nil }
+    var isCapturing: Bool { state == .preparing || state == .recording }
     @Published private(set) var modelReady = false
     @Published private(set) var modelSetupStatus = "Preparing speech model…"
     @Published private(set) var modelSetupFraction: Double?
@@ -124,7 +139,7 @@ final class AppModel: ObservableObject {
     lazy var calendar = CalendarIntegration(defaults: defaults)
     lazy var updates = AppUpdater { [weak self] in
         guard let self else { return true }
-        return state == .preparing || state == .recording || state == .processing
+        return state == .preparing || state == .recording || isProcessing
     }
     @Published var automaticUpdateChecks: Bool {
         didSet { defaults.set(automaticUpdateChecks, forKey: "checkUpdatesOnLaunch") }
@@ -158,6 +173,8 @@ final class AppModel: ObservableObject {
     private var quitWhenFinished = false
     private var startTask: Task<Void, Never>?
     private(set) var processingTask: Task<Void, Never>?
+    private var pendingRuns: [ProcessingRun] = []
+    private var processingFolder: URL?
     private(set) var historySearchTask: Task<Void, Never>?
     private(set) var historyRefreshTask: Task<Void, Never>?
     private var completedMeetings: [MeetingHistoryItem] = []
@@ -206,7 +223,6 @@ final class AppModel: ObservableObject {
         switch state {
         case .recording: "Stop recording"
         case .preparing: "Preparing…"
-        case .processing: "Transcribing…"
         case .idle: "Start recording"
         case .failed:
             if privacyPermission == .screenRecording {
@@ -256,7 +272,7 @@ final class AppModel: ObservableObject {
     }
 
     var captureAccessSettingsURL: URL? {
-        guard state == .idle else { return nil }
+        guard state == .idle, !isProcessing else { return nil }
         if !CGPreflightScreenCaptureAccess() {
             return PrivacyPermission.screenRecording.settingsURL
         }
@@ -298,7 +314,7 @@ final class AppModel: ObservableObject {
     }
 
     func prepareSpeechModel() {
-        guard !modelReady, state == .idle || state == .recording else { return }
+        guard !modelReady, !isProcessing, state == .idle || state == .recording else { return }
         let selectedModel = speechSettings.model
         prepareSpeechModel { [transcriber] progress in
             _ = try await transcriber.prepare(model: selectedModel, progressHandler: progress)
@@ -338,37 +354,30 @@ final class AppModel: ObservableObject {
         guard modelPreparationTask != nil, let step = progress.modelStep else { return }
         modelSetupStatus = step.phase.statusText
         modelSetupFraction = step.fraction
-        if state == .processing,
+        if isProcessing,
            [.preparingModel, .downloadingModel, .loadingModel].contains(processingPhase) {
             updateTranscriptionProgress(progress)
         }
     }
 
     func retryTranscription(_ item: MeetingHistoryItem, languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil) {
-        guard !isTranscribingBatch, state == .idle || state == .failed else { return }
+        guard !isProcessing, !isTranscribingBatch, state == .idle || state == .failed else { return }
         prepareSavedTranscription(item)
-        processingTask = Task {
-            await MeetingNotifications.requestPermission()
-            await finishRecording(
-                stopCapture: false, replacing: item.needsTranscription ? nil : item,
-                languages: languages, hints: hints,
-                settings: settings ?? MeetingArtifacts.speechSettings(in: item.folderURL)
-            )
-        }
+        enqueue(run(
+            for: item, replacing: item.needsTranscription ? nil : item,
+            languages: languages, hints: hints,
+            settings: settings ?? MeetingArtifacts.speechSettings(in: item.folderURL)
+        ))
     }
 
     func transcribeAllRecordings() {
         transcribeAllRecordings { [self] item in
-            await MeetingNotifications.requestPermission()
-            return await finishRecording(
-                stopCapture: false, settings: MeetingArtifacts.speechSettings(in: item.folderURL),
-                inBatch: true
-            )
+            await finishRecording(run(for: item, replacing: nil), inBatch: true)
         }
     }
 
     func transcribeAllRecordings(_ process: @escaping (MeetingHistoryItem) async -> Bool) {
-        guard state == .idle, !isTranscribingBatch, !unfinishedRecordings.isEmpty else { return }
+        guard state == .idle, !isProcessing, !isTranscribingBatch, !unfinishedRecordings.isEmpty else { return }
         let recordings = unfinishedRecordings
         transcriptionBatchTotal = recordings.count
         transcriptionBatchIndex = 1
@@ -384,48 +393,56 @@ final class AppModel: ObservableObject {
                 completionFolder = item.folderURL
             }
             let cancelled = Task.isCancelled
-            if state != .failed {
-                state = .idle
+            if errorMessage == nil {
                 completionMessage = cancelled
                     ? "Transcription cancelled. \(completed) of \(recordings.count) finished; remaining recordings are kept."
-                : "Transcribed \(completed) of \(recordings.count) recordings."
-                processingPhase = nil
-                processingFraction = nil
-                resetRun()
+                    : "Transcribed \(completed) of \(recordings.count) recordings."
             }
             transcriptionBatchTotal = 0
             transcriptionBatchIndex = 0
-            processingTask = nil
-            cancellingTranscription = false
             refreshHistory()
-            completeTermination(!cancelled && completed == recordings.count)
+            processingQueueFinished(succeeded: !cancelled && completed == recordings.count)
         }
+    }
+
+    private func run(
+        for item: MeetingHistoryItem, replacing: MeetingHistoryItem?,
+        languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil
+    ) -> ProcessingRun {
+        ProcessingRun(
+            folder: item.folderURL,
+            recordedAt: item.recordedAt,
+            title: item.title,
+            titleWasProvided: item.titleWasProvided,
+            replacing: replacing,
+            languages: languages ?? transcriptionLanguages,
+            hints: hints ?? transcriptionHints,
+            settings: settings ?? MeetingArtifacts.speechSettings(in: item.folderURL) ?? speechSettings
+        )
     }
 
     private func prepareSavedTranscription(_ item: MeetingHistoryItem) {
         completionMessage = nil
         completionFolder = nil
-        activeFolder = item.folderURL
         completedFolder = nil
-        recordedAt = item.recordedAt
-        meetingTitle = item.title
-        titleWasProvided = item.titleWasProvided
-        elapsed = item.duration
+        if state == .failed { state = .idle }
+        processingFolder = item.folderURL
+        processingTitle = item.title
+        if !isCapturing { elapsed = item.duration }
         errorMessage = nil
         privacyPermission = nil
-        state = .processing
         setProcessingPhase(.preparingAudio, fraction: 0)
     }
 
     var canCancelTranscription: Bool {
-        state == .processing && processingPhase != .finalizingRecording
+        isProcessing && processingPhase != .finalizingRecording
             && processingPhase != .writingFiles && !cancellingTranscription
     }
 
     func cancelTranscription() {
         guard canCancelTranscription else { return }
         cancellingTranscription = true
-        statusText = isExportingBundle ? "Cancelling export…" : "Cancelling transcription…"
+        processingStatusText = isExportingBundle ? "Cancelling export…" : "Cancelling transcription…"
         processingTask?.cancel()
     }
 
@@ -434,8 +451,7 @@ final class AppModel: ObservableObject {
     }
 
     func exportBundle(_ meeting: MeetingHistoryItem) {
-        guard state == .idle else { return }
-        state = .processing
+        guard state == .idle, !isProcessing else { return }
         elapsed = meeting.duration
         completionMessage = nil
         completionFolder = nil
@@ -456,7 +472,7 @@ final class AppModel: ObservableObject {
                     ? "Export cancelled. Existing meeting files and bundle are kept."
                     : "Export failed: \(error.localizedDescription)"
             }
-            endProcessing(succeeded: succeeded)
+            processingQueueFinished(succeeded: succeeded)
         }
     }
 
@@ -491,7 +507,7 @@ final class AppModel: ObservableObject {
     func terminationReply(
         confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }
     ) -> NSApplication.TerminateReply {
-        guard state == .recording || state == .processing || state == .preparing else {
+        guard state == .recording || isProcessing || state == .preparing else {
             return .terminateNow
         }
         quitWhenFinished = false
@@ -507,6 +523,7 @@ final class AppModel: ObservableObject {
             return .terminateNow
         }
         alert.messageText = state == .recording ? "Finish this recording and quit?" : "Quit when transcription finishes?"
+        if state == .recording && isProcessing { alert.messageText = "Finish this recording, then quit when transcription finishes?" }
         if isTranscribingBatch { alert.messageText = "Quit when all queued transcriptions finish?" }
         if isExportingBundle { alert.messageText = "Quit when export finishes?" }
         alert.informativeText = isExportingBundle
@@ -517,7 +534,7 @@ final class AppModel: ObservableObject {
         alert.addButton(withTitle: "Keep open")
         guard confirm(alert) == .alertFirstButtonReturn else { return .terminateCancel }
         // Processing may finish while the native confirmation is open.
-        guard state == .recording || state == .processing else {
+        guard state == .recording || isProcessing else {
             return state == .idle ? .terminateNow : .terminateCancel
         }
         quitWhenFinished = true
@@ -613,7 +630,7 @@ final class AppModel: ObservableObject {
     }
 
     func renameMeeting(_ meeting: MeetingHistoryItem) {
-        guard state == .idle else { return }
+        guard state == .idle, !isProcessing else { return }
         let alert = NSAlert()
         alert.messageText = "Rename meeting"
         alert.addButton(withTitle: "Rename")
@@ -667,6 +684,7 @@ final class AppModel: ObservableObject {
     }
 
     private func startRecording(calendarEvent: CalendarEvent? = nil) {
+        guard state == .idle || state == .failed else { return }
         stopTimer()
         elapsed = 0
         state = .preparing
@@ -674,8 +692,6 @@ final class AppModel: ObservableObject {
         errorMessage = nil
         completedFolder = nil
         privacyPermission = nil
-        processingFraction = nil
-        processingPhase = nil
         activeFolder = nil
         recordedAt = nil
 
@@ -744,38 +760,102 @@ final class AppModel: ObservableObject {
             elapsed = Date().timeIntervalSince(recordedAt)
         }
         stopTimer()
-        state = .processing
-        setProcessingPhase(.finalizingRecording)
-        processingTask = Task {
-            await finishRecording(stopCapture: stopCapture)
+        guard var run = takeCaptureRun() else {
+            fail(AppError.missingRecording)
+            return
+        }
+        state = .idle
+        processingFolder = run.folder
+        if !isProcessing { setProcessingPhase(.finalizingRecording) }
+        if stopCapture {
+            run.stopTask = Task { try await recorder.stop() }
+        }
+        enqueue(run)
+    }
+
+    private func takeCaptureRun() -> ProcessingRun? {
+        guard let folder = activeFolder, let recordedAt else { return nil }
+        activeFolder = nil
+        self.recordedAt = nil
+        return ProcessingRun(
+            folder: folder,
+            recordedAt: recordedAt,
+            title: meetingTitle,
+            titleWasProvided: titleWasProvided,
+            replacing: nil,
+            languages: transcriptionLanguages,
+            hints: transcriptionHints,
+            settings: speechSettings
+        )
+    }
+
+    private func enqueue(_ run: ProcessingRun) {
+        pendingRuns.append(run)
+        guard processingTask == nil else { return }
+        processingTask = Task { await runProcessingQueue() }
+    }
+
+    private func runProcessingQueue() async {
+        var succeeded = true
+        while !pendingRuns.isEmpty {
+            let run = pendingRuns.removeFirst()
+            if let stopTask = run.stopTask {
+                do {
+                    try await stopTask.value
+                } catch {
+                    fail(error)
+                    succeeded = false
+                    pendingRuns.removeAll()
+                    break
+                }
+            }
+            processingFolder = run.folder
+            processingTitle = run.title
+            if !(await finishRecording(run)) {
+                succeeded = false
+                pendingRuns.removeAll()
+                break
+            }
+        }
+        processingQueueFinished(succeeded: succeeded)
+    }
+
+    private func processingQueueFinished(succeeded: Bool) {
+        guard pendingRuns.isEmpty else {
+            processingTask = Task { await runProcessingQueue() }
+            return
+        }
+        finishProcessingUI()
+        processingTask = nil
+        cancellingTranscription = false
+        if !isCapturing { completeTermination(succeeded) }
+    }
+
+    private func finishProcessingUI() {
+        processingPhase = nil
+        processingFraction = nil
+        processingTitle = ""
+        processingFolder = nil
+        processingStatusText = ""
+        guard !isCapturing else { return }
+        elapsed = 0
+        meetingTitle = ""
+        titleWasProvided = true
+        if state == .idle {
+            errorMessage = nil
+            privacyPermission = nil
         }
     }
 
     @discardableResult
-    private func finishRecording(
-        stopCapture: Bool, replacing: MeetingHistoryItem? = nil,
-        languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil,
-        inBatch: Bool = false
-    ) async -> Bool {
-        defer {
-            if !inBatch {
-                processingTask = nil
-                cancellingTranscription = false
-            }
-        }
-        let languages = languages ?? transcriptionLanguages
-        let hints = hints ?? transcriptionHints
-        let settings = settings ?? speechSettings
-        lastTranscriptionOptions = (languages, hints, settings)
+    private func finishRecording(_ run: ProcessingRun, inBatch: Bool = false) async -> Bool {
+        lastTranscriptionOptions = (run.languages, run.hints, run.settings)
         do {
             try Task.checkCancellation()
-            guard var folder = activeFolder, let recordedAt else {
-                throw AppError.missingRecording
-            }
-
-            if stopCapture {
-                try await recorder.stop()
-            }
+            await MeetingNotifications.requestPermission()
+            var folder = run.folder
+            var title = run.title
+            let recordedAt = run.recordedAt
 
             let recordingURL = folder.appendingPathComponent("recording.mp4")
             let audioURL = folder.appendingPathComponent("audio.m4a")
@@ -790,17 +870,18 @@ final class AppModel: ObservableObject {
             }
             let audio = try AVAudioFile(forReading: audioURL)
             try Task.checkCancellation()
-            elapsed = Double(audio.length) / audio.fileFormat.sampleRate
-            if replacing == nil {
+            let duration = Double(audio.length) / audio.fileFormat.sampleRate
+            if !isCapturing { elapsed = duration }
+            if run.replacing == nil {
                 try MeetingArtifacts.writeMetadata(
-                    title: meetingTitle, recordedAt: recordedAt, duration: elapsed,
-                    titleWasProvided: titleWasProvided, speechSettings: settings, to: folder
+                    title: title, recordedAt: recordedAt, duration: duration,
+                    titleWasProvided: run.titleWasProvided, speechSettings: run.settings, to: folder
                 )
             }
 
             if let preparation = modelPreparationTask {
                 setProcessingPhase(.preparingModel, fraction: modelSetupFraction)
-                statusText = modelSetupStatus
+                processingStatusText = modelSetupStatus
                 try await withTaskCancellationHandler {
                     try await preparation.value
                 } onCancel: {
@@ -809,7 +890,7 @@ final class AppModel: ObservableObject {
                 try Task.checkCancellation()
             }
             var segments = try await transcriber.transcribe(
-                audioURL: audioURL, languages: languages, hints: hints, settings: settings
+                audioURL: audioURL, languages: run.languages, hints: run.hints, settings: run.settings
             ) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     self?.updateTranscriptionProgress(progress)
@@ -819,7 +900,7 @@ final class AppModel: ObservableObject {
             var speakerWarning: String?
             do {
                 segments = try await SpeakerLabels.run(
-                    audioURL: audioURL, segments: segments, enabled: settings.speakerLabels == true
+                    audioURL: audioURL, segments: segments, enabled: run.settings.speakerLabels == true
                 ) {
                     self.setProcessingPhase(.labelingSpeakers)
                     return try await SpeakerLabels.detect(
@@ -829,7 +910,7 @@ final class AppModel: ObservableObject {
                             guard let self, self.processingPhase == .labelingSpeakers,
                                   !self.cancellingTranscription, fraction.isFinite else { return }
                             self.processingFraction = min(max(fraction, 0), 1)
-                            self.statusText = "Identifying speakers on this Mac…"
+                            self.processingStatusText = "Identifying speakers on this Mac…"
                         }
                     }
                 }
@@ -840,37 +921,37 @@ final class AppModel: ObservableObject {
 
             try Task.checkCancellation()
             setProcessingPhase(.writingFiles)
-            if !titleWasProvided && replacing == nil {
+            if !run.titleWasProvided && run.replacing == nil {
                 let generatedTitle = await Task.detached(priority: .utility) {
                     MeetingTitle.suggest(from: segments.map(\.text).joined(separator: "\n"))
                 }.value
                 if let generatedTitle {
                     folder = try MeetingArtifacts.renameDirectory(folder, title: generatedTitle, recordedAt: recordedAt)
-                    activeFolder = folder
-                    meetingTitle = generatedTitle
+                    title = generatedTitle
+                    processingTitle = generatedTitle
                 }
             }
-            if let replacing {
-                try MeetingArtifacts.replaceTranscript(for: replacing, duration: elapsed, segments: segments, speechSettings: settings)
+            if let replacing = run.replacing {
+                try MeetingArtifacts.replaceTranscript(for: replacing, duration: duration, segments: segments, speechSettings: run.settings)
             } else {
                 try MeetingArtifacts.write(
-                    title: meetingTitle,
+                    title: title,
                     recordedAt: recordedAt,
-                    duration: elapsed,
+                    duration: duration,
                     segments: segments,
-                    titleWasProvided: titleWasProvided,
-                    speechSettings: settings,
+                    titleWasProvided: run.titleWasProvided,
+                    speechSettings: run.settings,
                     to: folder
                 )
             }
 
             completedFolder = folder
             completionFolder = folder
-            modelReady = LocalTranscriber.cachedModelFolder(model: speechSettings.model) != nil
+            modelReady = LocalTranscriber.cachedModelFolder(model: run.settings.model) != nil
             modelSetupError = nil
             refreshHistory()
             let meeting = MeetingArtifacts.meeting(in: folder)
-            if !inBatch, completionMessage == nil {
+            if !inBatch {
                 completionMessage = "Transcript saved."
             }
             if exportAfterRecording, let meeting {
@@ -890,27 +971,28 @@ final class AppModel: ObservableObject {
                 title: meeting?.title ?? folder.lastPathComponent,
                 folder: folder, failed: false
             )
-            endProcessing(succeeded: !Task.isCancelled, inBatch: inBatch)
             return true
         } catch {
-            if let activeFolder {
-                completedFolder = activeFolder
-            }
+            completedFolder = run.folder
             if Task.isCancelled {
-                completionFolder = activeFolder
-                completionMessage = replacing == nil
+                completionFolder = run.folder
+                completionMessage = run.replacing == nil
                     ? "Transcription cancelled. Recording kept; choose it from the Transcribe all menu to resume."
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
                 refreshHistory()
-                endProcessing(succeeded: false)
                 return false
             }
-            fail(error)
-            if let activeFolder {
-                await MeetingNotifications.post(title: meetingTitle, folder: activeFolder, failed: true)
-            }
+            failProcessing(error, folder: run.folder)
+            await MeetingNotifications.post(title: run.title, folder: run.folder, failed: true)
             return false
         }
+    }
+
+    // ponytail: background failure while recording is not shown as its own screen.
+    private func failProcessing(_ error: Error, folder: URL) {
+        completedFolder = folder
+        guard state == .idle else { return }
+        fail(error)
     }
 
     func recordingDidStart(at startDate: Date) {
@@ -965,45 +1047,22 @@ final class AppModel: ObservableObject {
         systemAudioLevel = 0
     }
 
-    private func resetRun() {
-        activeFolder = nil
-        recordedAt = nil
-        meetingTitle = ""
-        elapsed = 0
-    }
-
-    /// Shared teardown once a processing run ends, whatever the outcome.
-    private func endProcessing(succeeded: Bool, inBatch: Bool = false) {
-        elapsed = 0
-        statusText = "Ready to record your display and audio."
-        errorMessage = nil
-        privacyPermission = nil
-        processingPhase = nil
-        processingFraction = nil
-        resetRun()
-        guard !inBatch else { return }
-        state = .idle
-        processingTask = nil
-        cancellingTranscription = false
-        completeTermination(succeeded)
-    }
-
     private func updateTranscriptionProgress(_ progress: LocalTranscriptionProgress) {
         guard !cancellingTranscription else { return }
-        guard state == .processing, !isExportingBundle, processingPhase != .labelingSpeakers else { return }
+        guard isProcessing, !isExportingBundle, processingPhase != .labelingSpeakers else { return }
 
         if let step = progress.modelStep {
             setProcessingPhase(step.phase, fraction: step.fraction)
         } else if case .transcribing(let fraction, let language, let pass, let total) = progress {
             setProcessingPhase(.transcribing, fraction: fraction)
             let name = TranscriptionLanguage(rawValue: language)?.label ?? language
-            statusText = "Transcribing \(name) · pass \(pass) of \(total)…"
+            processingStatusText = "Transcribing \(name) · pass \(pass) of \(total)…"
         }
     }
 
     private func setProcessingPhase(_ phase: ProcessingPhase, fraction: Double? = nil) {
         processingPhase = phase
-        statusText = phase.statusText
+        processingStatusText = phase.statusText
         processingFraction = fraction
     }
 
@@ -1011,11 +1070,13 @@ final class AppModel: ObservableObject {
         stopTimer()
         state = .failed
         statusText = "Couldn’t finish this recording."
-        processingFraction = nil
-        processingPhase = nil
+        if processingTask == nil {
+            processingFraction = nil
+            processingPhase = nil
+        }
         errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        if let activeFolder {
-            completedFolder = activeFolder
+        if let folder = processingFolder ?? activeFolder {
+            completedFolder = folder
         }
         refreshHistory()
         completeTermination(false)

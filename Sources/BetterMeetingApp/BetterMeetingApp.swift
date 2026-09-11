@@ -32,7 +32,10 @@ struct BetterMeetingApp: App {
         .onChange(of: model.state) {
             model.updates.resumePendingInstallation()
         }
-        .onChange(of: model.state == .processing && !reduceMotion, initial: true) { _, animate in
+        .onChange(of: model.isProcessing) {
+            model.updates.resumePendingInstallation()
+        }
+        .onChange(of: model.isProcessing && model.state == .idle && !reduceMotion, initial: true) { _, animate in
             iconTimer?.invalidate()
             iconTimer = nil
             processingFrame = 0

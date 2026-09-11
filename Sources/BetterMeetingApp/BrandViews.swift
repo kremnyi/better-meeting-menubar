@@ -51,11 +51,12 @@ struct MenuBarStatusIcon: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let state: AppState
+    var processing = false
     var processingFrame = 0
 
     var body: some View {
         Group {
-            if state == .processing {
+            if processing, state == .idle {
                 Image(nsImage: BrandAssets.processingMenuBarFrames[processingFrame])
             } else if state == .failed {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -73,11 +74,11 @@ struct MenuBarStatusIcon: View {
     }
 
     private var accessibilityLabel: String {
-        switch state {
+        if processing, state == .idle { return "Better Meeting, processing recording" }
+        return switch state {
         case .idle: "Better Meeting"
         case .preparing: "Better Meeting, preparing to record"
         case .recording: "Better Meeting, recording"
-        case .processing: "Better Meeting, processing recording"
         case .failed: "Better Meeting, needs attention"
         }
     }
@@ -109,7 +110,7 @@ struct MenuBarStatusLabel: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Better Meeting, next meeting \(event.title), \(relative)")
         } else {
-            MenuBarStatusIcon(state: state, processingFrame: processingFrame)
+            MenuBarStatusIcon(state: state, processing: model.isProcessing, processingFrame: processingFrame)
         }
     }
 
@@ -124,6 +125,7 @@ struct MenuBarStatusLabel: View {
 
     private var previewEvent: CalendarEvent? {
         guard state == .idle,
+              !model.isProcessing,
               calendar.menuBarPreview,
               calendar.enabled,
               calendar.authorization == .fullAccess

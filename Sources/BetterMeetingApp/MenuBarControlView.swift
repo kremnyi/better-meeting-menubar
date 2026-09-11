@@ -98,17 +98,17 @@ struct MenuBarControlView: View {
     private var content: some View {
         switch model.state {
         case .idle:
-            idleContent
+            if model.isTranscribingBatch {
+                batchProcessingContent
+            } else if model.isProcessing {
+                processingContent
+            } else {
+                idleContent
+            }
         case .preparing:
             preparingContent
         case .recording:
             recordingContent
-        case .processing:
-            if model.isTranscribingBatch {
-                batchProcessingContent
-            } else {
-                processingContent
-            }
         case .failed:
             failedContent
         }
@@ -181,7 +181,7 @@ struct MenuBarControlView: View {
 
     private var historySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !model.unfinishedRecordings.isEmpty, model.state == .idle {
+            if !model.unfinishedRecordings.isEmpty, model.state == .idle, !model.isProcessing {
                 HStack(spacing: 8) {
                     Text("\(model.unfinishedRecordings.count) unfinished")
                         .font(.callout)
@@ -241,7 +241,7 @@ struct MenuBarControlView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(model.transcriptionHistory) { item in
-                                historyRow(item, isSaved: item.folderURL == model.completedFolder, canEdit: model.state == .idle)
+                                historyRow(item, isSaved: item.folderURL == model.completedFolder, canEdit: model.state == .idle && !model.isProcessing)
 
                                 if item.id != model.transcriptionHistory.last?.id {
                                     Divider()
@@ -404,6 +404,13 @@ struct MenuBarControlView: View {
             captureSummary
 
             modelSetupStatus
+
+            if model.isProcessing {
+                Text("Transcribing \(model.processingTitle.isEmpty ? "the previous meeting" : model.processingTitle) in the background…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -411,10 +418,12 @@ struct MenuBarControlView: View {
         VStack(alignment: .leading, spacing: 12) {
             captureSummary
 
-            Text("Recording is unavailable while transcription runs.")
+            Text("You can start a new recording while this finishes in the background.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            primaryActionButton
 
             Divider()
 
@@ -426,11 +435,11 @@ struct MenuBarControlView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Transcribing \(model.transcriptionBatchIndex) of \(model.transcriptionBatchTotal)")
                         .font(.callout.weight(.medium))
-                    Text(model.meetingTitle)
+                    Text(model.processingTitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .help(model.meetingTitle)
+                        .help(model.processingTitle)
                 }
                 Spacer(minLength: 0)
                 Button("Cancel", action: model.cancelTranscription)
@@ -441,10 +450,10 @@ struct MenuBarControlView: View {
 
             processingIndicator
                 .tint(.blue)
-                .accessibilityLabel(model.statusText)
+                .accessibilityLabel(model.processingStatusText)
 
             HStack(alignment: .top) {
-                Text(model.statusText)
+                Text(model.processingStatusText)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 Text("\(model.transcriptionBatchWaiting) waiting")
@@ -470,7 +479,7 @@ struct MenuBarControlView: View {
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(model.statusText)
+                Text(model.processingStatusText)
                     .font(.callout)
 
                 Spacer()
@@ -484,7 +493,9 @@ struct MenuBarControlView: View {
 
             processingIndicator
                 .tint(.signalCoral)
-                .accessibilityLabel(model.statusText)
+                .accessibilityLabel(model.processingStatusText)
+
+            primaryActionButton
 
             Button(model.isExportingBundle ? "Cancel export" : "Cancel transcription", action: model.cancelTranscription)
                 .disabled(!model.canCancelTranscription)

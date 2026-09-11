@@ -191,7 +191,7 @@ final class RecoveryTests: XCTestCase {
         await model.historyRefreshTask?.value
         model.retryTranscription(try XCTUnwrap(model.unfinishedRecordings.first))
         let processing = try XCTUnwrap(model.processingTask)
-        XCTAssertEqual(model.state, .processing)
+        XCTAssertTrue(model.isProcessing)
 
         var exits = 0
         let finish: (NSAlert) -> NSApplication.ModalResponse = { _ in .alertFirstButtonReturn }
@@ -290,7 +290,7 @@ final class RecoveryTests: XCTestCase {
         let item = try XCTUnwrap(model.unfinishedRecordings.first)
         model.retryTranscription(item)
         let processing = try XCTUnwrap(model.processingTask)
-        XCTAssertEqual(model.state, .processing)
+        XCTAssertTrue(model.isProcessing)
         let view = NSHostingView(rootView: MenuBarControlView().environmentObject(model).environmentObject(model.updates)
             .environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))
         view.frame = NSRect(origin: .zero, size: view.fittingSize)

@@ -33,8 +33,8 @@ final class TranscriptionQueueTests: XCTestCase {
                 XCTAssertEqual(active, 1)
                 XCTAssertEqual(model.transcriptionBatchIndex, visited.count + 1)
                 XCTAssertEqual(model.transcriptionBatchWaiting, 2 - visited.count)
-                XCTAssertEqual(model.meetingTitle, item.title)
-                XCTAssertEqual(model.state, .processing)
+                XCTAssertEqual(model.processingTitle, item.title)
+                XCTAssertTrue(model.isProcessing)
                 XCTAssertTrue(model.updates.meetingInProgress)
                 model.transcribeAllRecordings { _ in XCTFail("No overlapping batch"); return false }
                 await Task.yield()
@@ -58,6 +58,33 @@ final class TranscriptionQueueTests: XCTestCase {
             }
             model.recordingDidStart(at: Date())
             XCTAssertNil(model.completionMessage)
+            model.fail(AppError.missingRecording) // Stop the synthetic recording timer; no capture was started.
+        }
+    }
+
+    func testProcessingLeavesALiveRecordingAlone() async throws {
+        try await withMeetings { model in
+            var release: CheckedContinuation<Void, Never>?
+            model.transcribeAllRecordings { _ in
+                await withCheckedContinuation { release = $0 }
+                return false
+            }
+            for _ in 0..<100 where release == nil {
+                await Task.yield()
+            }
+            XCTAssertNotNil(release)
+            XCTAssertTrue(model.isProcessing)
+            XCTAssertEqual(model.state, .idle, "A recording can start while processing runs")
+
+            model.meetingTitle = "Back-to-back meeting"
+            model.recordingDidStart(at: Date())
+            XCTAssertEqual(model.state, .recording)
+
+            release?.resume()
+            await model.processingTask?.value
+            XCTAssertEqual(model.state, .recording, "Processing must not end a live recording")
+            XCTAssertEqual(model.meetingTitle, "Back-to-back meeting", "Processing must not clear the capture fields")
+            XCTAssertFalse(model.isProcessing)
             model.fail(AppError.missingRecording) // Stop the synthetic recording timer; no capture was started.
         }
     }
