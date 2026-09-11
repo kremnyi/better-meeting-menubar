@@ -420,7 +420,7 @@ final class MeetingCalendarTests: XCTestCase {
                     view.frame = NSRect(origin: .zero, size: view.fittingSize)
                     view.layoutSubtreeIfNeeded()
                     XCTAssertEqual(view.fittingSize.width, name == "menu" ? 304 : 360)
-                    // Guards against runaway growth: the tallest stress state (2-line title plus a second today meeting) sits at 715, so 740 keeps a real budget while still catching an unbounded list.
+                    // Guards against runaway growth: the tallest stress state (2-line title plus a second today meeting) sits at 727, so 740 keeps a real budget while still catching an unbounded list.
                     XCTAssertLessThan(view.fittingSize.height, 740)
                     if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
                         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))

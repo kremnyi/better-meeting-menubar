@@ -184,8 +184,6 @@ struct UpcomingMeetingView: View {
                                 Text("In 5 minutes · 10:00 – 11:00")
                                     .font(.caption).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
-                                Text("Calendar").font(.caption).foregroundStyle(.secondary)
-                                    .lineLimit(1)
                             }
                             Spacer(minLength: 0)
                             Image(systemName: "record.circle")
@@ -209,7 +207,6 @@ struct UpcomingMeetingView: View {
                                                 .fixedSize(horizontal: false, vertical: true)
                                                 .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
                                         }
-                                        Text(event.calendarTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     Button { record(event) } label: {
@@ -222,14 +219,22 @@ struct UpcomingMeetingView: View {
                                     .accessibilityLabel("Record this meeting: \(event.title)")
                                     .help("Record this meeting")
                                 }
-                                ForEach(layout.compact) { meeting in
-                                    HStack(spacing: 8) {
-                                        Text(meeting.timeRange)
-                                            .font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                                        Text(meeting.title).font(.caption).lineLimit(1)
-                                        Spacer(minLength: 0)
+                                if !layout.compact.isEmpty {
+                                    Divider().padding(.vertical, 2)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Later today")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+                                            ForEach(layout.compact) { meeting in
+                                                GridRow {
+                                                    Text(meeting.timeRange)
+                                                        .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                                    Text(meeting.title).font(.caption).lineLimit(1)
+                                                }
+                                                .help("Later today · " + meeting.title)
+                                            }
+                                        }
                                     }
-                                    .help(meeting.title + " · " + meeting.calendarTitle)
                                 }
                                 if layout.extraTodayCount > 0 {
                                     Button {
@@ -253,7 +258,7 @@ struct UpcomingMeetingView: View {
                                 if let tomorrow = layout.tomorrowFirst {
                                     Text("Tomorrow " + tomorrow.scheduledStart.formatted(date: .omitted, time: .shortened) + " · " + tomorrow.title)
                                         .lineLimit(1)
-                                        .help(tomorrow.title + " · " + tomorrow.calendarTitle)
+                                        .help(tomorrow.title)
                                 }
                             }
                             .font(.caption).foregroundStyle(.secondary)
