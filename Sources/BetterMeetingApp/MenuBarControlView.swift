@@ -80,8 +80,21 @@ struct MenuBarControlView: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-        case .ready, .failed:
-            Button(updates.status == .failed ? "Update failed — View details" : updates.status.message) {
+        case .ready:
+            Button(updates.actionTitle) {
+                updates.performAction()
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(updates.canPerformAction ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            .disabled(!updates.canPerformAction)
+            .help(updates.installationWaiting
+                ? "The update will install when this meeting finishes."
+                : updates.meetingInProgress
+                    ? "Finish recording or processing before updating."
+                    : "Install the update and relaunch Better Meeting")
+        case .failed:
+            Button("Update failed — View details") {
                 appSettingsPresented = true
                 captureOptionsPresented = true
             }

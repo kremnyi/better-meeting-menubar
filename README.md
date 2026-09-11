@@ -42,9 +42,9 @@ with a separate signing key before extraction.
 
 Enable **Download updates automatically** there to check GitHub on each launch and
 periodically while the app is open, preparing updates in the background. This is off
-by default. A blue dot beside **Options** means an update is ready. **Restart to
-Update** installs and reopens the app. A prepared update can also install
-when you quit. Recording or processing must finish before restarting. If macOS
+by default. A blue dot beside **Options** means an update is ready. Click **Restart to
+Update** in the menu footer to install and reopen the app; a prepared update also
+installs when you quit. Recording or processing must finish before restarting. If macOS
 requires authorization, click **Install Update** to continue. Failed updates show
 an inline retry action.
 
