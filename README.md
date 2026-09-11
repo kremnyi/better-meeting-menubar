@@ -109,10 +109,11 @@ Better Meeting to open at login.
 
 ## Calendar integration
 
-The menu can show your next meeting from the macOS Calendar app. Enable
-**Options → Calendars** and choose which calendars to read. The menu shows the
-next event within 24 hours with a **Record this meeting** button that starts a
-recording named after the event. With **Notify at start** enabled, the app also
+The menu can show your meetings from the macOS Calendar app. Enable
+**Options → Calendars** and choose which calendars to read. The menu lists
+today's remaining meetings, with a **Record this meeting** button on the first
+one that starts a recording named after the event; once today is done it names
+the first meeting of tomorrow. With **Notify at start** enabled, the app also
 sends a notification when the event starts.
 
 The integration is off by default, reads events only, and never edits them.

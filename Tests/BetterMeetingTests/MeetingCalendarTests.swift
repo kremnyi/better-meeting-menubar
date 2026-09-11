@@ -420,7 +420,8 @@ final class MeetingCalendarTests: XCTestCase {
                     view.frame = NSRect(origin: .zero, size: view.fittingSize)
                     view.layoutSubtreeIfNeeded()
                     XCTAssertEqual(view.fittingSize.width, name == "menu" ? 304 : 360)
-                    XCTAssertLessThan(view.fittingSize.height, 700)
+                    // Guards against runaway growth: the tallest stress state (2-line title plus a second today meeting) sits at 715, so 740 keeps a real budget while still catching an unbounded list.
+                    XCTAssertLessThan(view.fittingSize.height, 740)
                     if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
                         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
                         view.cacheDisplay(in: view.bounds, to: bitmap)
@@ -431,6 +432,46 @@ final class MeetingCalendarTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testUpcomingLayoutKeepsTodayCappedWithCount() throws {
+        let calendar = Calendar.current
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 11, hour: 12)))
+        let first = try calendarEventFixture(id: "first", date: now.addingTimeInterval(3_600))
+        let second = try calendarEventFixture(id: "second", date: now.addingTimeInterval(7_200))
+        let third = try calendarEventFixture(id: "third", date: now.addingTimeInterval(10_800))
+        let fourth = try calendarEventFixture(id: "fourth", date: now.addingTimeInterval(14_400))
+        let tomorrow = try calendarEventFixture(id: "tomorrow", date: now.addingTimeInterval(86_400))
+        let layout = UpcomingMeetingLayout.make(events: [first, second, third, fourth, tomorrow], now: now)
+        XCTAssertEqual(layout.primary?.id, "first")
+        XCTAssertEqual(layout.compact.map(\.id), ["second", "third"])
+        XCTAssertEqual(layout.extraTodayCount, 1)
+        XCTAssertNil(layout.tomorrowFirst, "Tomorrow appears only once today is done")
+    }
+
+    func testUpcomingLayoutKeepsInProgressMeetingAsPrimary() throws {
+        let calendar = Calendar.current
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 11, hour: 12, minute: 30)))
+        let ongoing = try calendarEventFixture(id: "ongoing", date: now.addingTimeInterval(-900))
+        let next = try calendarEventFixture(id: "next", date: now.addingTimeInterval(2_700))
+        let layout = UpcomingMeetingLayout.make(events: [ongoing, next], now: now)
+        XCTAssertEqual(layout.primary?.id, "ongoing")
+        XCTAssertEqual(layout.compact.map(\.id), ["next"])
+        XCTAssertEqual(layout.extraTodayCount, 0)
+        XCTAssertNil(layout.tomorrowFirst)
+    }
+
+    func testUpcomingLayoutFallsBackToTomorrowLineWhenTodayIsDone() throws {
+        let calendar = Calendar.current
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 11, hour: 20)))
+        let midnight = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 12)))
+        let first = try calendarEventFixture(id: "midnight", date: midnight)
+        let later = try calendarEventFixture(id: "later", date: midnight.addingTimeInterval(14_400))
+        let layout = UpcomingMeetingLayout.make(events: [first, later], now: now)
+        XCTAssertNil(layout.primary)
+        XCTAssertTrue(layout.compact.isEmpty)
+        XCTAssertEqual(layout.extraTodayCount, 0)
+        XCTAssertEqual(layout.tomorrowFirst?.id, "midnight")
     }
 }
 

@@ -196,35 +196,69 @@ struct UpcomingMeetingView: View {
                         .disabled(true)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Loading upcoming meetings")
-                    } else if let event = calendar.events.first {
-                        HStack(alignment: .top, spacing: 8) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(event.title).lineLimit(2).help(event.title)
-                                TimelineView(.periodic(from: .now, by: 60)) { context in
-                                    Text(event.relativeStart(at: context.date) + " · " + event.timeRange)
-                                        .font(.caption).foregroundStyle(.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
-                                }
-                                Text(event.calendarTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            Button { record(event) } label: {
-                                Image(systemName: "record.circle")
-                                    .font(.system(size: 16))
-                                    .frame(width: 24, height: 24)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("Record this meeting: \(event.title)")
-                            .help("Record this meeting")
-                        }
                     } else {
-                        Text(calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) })
-                             ? "No meetings in the next 24 hours."
-                             : "Choose calendars in Options to see meetings.")
+                        let layout = UpcomingMeetingLayout.make(events: calendar.events, now: Date())
+                        if let event = layout.primary {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .top, spacing: 8) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(event.title).lineLimit(2).help(event.title)
+                                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                                            Text(event.relativeStart(at: context.date) + " · " + event.timeRange)
+                                                .font(.caption).foregroundStyle(.secondary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                                .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
+                                        }
+                                        Text(event.calendarTitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    Button { record(event) } label: {
+                                        Image(systemName: "record.circle")
+                                            .font(.system(size: 16))
+                                            .frame(width: 24, height: 24)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Record this meeting: \(event.title)")
+                                    .help("Record this meeting")
+                                }
+                                ForEach(layout.compact) { meeting in
+                                    HStack(spacing: 8) {
+                                        Text(meeting.timeRange)
+                                            .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                        Text(meeting.title).font(.caption).lineLimit(1)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .help(meeting.title + " · " + meeting.calendarTitle)
+                                }
+                                if layout.extraTodayCount > 0 {
+                                    Button {
+                                        if let url = URL(string: "ical://") { NSWorkspace.shared.open(url) }
+                                    } label: {
+                                        Text(layout.extraTodayCount == 1 ? "1 more today" : "\(layout.extraTodayCount) more today")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Show the rest in Calendar")
+                                    .accessibilityLabel("Show \(layout.extraTodayCount) more meetings in Calendar")
+                                }
+                            }
+                        } else if !calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) }) {
+                            Text("Choose calendars in Options to see meetings.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("No more meetings today.")
+                                if let tomorrow = layout.tomorrowFirst {
+                                    Text("Tomorrow " + tomorrow.scheduledStart.formatted(date: .omitted, time: .shortened) + " · " + tomorrow.title)
+                                        .lineLimit(1)
+                                        .help(tomorrow.title + " · " + tomorrow.calendarTitle)
+                                }
+                            }
                             .font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 Divider()
@@ -242,6 +276,33 @@ struct UpcomingMeetingView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await calendar.refresh() }
         }
+    }
+}
+
+/// Splits the 24-hour event window for the menu's upcoming section. The window
+/// itself stays 24 hours because reminders and the menu-bar preview depend on
+/// it; the menu shows only today — the first meeting in full, then at most two
+/// one-line rows and a count of the rest — and falls back to the first meeting
+/// of tomorrow once today is done.
+struct UpcomingMeetingLayout {
+    let primary: CalendarEvent?
+    let compact: [CalendarEvent]
+    let extraTodayCount: Int
+    let tomorrowFirst: CalendarEvent?
+
+    static let compactLimit = 2
+
+    static func make(events: [CalendarEvent], now: Date, calendar: Calendar = .current) -> UpcomingMeetingLayout {
+        let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        let today = events.filter { $0.scheduledStart < tomorrowStart }
+        let compact = Array(today.dropFirst().prefix(compactLimit))
+        let tomorrow = events.first { $0.scheduledStart >= tomorrowStart }
+        return UpcomingMeetingLayout(
+            primary: today.first,
+            compact: compact,
+            extraTodayCount: max(0, today.count - 1 - compact.count),
+            tomorrowFirst: today.isEmpty ? tomorrow : nil
+        )
     }
 }
 
