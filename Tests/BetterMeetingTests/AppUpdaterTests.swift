@@ -19,6 +19,22 @@ final class AppUpdaterTests: XCTestCase {
     }
 
     @MainActor
+    func testBetaChannelOptInDefaultsOffAndAppliesToUpdater() throws {
+        let suite = "BetterMeetingUpdates.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = AppModel(defaults: defaults)
+        XCTAssertFalse(model.betaUpdates)
+        XCTAssertFalse(model.updates.allowsBetaUpdates)
+        model.betaUpdates = true
+        XCTAssertTrue(model.updates.allowsBetaUpdates)
+        XCTAssertTrue(AppModel(defaults: defaults).betaUpdates)
+        XCTAssertTrue(AppModel(defaults: defaults).updates.allowsBetaUpdates)
+        model.betaUpdates = false
+        XCTAssertFalse(model.updates.allowsBetaUpdates)
+    }
+
+    @MainActor
     func testInlineUpdateWaitsForClickAndNeverRestartsWhileBusy() {
         _ = NSApplication.shared
         var busy = false

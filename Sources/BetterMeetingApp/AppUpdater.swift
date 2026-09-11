@@ -28,6 +28,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     @Published var canCheckForUpdates = false
     var installationWaiting: Bool { pendingInstallation != nil }
     @Published private(set) var errorMessage: String?
+    var allowsBetaUpdates = false
     private let isBusy: () -> Bool
     private var updateAction: (() -> Void)?
     @Published private var pendingInstallation: (() -> Void)?
@@ -39,6 +40,11 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     init(isBusy: @escaping () -> Bool) {
         self.isBusy = isBusy
         super.init()
+    }
+
+    // Sparkle ignores items tagged with a channel unless the updater asks for it.
+    func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+        allowsBetaUpdates ? ["beta"] : []
     }
 
     func start(automaticChecks: Bool) {

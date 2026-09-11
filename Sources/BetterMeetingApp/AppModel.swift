@@ -117,6 +117,12 @@ final class AppModel: ObservableObject {
     @Published var automaticUpdateChecks: Bool {
         didSet { defaults.set(automaticUpdateChecks, forKey: "checkUpdatesOnLaunch") }
     }
+    @Published var betaUpdates: Bool {
+        didSet {
+            defaults.set(betaUpdates, forKey: "betaUpdates")
+            updates.allowsBetaUpdates = betaUpdates
+        }
+    }
     @Published var exportAfterRecording: Bool {
         didSet { defaults.set(exportAfterRecording, forKey: "exportAfterRecording") }
     }
@@ -168,10 +174,12 @@ final class AppModel: ObservableObject {
         transcriptionHints = defaults.string(forKey: "transcriptionHints") ?? ""
         exportAfterRecording = defaults.bool(forKey: "exportAfterRecording")
         automaticUpdateChecks = defaults.bool(forKey: "checkUpdatesOnLaunch")
+        betaUpdates = defaults.bool(forKey: "betaUpdates")
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
         if (try? speechSettings.validate()) == nil { speechSettings = SpeechSettings() }
         modelReady = LocalTranscriber.cachedModelFolder(model: speechSettings.model) != nil
+        updates.allowsBetaUpdates = betaUpdates
         recorder.onUnexpectedStop = { [weak self] error in
             self?.captureStoppedExternally(with: error)
         }

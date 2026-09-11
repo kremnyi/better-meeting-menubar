@@ -149,3 +149,26 @@ instead. `auto_updates true` in the cask identifies the built-in updater.
 Release notes must explain self-signing and first-launch approval. Keep checksum
 verification and platform requirements in the cask. Install hooks must not disable
 security checks or remove meetings.
+
+## Publish a beta
+
+Beta builds share the archive, signing identity, and feed with stable releases.
+The feed item carries `sparkle:channel beta`, which hides it from everyone who has
+not enabled **Options → Include beta releases**. The same feed keeps the current
+stable item, so stable users only ever see stable releases.
+
+The opt-in toggle ships with the next stable release. A beta cut before that
+release is only reachable by installing its ZIP manually; later betas arrive
+through Sparkle like any other update.
+
+1. Set `CFBundleShortVersionString` to the upcoming version with a `b<number>`
+   suffix (for example `0.3.42b1`) and increment `CFBundleVersion` past the
+   published stable build. The stable release that ends the series needs a higher
+   `CFBundleVersion` than every beta in it, so beta users move on to it.
+2. Run `swift test`, then `./scripts/package-release.sh beta`. The script signs the
+   archive as usual and writes a feed that pairs the beta with the current stable
+   archive found in `dist/` or `.build/sparkle-release/`. It stops with an error
+   when that ZIP is missing.
+3. Commit `App/Info.plist` and `appcast.xml`, tag the commit `v<version>`, and publish
+   the GitHub release with the ZIP and checksum from `dist/`. Leave
+   `Casks/better-meeting.rb` on the stable release.

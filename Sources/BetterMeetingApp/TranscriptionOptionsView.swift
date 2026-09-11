@@ -39,7 +39,7 @@ struct CaptureOptionsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Divider()
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     Toggle("Launch at login", isOn: Binding(
                         get: { launchAtLoginStatus == .enabled },
                         set: setLaunchAtLogin
@@ -67,6 +67,8 @@ struct CaptureOptionsView: View {
                     Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
                         .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
                         .padding(.top, 4)
+                    Toggle("Include beta releases", isOn: $model.betaUpdates)
+                        .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
                     UpdateOptionsView(updates: model.updates, version: version)
                 }
                 .toggleStyle(.checkbox)

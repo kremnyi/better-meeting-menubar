@@ -48,6 +48,11 @@ when you quit. Recording or processing must finish before restarting. If macOS
 requires authorization, click **Install Update** to continue. Failed updates show
 an inline retry action.
 
+**Options → Include beta releases** opts into pre-release builds tagged as beta.
+They install the same way as stable releases, which still arrive either way. Turn
+the toggle off to stop receiving betas. The installed beta stays until a newer
+stable release arrives.
+
 To update with Homebrew, finish any active recording, quit the app, and run:
 
 ```bash
