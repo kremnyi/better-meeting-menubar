@@ -92,8 +92,12 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(event.relativeStart(at: now, calendar: calendar), "Starts in 18 min")
         XCTAssertEqual(event.relativeStart(at: event.scheduledStart.addingTimeInterval(-30), calendar: calendar), "Starts in 1 min")
         XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar), "Starts in 1 hr 18 min")
+        // The menu bar drops the verb to save width; the other states have no verb to drop.
+        XCTAssertEqual(event.relativeStart(at: now, calendar: calendar, compact: true), "in 18 min")
+        XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar, compact: true), "in 1 hr 18 min")
         let inProgress = event.relativeStart(at: event.scheduledStart, calendar: calendar)
         XCTAssertTrue(inProgress.hasPrefix("until "), "In progress should state the end time")
+        XCTAssertEqual(event.relativeStart(at: event.scheduledStart, calendar: calendar, compact: true), inProgress)
         XCTAssertEqual(event.relativeStart(at: event.scheduledEnd, calendar: calendar), "Ended")
         let tomorrowText = event.relativeStart(at: now.addingTimeInterval(-86400), calendar: calendar)
         XCTAssertTrue(tomorrowText.hasPrefix("Tomorrow "), "Tomorrow should include the start time")

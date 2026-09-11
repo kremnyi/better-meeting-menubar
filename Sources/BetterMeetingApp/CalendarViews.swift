@@ -312,7 +312,9 @@ struct UpcomingMeetingLayout {
 }
 
 extension CalendarEvent {
-    func relativeStart(at now: Date, calendar: Calendar = .current) -> String {
+    /// `compact` drops the leading verb for the menu bar, where horizontal
+    /// space is scarce: "in 26 min" rather than "Starts in 26 min".
+    func relativeStart(at now: Date, calendar: Calendar = .current, compact: Bool = false) -> String {
         if scheduledEnd <= now { return "Ended" }
         if scheduledStart <= now { return "until " + scheduledEnd.formatted(date: .omitted, time: .shortened) }
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
@@ -320,9 +322,10 @@ extension CalendarEvent {
         if days == 1 { return "Tomorrow " + scheduledStart.formatted(date: .omitted, time: .shortened) }
         if days != 0 { return scheduledStart.formatted(date: .abbreviated, time: .omitted) }
         let minutes = Int(ceil(scheduledStart.timeIntervalSince(now) / 60))
-        if minutes < 60 { return "Starts in \(minutes) min" }
+        let verb = compact ? "" : "Starts "
+        if minutes < 60 { return verb + "in \(minutes) min" }
         let remainder = minutes % 60
-        return "Starts in \(minutes / 60) hr" + (remainder == 0 ? "" : " \(remainder) min")
+        return verb + "in \(minutes / 60) hr" + (remainder == 0 ? "" : " \(remainder) min")
     }
 
     var timeRange: String {

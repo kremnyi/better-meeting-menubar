@@ -98,7 +98,7 @@ struct MenuBarStatusLabel: View {
     var body: some View {
         if let event = previewEvent {
             let now = Date()
-            let relative = event.relativeStart(at: now)
+            let relative = event.relativeStart(at: now, compact: true)
             HStack(spacing: 5) {
                 Image(nsImage: BrandAssets.menuBarIcon)
                     .frame(width: 18, height: 18)
