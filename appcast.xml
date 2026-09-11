@@ -1,7 +1,18 @@
-<?xml version="1.0" standalone="yes"?>
+<?xml version='1.0' encoding='utf-8'?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>Better Meeting</title>
+        <item>
+            <title>0.3.43b1</title>
+            <pubDate>Fri, 11 Sep 2026 10:54:57 +0200</pubDate>
+            <link>https://github.com/kremnyi/better-meeting-menubar/releases/tag/v0.3.43b1</link>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>46</sparkle:version>
+            <sparkle:shortVersionString>0.3.43b1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/kremnyi/better-meeting-menubar/releases/download/v0.3.43b1/Better-Meeting-0.3.43b1-arm64.zip" length="4752789" type="application/octet-stream" sparkle:edSignature="3SwDdxMDcbpSDzNBraCWpDT+Q+E619yq7rmKHL1ME8Orf6xzMOGznPnrc2arwBNmIIPpmhQDv+dOtOuwsPJmCQ==" />
+        </item>
         <item>
             <title>0.3.42</title>
             <pubDate>Fri, 11 Sep 2026 10:52:59 +0200</pubDate>
@@ -10,7 +21,7 @@
             <sparkle:shortVersionString>0.3.42</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/kremnyi/better-meeting-menubar/releases/download/v0.3.42/Better-Meeting-0.3.42-arm64.zip" length="4745538" type="application/octet-stream" sparkle:edSignature="tjuHqlKP36a0DgZK+0przAjbt8nc9cv5PDVR44Lrmrbc5X1KueCzm1IkJM4ZI04Eg3UyjuF97s7UAJKW5uoAAA=="/>
+            <enclosure url="https://github.com/kremnyi/better-meeting-menubar/releases/download/v0.3.42/Better-Meeting-0.3.42-arm64.zip" length="4745538" type="application/octet-stream" sparkle:edSignature="tjuHqlKP36a0DgZK+0przAjbt8nc9cv5PDVR44Lrmrbc5X1KueCzm1IkJM4ZI04Eg3UyjuF97s7UAJKW5uoAAA==" />
         </item>
     </channel>
 </rss>
