@@ -5,6 +5,7 @@ struct CaptureOptionsView: View {
     @EnvironmentObject private var model: AppModel
     @State var advancedPresented = false
     @State var calendarsPresented = false
+    @State var appSettingsPresented = false
     @State var launchAtLoginStatus = SMAppService.mainApp.status
     @State var launchAtLoginError: String?
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -29,6 +30,13 @@ struct CaptureOptionsView: View {
                     modelSelectionDisabled: model.modelPreparationTask != nil
                 )
                 .disabled(model.updates.meetingInProgress)
+            } else if appSettingsPresented {
+                Button { appSettingsPresented = false } label: {
+                    Label("Options", systemImage: "chevron.left")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                appSettings
             } else {
                 basicOptions
                     .disabled(model.updates.meetingInProgress)
@@ -38,40 +46,6 @@ struct CaptureOptionsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Launch at login", isOn: Binding(
-                        get: { launchAtLoginStatus == .enabled },
-                        set: setLaunchAtLogin
-                    ))
-                    if launchAtLoginStatus == .requiresApproval || launchAtLoginError != nil {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if launchAtLoginStatus == .requiresApproval {
-                                Text("Allow Better Meeting to open at login in System Settings.")
-                            } else if launchAtLoginStatus == .notFound {
-                                Text("Open Better Meeting from Applications and try again.")
-                            } else {
-                                Text("Couldn’t change launch at login. Try again or check Login Items.")
-                            }
-                            if launchAtLoginStatus != .notFound {
-                                Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
-                                    .buttonStyle(.link)
-                                    .foregroundStyle(.tint)
-                            }
-                        }
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.leading, 18)
-                        .help(launchAtLoginError ?? "")
-                    }
-                    Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
-                        .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
-                        .padding(.top, 4)
-                    Toggle("Include beta releases", isOn: $model.betaUpdates)
-                        .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
-                    UpdateOptionsView(updates: model.updates, version: version)
-                }
-                .toggleStyle(.checkbox)
             }
         }
         .font(.callout)
@@ -83,6 +57,44 @@ struct CaptureOptionsView: View {
             launchAtLoginStatus = SMAppService.mainApp.status
             launchAtLoginError = nil
         }
+    }
+
+    private var appSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("App settings").font(.headline)
+            Toggle("Launch at login", isOn: Binding(
+                get: { launchAtLoginStatus == .enabled },
+                set: setLaunchAtLogin
+            ))
+            if launchAtLoginStatus == .requiresApproval || launchAtLoginError != nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    if launchAtLoginStatus == .requiresApproval {
+                        Text("Allow Better Meeting to open at login in System Settings.")
+                    } else if launchAtLoginStatus == .notFound {
+                        Text("Open Better Meeting from Applications and try again.")
+                    } else {
+                        Text("Couldn’t change launch at login. Try again or check Login Items.")
+                    }
+                    if launchAtLoginStatus != .notFound {
+                        Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
+                            .buttonStyle(.link)
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 18)
+                .help(launchAtLoginError ?? "")
+            }
+            Divider()
+            Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
+                .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
+            Toggle("Include beta releases", isOn: $model.betaUpdates)
+                .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
+            UpdateOptionsView(updates: model.updates, version: version)
+        }
+        .toggleStyle(.checkbox)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var basicOptions: some View {
@@ -181,6 +193,18 @@ struct CaptureOptionsView: View {
                 }
                 .gridCellColumns(2)
             }
+            Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
+            GridRow {
+                HStack {
+                    Text("App").font(.headline)
+                    Spacer()
+                    Button("Settings…") { appSettingsPresented = true }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("App settings")
+                        .help("Launch at login, updates, and the installed version")
+                }
+                .gridCellColumns(2)
+            }
         }
     }
 
@@ -254,14 +278,13 @@ struct TranscriptionOptionsView: View {
                 .help(languageNames + ". Select the languages you expect. At least one is required.")
             }
             GridRow {
-                Text("Speakers")
-                Toggle("Add labels", isOn: Binding(
+                Toggle("Add speaker labels", isOn: Binding(
                     get: { settings.speakerLabels == true },
                     set: { settings.speakerLabels = $0 }
                 ))
                 .toggleStyle(.checkbox)
-                .accessibilityLabel("Add speaker labels")
                 .help("Adds Speaker 1, Speaker 2… Downloads about 11 MB once. Labels may need correction.")
+                .gridCellColumns(2)
             }
             GridRow {
                 Text("Extra languages and speaker labels take longer.")

@@ -406,10 +406,11 @@ final class RecoveryTests: XCTestCase {
             ("options-current", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .current),
             ("options-checking", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .checking),
             ("options-ready", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .ready("0.3.24")),
-            ("options-login-enabled", AnyView(CaptureOptionsView(launchAtLoginStatus: .enabled, version: "0.3.23")), 360, .unchecked),
-            ("options-login-approval", AnyView(CaptureOptionsView(launchAtLoginStatus: .requiresApproval, version: "0.3.23")), 360, .unchecked),
-            ("options-login-error", AnyView(CaptureOptionsView(launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23")), 360, .unchecked),
-            ("options-login-missing", AnyView(CaptureOptionsView(launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.", version: "0.3.23")), 360, .unchecked),
+            ("options-app", AnyView(CaptureOptionsView(appSettingsPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("options-login-enabled", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .enabled, version: "0.3.23")), 360, .unchecked),
+            ("options-login-approval", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .requiresApproval, version: "0.3.23")), 360, .unchecked),
+            ("options-login-error", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23")), 360, .unchecked),
+            ("options-login-missing", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.", version: "0.3.23")), 360, .unchecked),
             ("options-enabled", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("options-single-language", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("options-many-languages", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
@@ -434,8 +435,9 @@ final class RecoveryTests: XCTestCase {
         panels.append(("updates-development", AnyView(UpdateOptionsView(
             updates: model.updates, version: nil
         ).frame(width: 328)), 328, .unchecked))
-        panels.append(("options-update-error", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .failed))
+        panels.append(("options-update-error", AnyView(CaptureOptionsView(appSettingsPresented: true, version: "0.3.23")), 360, .failed))
         var optionsHeight: CGFloat?
+        var appHeight: CGFloat?
         var updatesHeight: CGFloat?
         for (name, content, width, status) in panels {
             model.updates.canCheckForUpdates = status != .checking
@@ -457,12 +459,16 @@ final class RecoveryTests: XCTestCase {
             XCTAssertEqual(view.fittingSize.width, width, "\(name) must keep its panel width")
             XCTAssertGreaterThan(view.fittingSize.height, 0)
             if ["options", "options-current", "options-checking", "options-ready"].contains(name) {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 480, "Options, including update controls, must stay compact")
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 400, "Options must stay compact")
                 if let optionsHeight { XCTAssertEqual(view.fittingSize.height, optionsHeight, "Update states must not resize Options") }
                 else { optionsHeight = view.fittingSize.height }
             }
-            if name == "options-update-error", let optionsHeight {
-                XCTAssertGreaterThan(view.fittingSize.height, optionsHeight, "Error details must remain visible inline")
+            if name == "options-app" {
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 300, "App settings must stay compact")
+                appHeight = view.fittingSize.height
+            }
+            if name == "options-update-error", let appHeight {
+                XCTAssertGreaterThan(view.fittingSize.height, appHeight, "Error details must remain visible inline")
             }
             if ["updates-unchecked", "updates-checking", "updates-current", "updates-failed"].contains(name) {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 60, "Update controls must stay compact")

@@ -154,8 +154,8 @@ security checks or remove meetings.
 
 Beta builds share the archive, signing identity, and feed with stable releases.
 The feed item carries `sparkle:channel beta`, which hides it from everyone who has
-not enabled **Options → Include beta releases**. The same feed keeps the current
-stable item, so stable users only ever see stable releases.
+not enabled **Options → App → Settings… → Include beta releases**. The same feed
+keeps the current stable item, so stable users only ever see stable releases.
 
 Stable 0.3.42 and later carry the toggle, so opted-in users receive beta cuts
 through Sparkle like any other update. Installations older than that can only

@@ -6,6 +6,7 @@ struct MenuBarControlView: View {
     @EnvironmentObject private var updates: AppUpdater
     @State var captureOptionsPresented = false
     @State private var calendarOptionsPresented = false
+    @State private var appSettingsPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
     @State private var hoveredMeetingID: MeetingHistoryItem.ID?
 
@@ -27,10 +28,16 @@ struct MenuBarControlView: View {
                 .help("Recording and app options")
                 .accessibilityLabel("Options")
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
-                    CaptureOptionsView(calendarsPresented: calendarOptionsPresented)
+                    CaptureOptionsView(
+                        calendarsPresented: calendarOptionsPresented,
+                        appSettingsPresented: appSettingsPresented
+                    )
                 }
                 .onChange(of: captureOptionsPresented) { _, presented in
-                    if !presented { calendarOptionsPresented = false }
+                    if !presented {
+                        calendarOptionsPresented = false
+                        appSettingsPresented = false
+                    }
                 }
 
                 updateStatus
@@ -75,12 +82,13 @@ struct MenuBarControlView: View {
             .foregroundStyle(.secondary)
         case .ready, .failed:
             Button(updates.status == .failed ? "Update failed — View details" : updates.status.message) {
+                appSettingsPresented = true
                 captureOptionsPresented = true
             }
             .buttonStyle(.plain)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .help("Open update options")
+            .help("Open update settings")
         default:
             EmptyView()
         }

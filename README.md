@@ -35,20 +35,20 @@ Managed Macs may not allow this exception.
 
 ## Update the app
 
-Open **Options** to see the installed version, release notes, and **Check for Updates**
-below the automatic-download setting. Update progress and errors stay in Options,
-without separate update dialogs. Sparkle verifies updates with a separate
-signing key before extraction.
+Open **Options → App → Settings…** to see the installed version, release notes, and
+**Check for Updates** below the automatic-download setting. Update progress and
+errors stay on that page, without separate update dialogs. Sparkle verifies updates
+with a separate signing key before extraction.
 
-Enable **Options → Download updates automatically** to check GitHub on each launch
-and periodically while the app is open, preparing updates in the background.
-This is off by default. A blue dot beside **Options** means an update is ready.
-Open **Options → Restart to Update** to install and reopen the app. A prepared update can also install
+Enable **Download updates automatically** there to check GitHub on each launch and
+periodically while the app is open, preparing updates in the background. This is off
+by default. A blue dot beside **Options** means an update is ready. **Restart to
+Update** installs and reopens the app. A prepared update can also install
 when you quit. Recording or processing must finish before restarting. If macOS
 requires authorization, click **Install Update** to continue. Failed updates show
 an inline retry action.
 
-**Options → Include beta releases** opts into pre-release builds tagged as beta.
+**Include beta releases** on the same page opts into pre-release builds tagged as beta.
 They install the same way as stable releases, which still arrive either way. Turn
 the toggle off to stop receiving betas. The installed beta stays until a newer
 stable release arrives. Beta cuts are published as GitHub pre-releases, so the
@@ -103,7 +103,8 @@ recording controls, or a transcription notification to open the meeting's folder
 You can change notification access in macOS **System Settings → Notifications
 → Better Meeting**.
 
-To open the app automatically when you sign in, enable **Options → Launch at login**.
+To open the app automatically when you sign in, enable **Launch at login** in
+**Options → App → Settings…**.
 If macOS requires approval, use **Open Login Items…** below the checkbox and allow
 Better Meeting to open at login.
 
@@ -124,9 +125,11 @@ between recordings and calendar events are stored in the meeting folder; see
 
 ## Recording settings
 
-Options groups settings under **Recording**, **Transcription**, and **Files**.
-These settings remain available after an error and are locked during recording or
-processing. Launch-at-login and automatic-download preferences remain available.
+Options groups settings under **Recording**, **Transcription**, **Files**, and
+**App**; the App row opens launch-at-login, update, and version settings on a
+separate page. These settings remain available after an error and are locked during
+recording or processing; the App page stays available so a prepared update can
+install as soon as the meeting finishes.
 **Resolution** and **Frame rate** are shown directly under Recording and default
 to 1440 px and 10 fps. Resolution
 limits the video's longest edge to 1280, 1440, 1920, or 2560 pixels. It uses
@@ -174,7 +177,7 @@ each transcript; retries reuse them and changed settings invalidate cached passe
 
 ### Speaker labels
 
-**Speakers → Add labels** in **Options → Transcription** is off by default. When enabled,
+**Options → Transcription → Add speaker labels** is off by default. When enabled,
 SpeakerKit identifies voices locally after transcription and adds **Speaker 1**,
 **Speaker 2**, and so on to the transcript and exported timeline. The first use
 downloads about 11 MB of models; later runs use the saved models offline.
@@ -324,7 +327,7 @@ turbo model `openai_whisper-large-v3-v20240930`; its model files total about 1.6
 Downloaded model files are kept when switching. The first load can take longer
 while Core ML prepares the model.
 
-Speaker models are downloaded only when processing with **Add labels** enabled,
+Speaker models are downloaded only when processing with **Add speaker labels** enabled,
 under `~/Documents/huggingface/models/argmaxinc/speakerkit-coreml/`.
 Speaker detection runs locally and releases its models after each run. Its memory
 use also includes the decoded recording, so longer meetings need more memory.
