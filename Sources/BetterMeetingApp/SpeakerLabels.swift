@@ -9,7 +9,7 @@ enum SpeakerLabels {
         let speaker: Int
 
         var isValid: Bool {
-            start.isFinite && end.isFinite && start >= 0 && end > start && speaker >= 0 && speaker < Int.max
+            start.isFinite && end.isFinite && start >= 0 && end > start && speaker >= 0
         }
     }
 

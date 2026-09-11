@@ -300,7 +300,7 @@ final class RecoveryTests: XCTestCase {
         }
         let field = try XCTUnwrap(searchField(in: view), "Processing must keep the history search visible")
         XCTAssertTrue(field.isEnabled)
-        XCTAssertTrue(model.updates.meetingInProgress)
+        XCTAssertTrue(model.updates.isBusy())
         if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("processing.png"))
             let options = NSHostingView(rootView: CaptureOptionsView().environmentObject(model)
@@ -323,7 +323,7 @@ final class RecoveryTests: XCTestCase {
         model.retryTranscription(item)
         await model.processingTask?.value
         XCTAssertEqual(model.state, .failed)
-        XCTAssertFalse(model.updates.meetingInProgress, "A failure must unlock settings so the user can recover")
+        XCTAssertFalse(model.updates.isBusy(), "A failure must unlock settings so the user can recover")
         if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             let options = NSHostingView(rootView: CaptureOptionsView().environmentObject(model)
                 .environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))

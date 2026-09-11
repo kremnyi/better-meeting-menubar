@@ -128,7 +128,7 @@ final class CalendarIntegration: ObservableObject {
         let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect().map { _ in () }
         monitoring = Publishers.Merge4(changes, wake, active, timer).sink { [weak self] in
             Task { @MainActor [weak self] in
-            guard let self, self.enabled && (self.notifyAtStart || self.menuBarPreview) else { return }
+            guard let self, self.enabled else { return }
                 await self.refresh()
             }
         }

@@ -135,7 +135,6 @@ final class AppModel: ObservableObject {
     }
 
     @Published var completionMessage: String?
-    @Published var completionFolder: URL?
     lazy var calendar = CalendarIntegration(defaults: defaults)
     lazy var updates = AppUpdater { [weak self] in
         guard let self else { return true }
@@ -390,7 +389,7 @@ final class AppModel: ObservableObject {
                 if index > 0 { prepareSavedTranscription(item) }
                 guard await process(item) else { break }
                 completed += 1
-                completionFolder = item.folderURL
+                completedFolder = item.folderURL
             }
             let cancelled = Task.isCancelled
             if errorMessage == nil {
@@ -423,7 +422,6 @@ final class AppModel: ObservableObject {
 
     private func prepareSavedTranscription(_ item: MeetingHistoryItem) {
         completionMessage = nil
-        completionFolder = nil
         completedFolder = nil
         if state == .failed { state = .idle }
         processingFolder = item.folderURL
@@ -454,7 +452,6 @@ final class AppModel: ObservableObject {
         guard state == .idle, !isProcessing else { return }
         elapsed = meeting.duration
         completionMessage = nil
-        completionFolder = nil
         errorMessage = nil
         setProcessingPhase(.extractingScreens, fraction: 0)
         processingTask = Task {
@@ -462,12 +459,11 @@ final class AppModel: ObservableObject {
             do {
                 let destination = try await createBundle(for: meeting)
                 completedFolder = meeting.folderURL
-                completionFolder = meeting.folderURL
                 completionMessage = "Export bundle saved in the meeting folder."
                 NSWorkspace.shared.open(destination)
                 succeeded = true
             } catch {
-                completionFolder = meeting.folderURL
+                completedFolder = meeting.folderURL
                 completionMessage = Task.isCancelled
                     ? "Export cancelled. Existing meeting files and bundle are kept."
                     : "Export failed: \(error.localizedDescription)"
@@ -946,7 +942,6 @@ final class AppModel: ObservableObject {
             }
 
             completedFolder = folder
-            completionFolder = folder
             modelReady = LocalTranscriber.cachedModelFolder(model: run.settings.model) != nil
             modelSetupError = nil
             refreshHistory()
@@ -975,7 +970,6 @@ final class AppModel: ObservableObject {
         } catch {
             completedFolder = run.folder
             if Task.isCancelled {
-                completionFolder = run.folder
                 completionMessage = run.replacing == nil
                     ? "Transcription cancelled. Recording kept; choose it from the Transcribe all menu to resume."
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
@@ -998,7 +992,6 @@ final class AppModel: ObservableObject {
     func recordingDidStart(at startDate: Date) {
         stopTimer()
         completionMessage = nil
-        completionFolder = nil
         let recordingID = UUID()
         self.recordingID = recordingID
         elapsed = 0

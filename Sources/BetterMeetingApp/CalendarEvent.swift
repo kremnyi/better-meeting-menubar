@@ -7,12 +7,10 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
         let name: String?
         let email: String?
         let responseStatus: String
-        let normalizedEmail: String?
 
         init(name: String?, email: String?, responseStatus: String) {
             self.name = name
             self.email = email
-            normalizedEmail = email?.lowercased()
             self.responseStatus = responseStatus
         }
 
@@ -20,7 +18,6 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
             name = person.name
             email = person.url.scheme?.lowercased() == "mailto"
                 ? String(person.url.absoluteString.dropFirst(7)).removingPercentEncoding : nil
-            normalizedEmail = email?.lowercased()
             responseStatus = switch person.participantStatus {
             case .accepted: "accepted"
             case .declined: "declined"
@@ -91,9 +88,6 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
     func attach(to folder: URL, recordedAt: Date) throws {
         struct Attachment: Encodable {
             let schemaVersion = 1
-            let meetingId = UUID().uuidString
-            let provider = "eventkit"
-            let attendeeSemantics = "calendar_invitees_not_confirmed_attendance"
             let event: CalendarEvent
             let link: Link
         }

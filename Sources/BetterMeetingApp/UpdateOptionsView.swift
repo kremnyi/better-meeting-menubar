@@ -37,7 +37,7 @@ struct UpdateOptionsView: View {
                 Text("The update will install when this meeting finishes.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if updates.meetingInProgress {
+            } else if updates.isBusy() {
                 Text("Finish recording or processing before updating.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

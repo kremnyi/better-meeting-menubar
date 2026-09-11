@@ -29,7 +29,7 @@ struct CaptureOptionsView: View {
                     settings: $model.speechSettings, hints: $model.transcriptionHints,
                     modelSelectionDisabled: model.modelPreparationTask != nil
                 )
-                .disabled(model.updates.meetingInProgress)
+                .disabled(model.updates.isBusy())
             } else if appSettingsPresented {
                 Button { appSettingsPresented = false } label: {
                     Label("Options", systemImage: "chevron.left")
@@ -39,9 +39,9 @@ struct CaptureOptionsView: View {
                 appSettings
             } else {
                 basicOptions
-                    .disabled(model.updates.meetingInProgress)
-                    .tint(model.updates.meetingInProgress ? .secondary : .accentColor)
-                if model.updates.meetingInProgress {
+                    .disabled(model.updates.isBusy())
+                    .tint(model.updates.isBusy() ? .secondary : .accentColor)
+                if model.updates.isBusy() {
                     Text("Meeting settings are unavailable while recording or processing.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -90,7 +90,7 @@ struct MenuBarControlView: View {
             .disabled(!updates.canPerformAction)
             .help(updates.installationWaiting
                 ? "The update will install when this meeting finishes."
-                : updates.meetingInProgress
+                : updates.isBusy()
                     ? "Finish recording or processing before updating."
                     : "Install the update and relaunch Better Meeting")
         case .failed:
@@ -160,7 +160,7 @@ struct MenuBarControlView: View {
                 Text(message)
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
-                if let folder = model.completionFolder {
+                if let folder = model.completedFolder {
                     Button("Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([folder])
                     }

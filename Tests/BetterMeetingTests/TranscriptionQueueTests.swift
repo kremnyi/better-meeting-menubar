@@ -35,7 +35,7 @@ final class TranscriptionQueueTests: XCTestCase {
                 XCTAssertEqual(model.transcriptionBatchWaiting, 2 - visited.count)
                 XCTAssertEqual(model.processingTitle, item.title)
                 XCTAssertTrue(model.isProcessing)
-                XCTAssertTrue(model.updates.meetingInProgress)
+                XCTAssertTrue(model.updates.isBusy())
                 model.transcribeAllRecordings { _ in XCTFail("No overlapping batch"); return false }
                 await Task.yield()
                 visited.append(item)

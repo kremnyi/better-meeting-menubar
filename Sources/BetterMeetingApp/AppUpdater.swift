@@ -29,7 +29,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     var installationWaiting: Bool { pendingInstallation != nil }
     @Published private(set) var errorMessage: String?
     var allowsBetaUpdates = false
-    private let isBusy: () -> Bool
+    let isBusy: () -> Bool
     private var updateAction: (() -> Void)?
     @Published private var pendingInstallation: (() -> Void)?
     private var updateVersion = ""
@@ -61,8 +61,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
             showUpdaterError(error) {}
         }
     }
-
-    var meetingInProgress: Bool { isBusy() }
 
     var actionTitle: String {
         if informationURL != nil { return "View details" }

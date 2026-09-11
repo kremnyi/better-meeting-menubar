@@ -94,12 +94,6 @@ struct CalendarOptionsView: View {
             .opacity(calendar.enabled ? 1 : 0.5)
         }
         .task { await calendar.refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await calendar.refresh() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
-            Task { await calendar.refresh() }
-        }
     }
 }
 
@@ -269,18 +263,7 @@ struct UpcomingMeetingView: View {
                 Divider()
             }
         }
-        .task {
-            while !Task.isCancelled {
-                await calendar.refresh()
-                do { try await Task.sleep(for: .seconds(60)) } catch { return }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
-            Task { await calendar.refresh() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await calendar.refresh() }
-        }
+        .task { await calendar.refresh() }
     }
 }
 

@@ -1,7 +1,6 @@
 import Foundation
 
-// Read only the search fields; calendar snapshots are owned by the importer/provider.
-// Never re-encode this projection over the full sidecar and lose sync provenance.
+// Read only the search fields; never re-encode this projection over the full sidecar.
 enum MeetingCalendar {
     private struct Attachment: Decodable {
         let schemaVersion: Int
@@ -16,7 +15,6 @@ enum MeetingCalendar {
 
     private struct Participant: Decodable {
         let email: String?
-        let normalizedEmail: String?
         let name: String?
     }
 
@@ -27,7 +25,7 @@ enum MeetingCalendar {
               attachment.schemaVersion == 1 else { return false }
         let event = attachment.event
         let people = event.attendees + [event.organizer].compactMap { $0 }
-        let fields = [event.title] + people.flatMap { [$0.email, $0.normalizedEmail, $0.name].compactMap { $0 } }
+        let fields = [event.title] + people.flatMap { [$0.email, $0.name].compactMap { $0 } }
         return fields.contains { $0.localizedStandardContains(query) }
     }
 }

@@ -8,7 +8,7 @@ struct TranscriptSegment: Codable, Equatable, Sendable {
     var speaker: Int? = nil
 
     var speakerLabel: String? {
-        guard let speaker, speaker >= 0, speaker < Int.max else { return nil }
+        guard let speaker, speaker >= 0 else { return nil }
         return "Speaker \(speaker + 1)"
     }
 }
@@ -17,10 +17,6 @@ struct MeetingManifest: Codable {
     let title: String
     let recordedAt: Date
     let duration: TimeInterval
-    let recording: String
-    let audio: String
-    let transcript: String
-    let segmentCount: Int
     var transcriptionComplete: Bool? = nil
     var titleWasProvided: Bool? = nil
     var speechSettings: SpeechSettings? = nil
@@ -147,7 +143,6 @@ enum MeetingArtifacts {
             title: resolvedTitle,
             recordedAt: recordedAt,
             duration: duration,
-            segmentCount: segments.count,
             transcriptionComplete: true,
             titleWasProvided: titleWasProvided ?? !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             speechSettings: speechSettings,
@@ -159,7 +154,6 @@ enum MeetingArtifacts {
         title: String,
         recordedAt: Date,
         duration: TimeInterval,
-        segmentCount: Int = 0,
         transcriptionComplete: Bool = false,
         titleWasProvided: Bool? = nil,
         speechSettings: SpeechSettings? = nil,
@@ -169,10 +163,6 @@ enum MeetingArtifacts {
             title: resolvedTitle(title, recordedAt: recordedAt),
             recordedAt: recordedAt,
             duration: duration,
-            recording: "recording.mp4",
-            audio: "audio.m4a",
-            transcript: "transcript.md",
-            segmentCount: segmentCount,
             transcriptionComplete: transcriptionComplete,
             titleWasProvided: titleWasProvided ?? !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             speechSettings: speechSettings
