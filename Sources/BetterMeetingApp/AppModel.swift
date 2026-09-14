@@ -72,6 +72,7 @@ private extension LocalTranscriptionProgress {
         case .downloadingModel(let fraction): (.downloadingModel, fraction)
         case .loadingModel: (.loadingModel, nil)
         case .transcribing: nil
+        case .engineTranscribing: nil
         }
     }
 }
@@ -161,6 +162,13 @@ final class AppModel: ObservableObject {
         prepareSpeechModel()
     }
 
+    private static func modelIsCached(_ settings: SpeechSettings) -> Bool {
+        switch settings.selectedEngine {
+        case .whisper: LocalTranscriber.cachedModelFolder(model: settings.model) != nil
+        case .parakeet: LocalTranscriber.cachedParakeetModels()
+        }
+    }
+
     private let defaults: UserDefaults
     private let recorder = MeetingRecorder()
     private let transcriber = LocalTranscriber()
@@ -206,7 +214,7 @@ final class AppModel: ObservableObject {
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
         if (try? speechSettings.validate()) == nil { speechSettings = SpeechSettings() }
-        modelReady = LocalTranscriber.cachedModelFolder(model: speechSettings.model) != nil
+        modelReady = Self.modelIsCached(speechSettings)
         updates.allowsBetaUpdates = betaUpdates
         recorder.onUnexpectedStop = { [weak self] error in
             self?.captureStoppedExternally(with: error)
@@ -314,9 +322,9 @@ final class AppModel: ObservableObject {
 
     func prepareSpeechModel() {
         guard !modelReady, !isProcessing, state == .idle || state == .recording else { return }
-        let selectedModel = speechSettings.model
+        let settings = speechSettings
         prepareSpeechModel { [transcriber] progress in
-            _ = try await transcriber.prepare(model: selectedModel, progressHandler: progress)
+            try await transcriber.prepare(settings: settings, progressHandler: progress)
         }
     }
 
@@ -942,7 +950,7 @@ final class AppModel: ObservableObject {
             }
 
             completedFolder = folder
-            modelReady = LocalTranscriber.cachedModelFolder(model: run.settings.model) != nil
+            modelReady = Self.modelIsCached(run.settings)
             modelSetupError = nil
             refreshHistory()
             let meeting = MeetingArtifacts.meeting(in: folder)
@@ -1050,6 +1058,9 @@ final class AppModel: ObservableObject {
             setProcessingPhase(.transcribing, fraction: fraction)
             let name = TranscriptionLanguage(rawValue: language)?.label ?? language
             processingStatusText = "Transcribing \(name) · pass \(pass) of \(total)…"
+        } else if case .engineTranscribing(let fraction) = progress {
+            setProcessingPhase(.transcribing, fraction: fraction)
+            processingStatusText = "Transcribing with Parakeet…"
         }
     }
 

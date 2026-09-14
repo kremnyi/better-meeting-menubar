@@ -53,6 +53,7 @@ struct CaptureOptionsView: View {
         .padding(16)
         .frame(width: 360, alignment: .leading)
         .onChange(of: model.speechSettings.model) { model.speechModelChanged() }
+        .onChange(of: model.speechSettings.engine) { model.speechModelChanged() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchAtLoginStatus = SMAppService.mainApp.status
             launchAtLoginError = nil
@@ -257,25 +258,27 @@ struct TranscriptionOptionsView: View {
 
     var body: some View {
         Group {
-            GridRow {
-                Text("Languages")
-                Menu(languageNames) {
-                    ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
-                        Toggle(language.label, isOn: Binding(
-                            get: { languages.contains(language.rawValue) },
-                            set: { selected in
-                                if selected { languages.append(language.rawValue) }
-                                else if languages.count > 1 { languages.removeAll { $0 == language.rawValue } }
-                            }
-                        ))
-                        .disabled(languages == [language.rawValue])
+            if settings.usesWhisperOptions {
+                GridRow {
+                    Text("Languages")
+                    Menu(languageNames) {
+                        ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
+                            Toggle(language.label, isOn: Binding(
+                                get: { languages.contains(language.rawValue) },
+                                set: { selected in
+                                    if selected { languages.append(language.rawValue) }
+                                    else if languages.count > 1 { languages.removeAll { $0 == language.rawValue } }
+                                }
+                            ))
+                            .disabled(languages == [language.rawValue])
+                        }
                     }
+                    .lineLimit(1)
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    .accessibilityLabel("Spoken languages")
+                    .accessibilityValue(languageNames)
+                    .help(languageNames + ". Select the languages you expect. At least one is required.")
                 }
-                .lineLimit(1)
-                .frame(minWidth: 0, maxWidth: .infinity)
-                .accessibilityLabel("Spoken languages")
-                .accessibilityValue(languageNames)
-                .help(languageNames + ". Select the languages you expect. At least one is required.")
             }
             GridRow {
                 Toggle("Add speaker labels", isOn: Binding(
@@ -287,7 +290,9 @@ struct TranscriptionOptionsView: View {
                 .gridCellColumns(2)
             }
             GridRow {
-                Text("Extra languages and speaker labels take longer.")
+                Text(settings.usesWhisperOptions
+                     ? "Extra languages and speaker labels take longer."
+                     : "Speaker labels take longer.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .gridCellColumns(2)
@@ -353,15 +358,19 @@ struct AdvancedTranscriptionView: View {
     @Binding var hints: String
     var modelSelectionDisabled = false
 
+    private var engineBinding: Binding<TranscriptionEngine> {
+        Binding(get: { settings.selectedEngine }, set: { settings.engine = $0 })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Advanced transcription").font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                 GridRow {
-                    Text("Model")
-                    Picker("Whisper model", selection: $settings.model) {
-                        ForEach(SpeechModel.allCases, id: \.self) { model in
-                            Text(model.label).tag(model)
+                    Text("Engine")
+                    Picker("Engine", selection: engineBinding) {
+                        ForEach(TranscriptionEngine.allCases, id: \.self) { engine in
+                            Text(engine.label).tag(engine)
                         }
                     }
                     .labelsHidden()
@@ -370,43 +379,71 @@ struct AdvancedTranscriptionView: View {
                 }
                 GridRow {
                     Text("")
-                    Text(settings.model.detail + " Downloads once, then works offline.")
+                    Text(settings.selectedEngine.detail)
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                GridRow {
-                    Text("Vocabulary")
-                    TextField("Names and terms (optional)", text: $hints)
-                        .textFieldStyle(.roundedBorder)
-                        .help("Comma-separated names, companies, or technical terms to help Whisper recognize them")
-                }
-            }
-            Divider()
-            Text("Retries and filtering").font(.headline)
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                option("Temperature", value: $settings.temperature, range: 0...1,
-                       help: "Higher values allow more varied wording; zero uses greedy decoding.")
-                GridRow {
-                    Text("Fallback attempts")
-                    Stepper(value: $settings.fallbackCount, in: 0...10) {
-                        Text("\(settings.fallbackCount)").monospacedDigit()
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                if settings.usesWhisperOptions {
+                    GridRow {
+                        Text("Model")
+                        Picker("Whisper model", selection: $settings.model) {
+                            ForEach(SpeechModel.allCases, id: \.self) { model in
+                                Text(model.label).tag(model)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+                        .disabled(modelSelectionDisabled)
                     }
-                        .frame(width: 76)
-                        .accessibilityLabel("Fallback attempts")
-                        .help("Retries when decoding fails the quality thresholds. Zero disables retries.")
+                    GridRow {
+                        Text("")
+                        Text(settings.model.detail + " Downloads once, then works offline.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    GridRow {
+                        Text("Vocabulary")
+                        TextField("Names and terms (optional)", text: $hints)
+                            .textFieldStyle(.roundedBorder)
+                            .help("Comma-separated names, companies, or technical terms to help Whisper recognize them")
+                    }
                 }
-                option("Temperature increase", value: $settings.fallbackIncrement, range: 0...1,
-                       help: "Temperature increase for each retry.")
-                option("No-speech threshold", value: $settings.noSpeechThreshold, range: 0...1,
-                       help: "A segment is treated as silence when its no-speech probability exceeds this and its log probability is below the threshold.")
-                option("Log probability threshold", value: $settings.logProbThreshold, range: -5...0,
-                       help: "Average token log probability below this triggers a retry, or silence removal when the no-speech threshold is also exceeded.")
-                option("Repetition threshold", value: $settings.compressionRatioThreshold, range: 1...5,
-                       help: "Compression ratio above this triggers a retry for repetitive output.")
             }
-            Button("Reset decoding defaults") {
-                settings = SpeechSettings(model: settings.model, speakerLabels: settings.speakerLabels)
+            if settings.usesWhisperOptions {
+                Divider()
+                Text("Retries and filtering").font(.headline)
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                    option("Temperature", value: $settings.temperature, range: 0...1,
+                           help: "Higher values allow more varied wording; zero uses greedy decoding.")
+                    GridRow {
+                        Text("Fallback attempts")
+                        Stepper(value: $settings.fallbackCount, in: 0...10) {
+                            Text("\(settings.fallbackCount)").monospacedDigit()
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                            .frame(width: 76)
+                            .accessibilityLabel("Fallback attempts")
+                            .help("Retries when decoding fails the quality thresholds. Zero disables retries.")
+                    }
+                    option("Temperature increase", value: $settings.fallbackIncrement, range: 0...1,
+                           help: "Temperature increase for each retry.")
+                    option("No-speech threshold", value: $settings.noSpeechThreshold, range: 0...1,
+                           help: "A segment is treated as silence when its no-speech probability exceeds this and its log probability is below the threshold.")
+                    option("Log probability threshold", value: $settings.logProbThreshold, range: -5...0,
+                           help: "Average token log probability below this triggers a retry, or silence removal when the no-speech threshold is also exceeded.")
+                    option("Repetition threshold", value: $settings.compressionRatioThreshold, range: 1...5,
+                           help: "Compression ratio above this triggers a retry for repetitive output.")
+                }
+                Button("Reset decoding defaults") {
+                    settings = SpeechSettings(
+                        engine: settings.engine, model: settings.model, speakerLabels: settings.speakerLabels
+                    )
+                }
+            } else {
+                Divider()
+                Text("Parakeet detects the language and adds punctuation. It downloads about 600 MB once and substitutes its own text for the vocabulary and decoding options.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .controlSize(.small)

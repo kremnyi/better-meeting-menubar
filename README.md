@@ -140,10 +140,21 @@ compression bitrate. These settings do not affect audio or transcription.
 
 ## Transcription settings
 
+### Engine
+
+**Advanced… → Engine** chooses the transcription engine. **Whisper** is the
+default: it supports every language WhisperKit lists and runs one pass per
+selected language. **Parakeet v3** runs one fast pass with automatic language
+detection and punctuation for 25 European languages, including Ukrainian,
+Russian, and English; its model is about 600 MB and downloads once. The
+language, model, vocabulary, and decoding rows apply to Whisper only. Changing
+engines releases the previous model before loading the other one.
+
 ### Languages
 
-Choose the expected **Languages** in one menu. Ukrainian, Russian, and English
-are selected by default. Choose one for a single pass or several for multilingual
+When Whisper is selected, choose the expected **Languages** in one menu.
+Ukrainian, Russian, and English are selected by default. Choose one for a
+single pass or several for multilingual
 meetings; at least one is required. The app remembers your selection.
 
 Each selected language adds one pass over the whole recording. The app merges
@@ -153,7 +164,8 @@ by WhisperKit are available.
 
 ### Model
 
-**Advanced… → Model** offers multilingual Small, Large v3 Turbo (default), and Large v3.
+**Advanced… → Engine → Model** offers multilingual Small, Large v3 Turbo
+(default), and Large v3.
 Small uses less memory; Large v3 takes longer and uses more memory. Changing
 models releases the previous model before loading the next one. The picker waits
 for active setup to finish.
@@ -327,6 +339,11 @@ turbo model `openai_whisper-large-v3-v20240930`; its model files total about 1.6
 Downloaded model files are kept when switching. The first load can take longer
 while Core ML prepares the model.
 
+Parakeet models live under `~/Documents/huggingface/parakeet-tdt-0.6b-v3-coreml/`
+(about 600 MB) and are downloaded only when the Parakeet engine is selected. The
+FluidAudio runtime is Apache-2.0; the model weights are CC-BY-4.0, © NVIDIA
+Corporation. See [ThirdPartyNotices.md](ThirdPartyNotices.md).
+
 Speaker models are downloaded only when processing with **Add speaker labels** enabled,
 under `~/Documents/huggingface/models/argmaxinc/speakerkit-coreml/`.
 Speaker detection runs locally and releases its models after each run. Its memory
@@ -340,9 +357,10 @@ for building, testing, signing, and publishing releases.
 ## Limits
 
 - Captures one whole display; window-only and audio-only modes are not available.
-- One recording, transcription, or export runs at a time.
+- Transcription and export run one at a time; a recording can start while transcription finishes in the background.
 - Speaker labels are optional and may need correction; automatic speaker naming is not available.
 - Whisper can produce text during silence; the no-speech filter does not catch every case.
+- Parakeet v3 covers 25 European languages; choose Whisper for other languages.
 - File import, live captions, and meeting summaries are not included.
 - The selected display and microphone must be connected when recording starts.
 

@@ -78,6 +78,20 @@ the SpeakerKit models into `.build/speaker-check` and processes the audio locall
 BETTER_MEETING_SPEAKER_CHECK=/path/to/speech.wav swift test --filter testRealSpeakerDetection
 ```
 
+To compare the Whisper and Parakeet engines on a representative recording —
+Ukrainian/Russian switching, English terms and names, silence, and overlapping
+speakers — use disposable audio:
+
+```bash
+BETTER_MEETING_ENGINE_CHECK=/path/to/meeting.wav swift test --filter testCompareEnginesOnRealAudio
+```
+
+Both engines download their models into `.build/engine-check` on first use. The
+check prints elapsed time and peak memory per engine and writes
+`.build/engine-check/whisper-turbo.md` and `.build/engine-check/parakeet-v3.md`
+for transcript comparison. Parakeet stays opt-in in the app until that evidence
+supports a default change.
+
 To update the README screenshot with fictional meetings:
 
 ```bash
@@ -98,8 +112,14 @@ recording permissions.
 
 - Keep recording and transcription local, with one folder per meeting.
 - Preserve typed titles, the date fallback, and recovery from saved recordings.
-- Keep changes and commits focused; include a regression check for a bug fix.
-- Run the tests and app-bundle build above. Check permission changes in the signed app.
+- Keep changes and commits focused; verify the changed behavior for a bug fix.
+- For code changes, run the affected tests. Run the full tests and app-bundle build
+  for changes spanning multiple subsystems or affecting packaging, resources,
+  dependencies, or signing, and before a release. Check permission changes in the
+  signed app. Documentation-only changes need a diff and relevant link or command
+  review, not an app build. Run any checks explicitly requested by the task.
+- Reuse passing results for unchanged code and environment; rerun affected checks
+  after a fix. The release checks below remain required.
 
 ## Publish a release
 

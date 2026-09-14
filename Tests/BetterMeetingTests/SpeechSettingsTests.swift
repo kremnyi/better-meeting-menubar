@@ -45,14 +45,47 @@ final class SpeechSettingsTests: XCTestCase {
         }
     }
 
+    func testSettingsWithoutEngineDecodeAsWhisper() throws {
+        let legacy = """
+        {"model":"openai_whisper-small","temperature":0,"fallbackCount":5,"fallbackIncrement":0.2,
+         "noSpeechThreshold":0.6,"logProbThreshold":-1,"compressionRatioThreshold":2.4,"speakerLabels":true}
+        """
+        let settings = try JSONDecoder().decode(SpeechSettings.self, from: Data(legacy.utf8))
+        XCTAssertNil(settings.engine)
+        XCTAssertEqual(settings.selectedEngine, .whisper)
+        XCTAssertTrue(settings.usesWhisperOptions)
+        XCTAssertEqual(settings.model, .small)
+    }
+
+    func testEngineSwitchKeepsCompletedWhisperPasses() async throws {
+        let folder = makeTempRoot()
+        defer { removeTempRoot(folder) }
+        let audio = folder.appendingPathComponent("audio.m4a")
+        try Data([1]).write(to: audio)
+        var settings = SpeechSettings()
+        var runs = 0
+        for engine: TranscriptionEngine in [.whisper, .parakeet] {
+            settings.engine = engine
+            _ = try await TranscriptionPasses.run(
+                audioURL: audio, languages: ["en"], settings: settings, progressHandler: { _ in }
+            ) { _, _ in
+                runs += 1
+                return []
+            }
+        }
+        XCTAssertEqual(runs, 1, "Switching engines must not invalidate completed Whisper passes")
+    }
+
     @MainActor
     func testSettingsPersistWithDefaultsAndMeeting() throws {
         let (defaults, suite, root) = try makeTempDefaults("SpeechSettings")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let model = AppModel(defaults: defaults)
         XCTAssertEqual(model.speechSettings.model, .turbo)
+        XCTAssertEqual(model.speechSettings.selectedEngine, .whisper)
         XCTAssertFalse(model.speechSettings.speakerLabels == true)
         model.speechSettings.speakerLabels = true
+        model.speechSettings.engine = .parakeet
         model.speechSettings.model = .large
         model.speechSettings.noSpeechThreshold = 0.7
         XCTAssertEqual(AppModel(defaults: defaults).speechSettings, model.speechSettings)

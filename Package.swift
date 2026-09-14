@@ -16,6 +16,7 @@ let package = Package(
             exact: "1.1.0"
         ),
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.7"),
     ],
     targets: [
         .executableTarget(
@@ -24,11 +25,18 @@ let package = Package(
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
                 .product(name: "SpeakerKit", package: "argmax-oss-swift"),
                 .product(name: "Sparkle", package: "Sparkle"),
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ],
             path: "Sources/BetterMeetingApp",
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
-        .testTarget(name: "BetterMeetingTests", dependencies: ["BetterMeetingApp"]),
+        .testTarget(
+            name: "BetterMeetingTests",
+            dependencies: [
+                "BetterMeetingApp",
+                .product(name: "FluidAudio", package: "FluidAudio"),
+            ]
+        ),
     ],
     swiftLanguageModes: [.v5]
 )

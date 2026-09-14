@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreML
+import FluidAudio
 import Foundation
 import WhisperKit
 
@@ -8,11 +9,13 @@ enum LocalTranscriptionProgress: Sendable {
     case downloadingModel(Double)
     case loadingModel
     case transcribing(Double, language: String, pass: Int, total: Int)
+    case engineTranscribing(Double?)
 }
 
 actor LocalTranscriber {
     private var whisper: WhisperKit?
     private var loadedModel: SpeechModel?
+    private var parakeet: AsrManager?
     private let downloadBase: URL
 
     static let defaultDownloadBase = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -26,6 +29,16 @@ actor LocalTranscriber {
         let folder = downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
         return hasModelFiles(in: folder) ? folder : nil
     }
+
+    static func cachedParakeetModels(in downloadBase: URL = defaultDownloadBase) -> Bool {
+        AsrModels.modelsExist(at: parakeetDirectory(in: downloadBase), version: parakeetVersion)
+    }
+
+    private static func parakeetDirectory(in downloadBase: URL) -> URL {
+        downloadBase.appendingPathComponent("parakeet-tdt-0.6b-v3-coreml", isDirectory: true)
+    }
+
+    private static let parakeetVersion = AsrModelVersion.v3
 
     static func hasModelFiles(in folder: URL) -> Bool {
         ["MelSpectrogram", "AudioEncoder", "TextDecoder"].allSatisfy { name in
@@ -48,6 +61,10 @@ actor LocalTranscriber {
         if let whisper { await whisper.unloadModels() }
         whisper = nil
         loadedModel = nil
+        if let parakeet {
+            await parakeet.cleanup()
+            self.parakeet = nil
+        }
         try Task.checkCancellation()
         progressHandler(.preparingModel)
         let modelFolder: URL
@@ -89,11 +106,78 @@ actor LocalTranscriber {
         return loaded
     }
 
+    func prepare(
+        settings: SpeechSettings,
+        progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
+    ) async throws {
+        switch settings.selectedEngine {
+        case .whisper:
+            _ = try await prepare(model: settings.model, progressHandler: progressHandler)
+        case .parakeet:
+            _ = try await prepareParakeet(progressHandler: progressHandler)
+        }
+    }
+
+    @discardableResult
+    func prepareParakeet(
+        progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
+    ) async throws -> AsrManager {
+        if let parakeet { return parakeet }
+        if let whisper { await whisper.unloadModels() }
+        whisper = nil
+        loadedModel = nil
+        try Task.checkCancellation()
+        progressHandler(.preparingModel)
+        let models = try await AsrModels.downloadAndLoad(
+            to: Self.parakeetDirectory(in: downloadBase),
+            version: Self.parakeetVersion,
+            progressHandler: { progress in
+                switch progress.phase {
+                case .listing:
+                    progressHandler(.preparingModel)
+                case .downloading:
+                    let fraction = progress.fractionCompleted
+                    guard fraction.isFinite else { return }
+                    progressHandler(.downloadingModel(min(max(fraction, 0), 1)))
+                case .compiling:
+                    progressHandler(.loadingModel)
+                }
+            }
+        )
+        try Task.checkCancellation()
+        progressHandler(.loadingModel)
+        let manager = AsrManager(config: .default)
+        try await manager.loadModels(models)
+        parakeet = manager
+        try Task.checkCancellation()
+        return manager
+    }
+
     func transcribe(
         audioURL: URL,
         languages: [String] = TranscriptionLanguage.defaultCandidates,
         hints: String = "",
         settings: SpeechSettings = SpeechSettings(),
+        progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
+    ) async throws -> [TranscriptSegment] {
+        switch settings.selectedEngine {
+        case .whisper:
+            return try await transcribeWhisper(
+                audioURL: audioURL, languages: languages, hints: hints, settings: settings,
+                progressHandler: progressHandler
+            )
+        case .parakeet:
+            return try await transcribeParakeet(
+                audioURL: audioURL, languages: languages, progressHandler: progressHandler
+            )
+        }
+    }
+
+    private func transcribeWhisper(
+        audioURL: URL,
+        languages: [String],
+        hints: String,
+        settings: SpeechSettings,
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         let audioFile = try AVAudioFile(forReading: audioURL)
@@ -138,5 +222,58 @@ actor LocalTranscriber {
                 )
             }
         }
+    }
+
+    private func transcribeParakeet(
+        audioURL: URL,
+        languages: [String],
+        progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
+    ) async throws -> [TranscriptSegment] {
+        let manager = try await prepareParakeet(progressHandler: progressHandler)
+        let language = languages.count == 1 ? Language(rawValue: languages[0]) : nil
+        progressHandler(.engineTranscribing(nil))
+        let progressTask = Task {
+            do {
+                for try await fraction in await manager.transcriptionProgressStream {
+                    progressHandler(.engineTranscribing(fraction))
+                }
+            } catch {}
+        }
+        defer { progressTask.cancel() }
+        var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
+        let result = try await manager.transcribe(audioURL, decoderState: &decoderState, language: language)
+        progressTask.cancel()
+        try Task.checkCancellation()
+        // ponytail: Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.
+        return Self.segments(from: result)
+    }
+
+    static func segments(from result: ASRResult) -> [TranscriptSegment] {
+        let words = buildWordTimings(from: result.tokenTimings ?? [])
+        guard !words.isEmpty else {
+            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return [] }
+            return [TranscriptSegment(start: 0, end: max(result.duration, 0), text: text, language: nil)]
+        }
+        var segments: [TranscriptSegment] = []
+        var start = 0
+        for index in words.indices {
+            let isLast = index == words.count - 1
+            let longEnough = index - start + 1 >= 40
+            let sentenceEnd = words[index].word.last.map { ".!?…".contains($0) } == true
+            let nextGap = isLast ? 0 : words[index + 1].startTime - words[index].endTime
+            guard isLast || longEnough || sentenceEnd || nextGap > 1.0 else { continue }
+            let text = words[start...index].map(\.word).joined(separator: " ")
+                .replacingOccurrences(of: " ,", with: ",")
+                .replacingOccurrences(of: " .", with: ".")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                segments.append(TranscriptSegment(
+                    start: words[start].startTime, end: words[index].endTime, text: text, language: nil
+                ))
+            }
+            start = index + 1
+        }
+        return segments
     }
 }

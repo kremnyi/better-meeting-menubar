@@ -40,6 +40,11 @@ for component in "$sparkle_framework/Versions/B/Autoupdate" "$sparkle_framework/
 done
 cp "$sparkle_dir/LICENSE" "$app_dir/Contents/Resources/Sparkle-LICENSE.txt"
 
+cp "$build_dir/checkouts/FluidAudio/LICENSE" "$app_dir/Contents/Resources/FluidAudio-LICENSE.txt"
+for license in "$build_dir"/checkouts/FluidAudio/ThirdPartyLicenses/*.md; do
+    cp "$license" "$app_dir/Contents/Resources/"
+done
+
 rm -rf "$iconset_dir"
 mkdir -p "$iconset_dir"
 for icon_size in 16 32 128 256 512; do

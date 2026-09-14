@@ -1,6 +1,27 @@
 import Foundation
 import WhisperKit
 
+enum TranscriptionEngine: String, CaseIterable, Codable, Sendable {
+    case whisper
+    case parakeet
+
+    var label: String {
+        switch self {
+        case .whisper: "Whisper"
+        case .parakeet: "Parakeet v3"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .whisper:
+            "Runs several language passes and picks the best-scoring one. Slower, widest language support."
+        case .parakeet:
+            "One fast pass with automatic language detection and punctuation. European languages only."
+        }
+    }
+}
+
 enum SpeechModel: String, CaseIterable, Codable, Sendable {
     case small = "openai_whisper-small"
     case turbo = "openai_whisper-large-v3-v20240930"
@@ -24,6 +45,7 @@ enum SpeechModel: String, CaseIterable, Codable, Sendable {
 }
 
 struct SpeechSettings: Codable, Equatable, Sendable {
+    var engine: TranscriptionEngine? = nil
     var model: SpeechModel = .turbo
     var temperature: Float = 0
     var fallbackCount = 5
@@ -31,8 +53,12 @@ struct SpeechSettings: Codable, Equatable, Sendable {
     var noSpeechThreshold: Float = 0.6
     var logProbThreshold: Float = -1
     var compressionRatioThreshold: Float = 2.4
-    // Optional so preferences and meeting metadata saved before speaker labels still decode.
+    // Optional so preferences and meeting metadata saved before the field existed still decode.
     var speakerLabels: Bool? = nil
+
+    var selectedEngine: TranscriptionEngine { engine ?? .whisper }
+
+    var usesWhisperOptions: Bool { selectedEngine == .whisper }
 
     func validate() throws {
         guard (0...1).contains(temperature), (0...10).contains(fallbackCount),
