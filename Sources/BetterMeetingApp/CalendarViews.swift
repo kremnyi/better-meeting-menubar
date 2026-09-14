@@ -95,6 +95,12 @@ struct CalendarOptionsView: View {
         }
         .task { await calendar.refresh() }
     }
+
+    private func openCalendar() {
+        if let url = URL(string: "ical://") {
+            NSWorkspace.shared.open(url)
+        }
+    }
 }
 
 private struct CalendarReminderOptionsView: View {
@@ -193,16 +199,22 @@ struct UpcomingMeetingView: View {
                         if let event = layout.primary {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(alignment: .top, spacing: 8) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(event.title).lineLimit(2).help(event.title)
-                                        TimelineView(.periodic(from: .now, by: 60)) { context in
-                                            Text(event.relativeStart(at: context.date) + " · " + event.timeRange)
-                                                .font(.caption).foregroundStyle(.secondary)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                                .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
+                                    Button(action: openCalendar) {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(event.title).lineLimit(2).help(event.title)
+                                            TimelineView(.periodic(from: .now, by: 60)) { context in
+                                                Text(event.relativeStart(at: context.date) + " · " + event.timeRange)
+                                                    .font(.caption).foregroundStyle(.secondary)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                                    .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
+                                            }
                                         }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .buttonStyle(.plain)
+                                    .help("Open Calendar")
+                                    .accessibilityLabel("Open Calendar for \(event.title)")
                                     Button { record(event) } label: {
                                         Image(systemName: "record.circle")
                                             .font(.system(size: 16))
@@ -218,22 +230,26 @@ struct UpcomingMeetingView: View {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("Later today")
                                             .font(.caption).foregroundStyle(.secondary)
-                                        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+                                        VStack(alignment: .leading, spacing: 4) {
                                             ForEach(layout.compact) { meeting in
-                                                GridRow {
-                                                    Text(meeting.timeRange)
-                                                        .font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                                                    Text(meeting.title).font(.caption).lineLimit(1)
+                                                Button(action: openCalendar) {
+                                                    HStack(spacing: 8) {
+                                                        Text(meeting.timeRange)
+                                                            .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                                                        Text(meeting.title).font(.caption).lineLimit(1)
+                                                        Spacer(minLength: 0)
+                                                    }
+                                                    .contentShape(Rectangle())
                                                 }
-                                                .help("Later today · " + meeting.title)
+                                                .buttonStyle(.plain)
+                                                .help("Open Calendar · " + meeting.title)
+                                                .accessibilityLabel("Open Calendar for \(meeting.title)")
                                             }
                                         }
                                     }
                                 }
                                 if layout.extraTodayCount > 0 {
-                                    Button {
-                                        if let url = URL(string: "ical://") { NSWorkspace.shared.open(url) }
-                                    } label: {
+                                    Button(action: openCalendar) {
                                         Text(layout.extraTodayCount == 1 ? "1 more today" : "\(layout.extraTodayCount) more today")
                                             .font(.caption).foregroundStyle(.secondary)
                                     }
@@ -264,6 +280,12 @@ struct UpcomingMeetingView: View {
             }
         }
         .task { await calendar.refresh() }
+    }
+
+    private func openCalendar() {
+        if let url = URL(string: "ical://") {
+            NSWorkspace.shared.open(url)
+        }
     }
 }
 
