@@ -62,10 +62,16 @@ final class ModelStorageTests: XCTestCase {
         XCTAssertTrue(small.installed)
         XCTAssertGreaterThan(small.sizeBytes, 0)
         XCTAssertEqual(small.url.lastPathComponent, whisper.lastPathComponent)
+        XCTAssertEqual(small.downloadBytes, SpeechModel.small.downloadBytes)
+        guard case .whisper(.small) = small.kind else { return XCTFail("Expected Whisper Small") }
         let turbo = try XCTUnwrap(models.first { $0.title.contains("Turbo") })
         XCTAssertFalse(turbo.installed)
         XCTAssertEqual(turbo.sizeBytes, 0)
+        XCTAssertEqual(turbo.downloadBytes, SpeechModel.turbo.downloadBytes)
         XCTAssertTrue(try XCTUnwrap(models.last).installed)
+        XCTAssertGreaterThan(SpeechModel.small.downloadBytes, 0)
+        XCTAssertLessThan(SpeechModel.small.downloadBytes, SpeechModel.turbo.downloadBytes)
+        XCTAssertLessThan(SpeechModel.turbo.downloadBytes, SpeechModel.large.downloadBytes)
     }
 
     func testDeleteStoredModelRemovesFolder() async throws {

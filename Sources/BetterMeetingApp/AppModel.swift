@@ -113,7 +113,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var modelSetupFraction: Double?
     @Published private(set) var modelSetupError: String?
     @Published private(set) var storedModels: [StoredModelInfo] = []
+    @Published private(set) var modelDownloads: [String: Double] = [:]
+    @Published private(set) var modelDownloadError: String?
     private(set) var modelPreparationTask: Task<Void, Error>?
+    private(set) var modelDownloadTask: Task<Void, Never>?
     @Published private(set) var cancellingTranscription = false
     @Published private(set) var displays: [(id: CGDirectDisplayID, name: String)] = []
     @Published private(set) var microphones: [AVCaptureDevice] = []
@@ -372,6 +375,37 @@ final class AppModel: ObservableObject {
             modelSetupFraction = nil
         }
         await refreshStoredModels()
+    }
+
+    func downloadStoredModel(_ item: StoredModelInfo) {
+        guard modelDownloadTask == nil, modelPreparationTask == nil, !isProcessing else { return }
+        modelDownloadError = nil
+        modelDownloads[item.id] = 0
+        modelDownloadTask = Task {
+            defer { modelDownloadTask = nil }
+            let report: @Sendable (Double) -> Void = { [weak self] fraction in
+                Task { @MainActor [weak self] in
+                    guard self?.modelDownloads[item.id] != nil else { return }
+                    self?.modelDownloads[item.id] = fraction
+                }
+            }
+            do {
+                switch item.kind {
+                case .whisper(let model):
+                    try await transcriber.download(model: model, progress: report)
+                case .parakeet:
+                    try await transcriber.downloadParakeet(progress: report)
+                case .speakerLabels:
+                    try await transcriber.downloadSpeakerModels()
+                }
+                modelDownloads[item.id] = nil
+                modelReady = Self.modelIsCached(speechSettings)
+                await refreshStoredModels()
+            } catch {
+                modelDownloads[item.id] = nil
+                modelDownloadError = "Couldn’t download \(item.title): \(error.localizedDescription)"
+            }
+        }
     }
 
     private func updateModelSetupProgress(_ progress: LocalTranscriptionProgress) {

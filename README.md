@@ -151,7 +151,7 @@ Russian, and English; its model is about 600 MB and downloads once. The
 language, model, vocabulary, and decoding rows apply to Whisper only. Changing
 engines releases the previous model before loading the other one. Downloaded
 models are listed with their sizes under **Models…**, where each one can be
-revealed in Finder or deleted.
+revealed in Finder, deleted, or downloaded ahead of time.
 
 ### Languages
 
@@ -352,10 +352,12 @@ under `models/argmaxinc/speakerkit-coreml/`. Speaker detection runs locally
 and releases its models after each run. Its memory
 use also includes the decoded recording, so longer meetings need more memory.
 
-**Options → Transcription → Models…** lists every downloaded model with its size.
-**Reveal** opens a model in Finder, **Delete…** frees its disk space, and
-**Show models folder** opens the whole folder. A deleted model downloads again
-the next time it is needed; deleting one that is in memory releases it first.
+**Options → Transcription → Models…** lists every model. Downloaded ones show
+their size, with **Reveal** and **Delete**; models that are missing show their
+approximate download size with a **Download** button, so they can be fetched
+ahead of time. Progress appears on the row during a download, **Show models
+folder** opens the whole folder, and a deleted model downloads again the next
+time it is needed. Deleting one that is in memory releases it first.
 
 Updating from an earlier version moves models stored under
 `~/Documents/huggingface/` to the new location on first launch, so they are not

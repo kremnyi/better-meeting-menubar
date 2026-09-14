@@ -2,6 +2,7 @@ import AVFoundation
 import CoreML
 import FluidAudio
 import Foundation
+import SpeakerKit
 import WhisperKit
 
 enum LocalTranscriptionProgress: Sendable {
@@ -13,10 +14,18 @@ enum LocalTranscriptionProgress: Sendable {
 }
 
 struct StoredModelInfo: Identifiable, Sendable {
+    enum Kind: Sendable {
+        case whisper(SpeechModel)
+        case parakeet
+        case speakerLabels
+    }
+
     let title: String
+    let kind: Kind
     let url: URL
     let installed: Bool
     let sizeBytes: Int64
+    let downloadBytes: Int64
 
     var id: String { url.path }
 }
@@ -93,18 +102,35 @@ actor LocalTranscriber {
     static func storedModels(in downloadBase: URL = defaultDownloadBase) -> [StoredModelInfo] {
         var models = SpeechModel.allCases.map { model in
             let url = downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
-            return info(title: "Whisper \(model.label)", url: url, installed: hasModelFiles(in: url))
+            return info(
+                title: "Whisper \(model.label)", kind: .whisper(model), url: url,
+                installed: hasModelFiles(in: url), downloadBytes: model.downloadBytes
+            )
         }
         let parakeet = parakeetDirectory(in: downloadBase)
-        models.append(info(title: "Parakeet v3", url: parakeet, installed: cachedParakeetModels(in: downloadBase)))
+        models.append(info(
+            title: "Parakeet v3", kind: .parakeet, url: parakeet,
+            installed: cachedParakeetModels(in: downloadBase), downloadBytes: 470_000_000
+        ))
         let speakers = speakerKitDirectory(in: downloadBase)
-        let speakersInstalled = (try? FileManager.default.contentsOfDirectory(atPath: speakers.path))?.isEmpty == false
-        models.append(info(title: "Speaker labels", url: speakers, installed: speakersInstalled))
+        models.append(info(
+            title: "Speaker labels", kind: .speakerLabels, url: speakers,
+            installed: folderHasContent(speakers), downloadBytes: 11_000_000
+        ))
         return models
     }
 
-    private static func info(title: String, url: URL, installed: Bool) -> StoredModelInfo {
-        StoredModelInfo(title: title, url: url, installed: installed, sizeBytes: installed ? sizeOnDisk(of: url) : 0)
+    private static func info(
+        title: String, kind: StoredModelInfo.Kind, url: URL, installed: Bool, downloadBytes: Int64
+    ) -> StoredModelInfo {
+        StoredModelInfo(
+            title: title, kind: kind, url: url,
+            installed: installed, sizeBytes: installed ? sizeOnDisk(of: url) : 0, downloadBytes: downloadBytes
+        )
+    }
+
+    private static func folderHasContent(_ folder: URL) -> Bool {
+        (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == false
     }
 
     static func sizeOnDisk(of folder: URL) -> Int64 {
@@ -192,6 +218,38 @@ actor LocalTranscriber {
     func deleteStoredModel(at url: URL) async {
         await unloadLoadedModels()
         try? FileManager.default.removeItem(at: url)
+    }
+
+    func download(model: SpeechModel, progress: @escaping @Sendable (Double) -> Void) async throws {
+        guard Self.cachedModelFolder(in: downloadBase, model: model) == nil else { return }
+        _ = try await WhisperKit.download(
+            variant: model.rawValue,
+            downloadBase: downloadBase,
+            progressCallback: { update in
+                let fraction = update.fractionCompleted
+                guard fraction.isFinite else { return }
+                progress(min(max(fraction, 0), 1))
+            }
+        )
+    }
+
+    func downloadParakeet(progress: @escaping @Sendable (Double) -> Void) async throws {
+        guard !Self.cachedParakeetModels(in: downloadBase) else { return }
+        _ = try await AsrModels.download(
+            to: Self.parakeetDirectory(in: downloadBase),
+            version: Self.parakeetVersion,
+            progressHandler: { update in
+                guard case .downloading = update.phase else { return }
+                let fraction = update.fractionCompleted
+                guard fraction.isFinite else { return }
+                progress(min(max(fraction, 0), 1))
+            }
+        )
+    }
+
+    func downloadSpeakerModels() async throws {
+        guard !Self.folderHasContent(Self.speakerKitDirectory(in: downloadBase)) else { return }
+        _ = try await SpeakerKit(PyannoteConfig(downloadBase: downloadBase.path, verbose: false))
     }
 
     @discardableResult

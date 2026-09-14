@@ -42,6 +42,15 @@ enum SpeechModel: String, CaseIterable, Codable, Sendable {
         case .large: "Uses the most memory and processing time."
         }
     }
+
+    /// Approximate download size, shown before the model is on disk.
+    var downloadBytes: Int64 {
+        switch self {
+        case .small: 490_000_000
+        case .turbo: 1_600_000_000
+        case .large: 3_100_000_000
+        }
+    }
 }
 
 struct SpeechSettings: Codable, Equatable, Sendable {

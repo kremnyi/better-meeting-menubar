@@ -5,6 +5,10 @@ struct ModelStorageView: View {
     @EnvironmentObject private var model: AppModel
     @State private var pendingDelete: StoredModelInfo?
 
+    private var busy: Bool {
+        model.isProcessing || model.isCapturing || model.modelPreparationTask != nil || model.modelDownloadTask != nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Downloaded models").font(.headline)
@@ -12,31 +16,20 @@ struct ModelStorageView: View {
                 row(item)
             }
             Divider()
+            if let error = model.modelDownloadError {
+                Text(error)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Button("Show models folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([LocalTranscriber.defaultDownloadBase])
             }
-            Text("Models stay on this Mac. Deleting one frees its disk space; it downloads again the next time it is needed.")
+            Text("Models stay on this Mac. A downloaded model is used the next time it is selected; deleting one frees its disk space.")
                 .font(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { await model.refreshStoredModels() }
-        .confirmationDialog(
-            pendingDelete.map { "Delete \($0.title)?" } ?? "Delete model?",
-            isPresented: Binding(
-                get: { pendingDelete != nil },
-                set: { if !$0 { pendingDelete = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                guard let item = pendingDelete else { return }
-                pendingDelete = nil
-                Task { await model.deleteStoredModel(item) }
-            }
-        } message: {
-            Text("It downloads again the next time it is needed.")
-        }
     }
 
     private func row(_ item: StoredModelInfo) -> some View {
@@ -44,19 +37,43 @@ struct ModelStorageView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                 Text(item.installed
-                    ? ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file)
-                    : "Not downloaded")
+                    ? format(item.sizeBytes)
+                    : "Not downloaded · about \(format(item.downloadBytes))")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if item.installed {
-                Button("Reveal") {
-                    NSWorkspace.shared.activateFileViewerSelecting([item.url])
-                }
-                Button("Delete…") { pendingDelete = item }
-                    .disabled(model.isProcessing || model.isCapturing || model.modelPreparationTask != nil)
-            }
+            actions(item)
         }
     }
 
+    @ViewBuilder
+    private func actions(_ item: StoredModelInfo) -> some View {
+        if pendingDelete?.id == item.id {
+            Button("Cancel") { pendingDelete = nil }
+            Button("Delete") {
+                pendingDelete = nil
+                Task { await model.deleteStoredModel(item) }
+            }
+            .foregroundStyle(.red)
+        } else if let fraction = model.modelDownloads[item.id] {
+            ProgressView(value: fraction)
+                .progressViewStyle(.linear)
+                .frame(width: 70)
+            Text(fraction.formatted(.percent.precision(.fractionLength(0))))
+                .font(.caption).foregroundStyle(.secondary)
+        } else if item.installed {
+            Button("Reveal") {
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            }
+            Button("Delete…") { pendingDelete = item }
+                .disabled(busy)
+        } else {
+            Button("Download") { model.downloadStoredModel(item) }
+                .disabled(busy)
+        }
+    }
+
+    private func format(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
 }
