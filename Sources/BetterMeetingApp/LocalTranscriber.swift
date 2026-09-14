@@ -41,13 +41,18 @@ actor LocalTranscriber {
             "models/argmaxinc/whisperkit-coreml",
             "models/argmaxinc/speakerkit-coreml",
             "models/openai",
-            "parakeet-tdt-0.6b-v3-coreml",
+            "parakeet-tdt-0.6b-v3",
         ] {
             let source = legacy.appendingPathComponent(path)
             let target = destination.appendingPathComponent(path)
-            guard fm.fileExists(atPath: source.path), !fm.fileExists(atPath: target.path) else { continue }
-            try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? fm.moveItem(at: source, to: target)
+            guard fm.fileExists(atPath: source.path) else { continue }
+            if fm.fileExists(atPath: target.path) {
+                // A build before the move downloaded the model here again; the legacy copy is a duplicate.
+                try? fm.removeItem(at: source)
+            } else {
+                try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? fm.moveItem(at: source, to: target)
+            }
         }
     }
 
@@ -65,7 +70,7 @@ actor LocalTranscriber {
     }
 
     private static func parakeetDirectory(in downloadBase: URL) -> URL {
-        downloadBase.appendingPathComponent("parakeet-tdt-0.6b-v3-coreml", isDirectory: true)
+        downloadBase.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
     }
 
     private static let parakeetVersion = AsrModelVersion.v3

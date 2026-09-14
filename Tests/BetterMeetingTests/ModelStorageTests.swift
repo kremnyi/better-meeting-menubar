@@ -12,7 +12,7 @@ final class ModelStorageTests: XCTestCase {
             "models/argmaxinc/whisperkit-coreml/openai_whisper-small/model.bin",
             "models/argmaxinc/speakerkit-coreml/segmenter/model.bin",
             "models/openai/tokenizer.json",
-            "parakeet-tdt-0.6b-v3-coreml/model.bin",
+            "parakeet-tdt-0.6b-v3/model.bin",
         ]
         for path in moved {
             try write("data", to: legacy.appendingPathComponent(path))
@@ -29,7 +29,7 @@ final class ModelStorageTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("other/file.txt").path))
     }
 
-    func testModelStorageMigrationKeepsDestinationCopy() throws {
+    func testModelStorageMigrationKeepsDestinationAndDropsDuplicate() throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
         let legacy = root.appendingPathComponent("legacy")
@@ -41,7 +41,7 @@ final class ModelStorageTests: XCTestCase {
 
         let tokenizer = destination.appendingPathComponent("models/openai/tokenizer.json")
         XCTAssertEqual(try String(contentsOf: tokenizer), "new")
-        XCTAssertEqual(try String(contentsOf: legacy.appendingPathComponent("models/openai/tokenizer.json")), "old")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("models/openai").path))
     }
 
     func testStoredModelsReportInstallationAndSize() throws {
