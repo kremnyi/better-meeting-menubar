@@ -2,51 +2,51 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleDisplayName</key>
-    <string>Better Meeting</string>
-    <key>CFBundleExecutable</key>
-    <string>BetterMeeting</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.kremnyi.bettermeeting</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleIconFile</key>
-    <string>BetterMeeting</string>
-    <key>CFBundleName</key>
-    <string>Better Meeting</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Better Meeting</string>
+	<key>CFBundleExecutable</key>
+	<string>BetterMeeting</string>
+	<key>CFBundleIconFile</key>
+	<string>BetterMeeting</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.kremnyi.bettermeeting</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Better Meeting</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.44b4</string>
+	<string>0.3.44b5</string>
 	<key>CFBundleVersion</key>
-	<string>57</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>15.0</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.productivity</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/kremnyi/better-meeting-menubar/main/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string>bV+KvsBh6+VG7x7ZGPKPkiVMvN+/JHLoR/YNS+fKlAY=</string>
-    <key>SUEnableAutomaticChecks</key>
-    <false/>
-    <key>SUAllowsAutomaticUpdates</key>
-    <true/>
-    <key>SUAutomaticallyUpdate</key>
-    <false/>
-    <key>SUVerifyUpdateBeforeExtraction</key>
-    <true/>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Better Meeting records your microphone so your side of the meeting is included.</string>
-    <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>Better Meeting reads calendars you select to show upcoming meetings and save event titles and invitee emails when you start recording from an event. It never edits calendar events.</string>
-    <key>NSScreenCaptureUsageDescription</key>
-    <string>Better Meeting records the selected display and meeting audio to create a local recording and transcript.</string>
+	<string>58</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Better Meeting reads calendars you select to show upcoming meetings and save event titles and invitee emails when you start recording from an event. It never edits calendar events.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Better Meeting records your microphone so your side of the meeting is included.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Better Meeting records the selected display and meeting audio to create a local recording and transcript.</string>
+	<key>SUAllowsAutomaticUpdates</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/kremnyi/better-meeting-menubar/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>bV+KvsBh6+VG7x7ZGPKPkiVMvN+/JHLoR/YNS+fKlAY=</string>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>
