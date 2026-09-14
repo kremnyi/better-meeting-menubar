@@ -25,6 +25,8 @@ final class TranscriptionQueueTests: XCTestCase {
 
     func testQueueRunsInOrderAndExcludesCompletedMeetings() async throws {
         try await withMeetings { model in
+            model.prepareSpeechModel { _ in }
+            try await model.modelPreparationTask?.value
             let expected = model.unfinishedRecordings
             var visited: [MeetingHistoryItem] = []
             var active = 0

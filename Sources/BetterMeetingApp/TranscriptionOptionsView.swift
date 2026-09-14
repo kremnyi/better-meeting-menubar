@@ -6,6 +6,7 @@ struct CaptureOptionsView: View {
     @State var advancedPresented = false
     @State var calendarsPresented = false
     @State var appSettingsPresented = false
+    @State var modelsPresented = false
     @State var launchAtLoginStatus = SMAppService.mainApp.status
     @State var launchAtLoginError: String?
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -30,6 +31,13 @@ struct CaptureOptionsView: View {
                     modelSelectionDisabled: model.modelPreparationTask != nil
                 )
                 .disabled(model.updates.isBusy())
+            } else if modelsPresented {
+                Button { modelsPresented = false } label: {
+                    Label("Options", systemImage: "chevron.left")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                ModelStorageView()
             } else if appSettingsPresented {
                 Button { appSettingsPresented = false } label: {
                     Label("Options", systemImage: "chevron.left")
@@ -165,6 +173,9 @@ struct CaptureOptionsView: View {
                 HStack {
                     Text("Transcription").font(.headline)
                     Spacer()
+                    Button("Models…") { modelsPresented = true }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Downloaded speech models")
                     Button("Advanced…") { advancedPresented = true }
                         .buttonStyle(.bordered)
                         .accessibilityLabel("Advanced transcription")

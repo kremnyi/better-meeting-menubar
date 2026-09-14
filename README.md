@@ -62,7 +62,8 @@ brew upgrade --cask kremnyi/better-meeting/better-meeting
 ```
 
 Releases reuse the same signing certificate so macOS can recognize the app across
-updates. Uninstalling the app keeps saved meetings.
+updates. Uninstalling the app keeps saved meetings and downloaded models; see
+[Privacy and model storage](#privacy-and-model-storage) for how to remove the models.
 
 ## Record a meeting
 
@@ -148,7 +149,9 @@ selected language. **Parakeet v3** runs one fast pass with automatic language
 detection and punctuation for 25 European languages, including Ukrainian,
 Russian, and English; its model is about 600 MB and downloads once. The
 language, model, vocabulary, and decoding rows apply to Whisper only. Changing
-engines releases the previous model before loading the other one.
+engines releases the previous model before loading the other one. Downloaded
+models are listed with their sizes under **Models…**, where each one can be
+revealed in Finder or deleted.
 
 ### Languages
 
@@ -332,22 +335,34 @@ The app does not upload meetings. Update checks contact GitHub. Speech models
 download from Hugging Face once per selected model and work offline after setup.
 Removing or damaging those files can require another download.
 
-Model files live under `~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/`.
-Tokenizer files may also be stored under
-`~/Documents/huggingface/models/openai/` for each selected model. WhisperKit calls the
-turbo model `openai_whisper-large-v3-v20240930`; its model files total about 1.6 GB.
+Model files live under `~/Library/Application Support/BetterMeeting/`. Whisper
+models are in `models/argmaxinc/whisperkit-coreml/`; tokenizer files are stored
+under `models/openai/`. WhisperKit calls the turbo model
+`openai_whisper-large-v3-v20240930`; its model files total about 1.6 GB.
 Downloaded model files are kept when switching. The first load can take longer
 while Core ML prepares the model.
 
-Parakeet models live under `~/Documents/huggingface/parakeet-tdt-0.6b-v3-coreml/`
-(about 600 MB) and are downloaded only when the Parakeet engine is selected. The
-FluidAudio runtime is Apache-2.0; the model weights are CC-BY-4.0, © NVIDIA
-Corporation. See [ThirdPartyNotices.md](ThirdPartyNotices.md).
+Parakeet models live under `parakeet-tdt-0.6b-v3-coreml/` (about 600 MB) and are
+downloaded only when the Parakeet engine is selected. The FluidAudio runtime is
+Apache-2.0; the model weights are CC-BY-4.0, © NVIDIA Corporation. See
+[ThirdPartyNotices.md](ThirdPartyNotices.md).
 
 Speaker models are downloaded only when processing with **Add speaker labels** enabled,
-under `~/Documents/huggingface/models/argmaxinc/speakerkit-coreml/`.
-Speaker detection runs locally and releases its models after each run. Its memory
+under `models/argmaxinc/speakerkit-coreml/`. Speaker detection runs locally
+and releases its models after each run. Its memory
 use also includes the decoded recording, so longer meetings need more memory.
+
+**Options → Transcription → Models…** lists every downloaded model with its size.
+**Reveal** opens a model in Finder, **Delete…** frees its disk space, and
+**Show models folder** opens the whole folder. A deleted model downloads again
+the next time it is needed; deleting one that is in memory releases it first.
+
+Updating from an earlier version moves models stored under
+`~/Documents/huggingface/` to the new location on first launch, so they are not
+downloaded again. Removing the app does not delete saved meetings or downloaded
+models. To free the model files, delete them under **Models…**, or run
+`brew uninstall --zap --cask kremnyi/better-meeting/better-meeting` if you
+installed with Homebrew. Saved meetings are always kept.
 
 ## Build from source
 

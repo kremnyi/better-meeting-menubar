@@ -112,6 +112,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var modelSetupStatus = "Preparing speech model…"
     @Published private(set) var modelSetupFraction: Double?
     @Published private(set) var modelSetupError: String?
+    @Published private(set) var storedModels: [StoredModelInfo] = []
     private(set) var modelPreparationTask: Task<Void, Error>?
     @Published private(set) var cancellingTranscription = false
     @Published private(set) var displays: [(id: CGDirectDisplayID, name: String)] = []
@@ -355,6 +356,22 @@ final class AppModel: ObservableObject {
                 throw error
             }
         }
+    }
+
+    func refreshStoredModels() async {
+        let models = await Task.detached(priority: .utility) { LocalTranscriber.storedModels() }.value
+        storedModels = models
+    }
+
+    func deleteStoredModel(_ item: StoredModelInfo) async {
+        await transcriber.deleteStoredModel(at: item.url)
+        modelReady = Self.modelIsCached(speechSettings)
+        if !modelReady {
+            modelSetupError = nil
+            modelSetupStatus = "Speech model not downloaded"
+            modelSetupFraction = nil
+        }
+        await refreshStoredModels()
     }
 
     private func updateModelSetupProgress(_ progress: LocalTranscriptionProgress) {

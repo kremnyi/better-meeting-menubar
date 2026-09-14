@@ -10,6 +10,7 @@ struct BetterMeetingApp: App {
     @StateObject private var model: AppModel
 
     init() {
+        LocalTranscriber.prepareModelStorage()
         let model = AppModel()
         _model = StateObject(wrappedValue: model)
         appDelegate.model = model

@@ -182,10 +182,15 @@ struct MenuBarControlView: View {
                         .help(error)
                 } else {
                     Text(model.modelSetupStatus)
-                    ProgressView(value: model.modelSetupFraction)
-                        .progressViewStyle(.linear)
-                        .accessibilityLabel(model.modelSetupStatus)
-                    Text("You can record while setup finishes.")
+                    if model.modelPreparationTask != nil {
+                        ProgressView(value: model.modelSetupFraction)
+                            .progressViewStyle(.linear)
+                            .accessibilityLabel(model.modelSetupStatus)
+                        Text("You can record while setup finishes.")
+                    } else {
+                        Button("Download model", action: model.prepareSpeechModel)
+                            .disabled(model.isProcessing)
+                    }
                 }
             }
             .font(.callout)

@@ -12,14 +12,44 @@ enum LocalTranscriptionProgress: Sendable {
     case engineTranscribing(Double?)
 }
 
+struct StoredModelInfo: Identifiable, Sendable {
+    let title: String
+    let url: URL
+    let installed: Bool
+    let sizeBytes: Int64
+
+    var id: String { url.path }
+}
+
 actor LocalTranscriber {
     private var whisper: WhisperKit?
     private var loadedModel: SpeechModel?
     private var parakeet: AsrManager?
     private let downloadBase: URL
 
-    static let defaultDownloadBase = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("huggingface")
+    static let defaultDownloadBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("BetterMeeting", isDirectory: true)
+
+    // Models used to live in Documents; moved here for one-time migration.
+    static let legacyDownloadBase = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("huggingface", isDirectory: true)
+
+    static func prepareModelStorage(legacy: URL = legacyDownloadBase, destination: URL = defaultDownloadBase) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        for path in [
+            "models/argmaxinc/whisperkit-coreml",
+            "models/argmaxinc/speakerkit-coreml",
+            "models/openai",
+            "parakeet-tdt-0.6b-v3-coreml",
+        ] {
+            let source = legacy.appendingPathComponent(path)
+            let target = destination.appendingPathComponent(path)
+            guard fm.fileExists(atPath: source.path), !fm.fileExists(atPath: target.path) else { continue }
+            try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.moveItem(at: source, to: target)
+        }
+    }
 
     init(downloadBase: URL = defaultDownloadBase) {
         self.downloadBase = downloadBase
@@ -51,6 +81,40 @@ actor LocalTranscriber {
         }
     }
 
+    private static func speakerKitDirectory(in downloadBase: URL) -> URL {
+        downloadBase.appendingPathComponent("models/argmaxinc/speakerkit-coreml", isDirectory: true)
+    }
+
+    static func storedModels(in downloadBase: URL = defaultDownloadBase) -> [StoredModelInfo] {
+        var models = SpeechModel.allCases.map { model in
+            let url = downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
+            return info(title: "Whisper \(model.label)", url: url, installed: hasModelFiles(in: url))
+        }
+        let parakeet = parakeetDirectory(in: downloadBase)
+        models.append(info(title: "Parakeet v3", url: parakeet, installed: cachedParakeetModels(in: downloadBase)))
+        let speakers = speakerKitDirectory(in: downloadBase)
+        let speakersInstalled = (try? FileManager.default.contentsOfDirectory(atPath: speakers.path))?.isEmpty == false
+        models.append(info(title: "Speaker labels", url: speakers, installed: speakersInstalled))
+        return models
+    }
+
+    private static func info(title: String, url: URL, installed: Bool) -> StoredModelInfo {
+        StoredModelInfo(title: title, url: url, installed: installed, sizeBytes: installed ? sizeOnDisk(of: url) : 0)
+    }
+
+    static func sizeOnDisk(of folder: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
+        guard let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: Array(keys)) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for case let file as URL in files {
+            guard let values = try? file.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
+            total += Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
+        }
+        return total
+    }
+
     @discardableResult
     func prepare(
         model: SpeechModel = .turbo,
@@ -58,13 +122,7 @@ actor LocalTranscriber {
     ) async throws -> WhisperKit {
         try Task.checkCancellation()
         if let whisper, loadedModel == model { return whisper }
-        if let whisper { await whisper.unloadModels() }
-        whisper = nil
-        loadedModel = nil
-        if let parakeet {
-            await parakeet.cleanup()
-            self.parakeet = nil
-        }
+        await unloadLoadedModels()
         try Task.checkCancellation()
         progressHandler(.preparingModel)
         let modelFolder: URL
@@ -118,14 +176,25 @@ actor LocalTranscriber {
         }
     }
 
+    private func unloadLoadedModels() async {
+        if let whisper { await whisper.unloadModels() }
+        whisper = nil
+        loadedModel = nil
+        if let parakeet { await parakeet.cleanup() }
+        parakeet = nil
+    }
+
+    func deleteStoredModel(at url: URL) async {
+        await unloadLoadedModels()
+        try? FileManager.default.removeItem(at: url)
+    }
+
     @discardableResult
     func prepareParakeet(
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> AsrManager {
         if let parakeet { return parakeet }
-        if let whisper { await whisper.unloadModels() }
-        whisper = nil
-        loadedModel = nil
+        await unloadLoadedModels()
         try Task.checkCancellation()
         progressHandler(.preparingModel)
         let models = try await AsrModels.downloadAndLoad(

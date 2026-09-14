@@ -14,6 +14,13 @@ cask "better-meeting" do
 
   app "Better Meeting.app"
 
+  zap trash: [
+    "~/Library/Application Support/BetterMeeting",
+    "~/Library/Caches/com.kremnyi.bettermeeting",
+    "~/Library/Preferences/com.kremnyi.bettermeeting.plist",
+    "~/Library/Saved Application State/com.kremnyi.bettermeeting.savedState",
+  ]
+
   caveats <<~EOS
     This app uses a self-signed certificate and is not notarized by Apple.
     If macOS blocks opening it, use System Settings > Privacy & Security > Open Anyway.
