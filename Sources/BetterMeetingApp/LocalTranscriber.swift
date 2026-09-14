@@ -242,7 +242,6 @@ actor LocalTranscriber {
         defer { progressTask.cancel() }
         var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
         let result = try await manager.transcribe(audioURL, decoderState: &decoderState, language: language)
-        progressTask.cancel()
         try Task.checkCancellation()
         // ponytail: Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.
         return Self.segments(from: result)
