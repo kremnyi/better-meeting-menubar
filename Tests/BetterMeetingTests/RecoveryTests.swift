@@ -408,7 +408,12 @@ final class RecoveryTests: XCTestCase {
             ("options-single-language", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("options-many-languages", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("advanced", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
-            ("models", AnyView(CaptureOptionsView(advancedPresented: true, modelsPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("advanced-models", AnyView(AdvancedTranscriptionView(
+                settings: .constant(SpeechSettings()), hints: .constant(""), modelsExpanded: true
+            ).frame(width: 328)), 328, .unchecked),
+            ("advanced-models-dark", AnyView(AdvancedTranscriptionView(
+                settings: .constant(SpeechSettings()), hints: .constant(""), modelsExpanded: true
+            ).frame(width: 328)), 328, .unchecked),
             ("advanced-decoding", AnyView(AdvancedTranscriptionView(
                 settings: .constant(SpeechSettings()), hints: .constant("Anna, Approck"), decodingExpanded: true
             ).frame(width: 328)), 328, .unchecked),
@@ -450,7 +455,7 @@ final class RecoveryTests: XCTestCase {
             model.transcriptionLanguages = name == "options-single-language" ? ["uk"]
                 : name == "options-many-languages" ? ["uk", "ru", "en", "fr", "de", "es", "pt", "ja"]
                 : ["uk", "ru", "en"]
-            let view = hostingView(content, model: model)
+            let view = hostingView(content, model: model, scheme: name.hasSuffix("-dark") ? .dark : .light)
             XCTAssertEqual(view.fittingSize.width, width, "\(name) must keep its panel width")
             XCTAssertGreaterThan(view.fittingSize.height, 0)
             if ["options", "options-current", "options-checking", "options-ready"].contains(name) {
@@ -459,7 +464,7 @@ final class RecoveryTests: XCTestCase {
                 else { optionsHeight = view.fittingSize.height }
             }
             if name == "advanced" {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 320, "Decoding must stay collapsed by default")
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 600, "Models expands by default; Decoding must stay collapsed")
             }
             if name == "options-app" {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 300, "App settings must stay compact")

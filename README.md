@@ -149,9 +149,9 @@ selected language. **Parakeet v3** runs one fast pass with automatic language
 detection and punctuation for 25 European languages, including Ukrainian,
 Russian, and English; its model is about 600 MB and downloads once. The
 language, model, vocabulary, and decoding rows apply to Whisper only. Changing
-engines releases the previous model before loading the other one. **Models…**
-in the Advanced panel lists every model with its size, where each one can be
-deleted or downloaded ahead of time.
+engines releases the previous model before loading the other one. **Advanced… →
+Models** lists every model with its size, where each one can be deleted or
+downloaded ahead of time.
 
 ### Languages
 
@@ -352,7 +352,7 @@ under `models/argmaxinc/speakerkit-coreml/`. Speaker detection runs locally
 and releases its models after each run. Its memory
 use also includes the decoded recording, so longer meetings need more memory.
 
-**Advanced… → Models…** lists every model. Downloaded ones show
+**Advanced… → Models** lists every model. Downloaded ones show
 their size with a **Delete** button; models that are missing show their
 approximate download size with a **Download** button, so they can be fetched
 ahead of time. Progress appears on the row during a download, **Show models
@@ -362,7 +362,7 @@ time it is needed. Deleting one that is in memory releases it first.
 Updating from an earlier version moves models stored under
 `~/Documents/huggingface/` to the new location on first launch, so they are not
 downloaded again. Removing the app does not delete saved meetings or downloaded
-models. To free the model files, delete them under **Advanced… → Models…**, or run
+models. To free the model files, delete them under **Advanced… → Models**, or run
 `brew uninstall --zap --cask kremnyi/better-meeting/better-meeting` if you
 installed with Homebrew. Saved meetings are always kept.
 

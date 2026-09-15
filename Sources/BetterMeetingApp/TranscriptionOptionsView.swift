@@ -6,7 +6,6 @@ struct CaptureOptionsView: View {
     @State var advancedPresented = false
     @State var calendarsPresented = false
     @State var appSettingsPresented = false
-    @State var modelsPresented = false
     @State var launchAtLoginStatus = SMAppService.mainApp.status
     @State var launchAtLoginError: String?
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -16,15 +15,11 @@ struct CaptureOptionsView: View {
             if calendarsPresented {
                 OptionsBackButton { calendarsPresented = false }
                 CalendarOptionsView(calendar: model.calendar)
-            } else if modelsPresented {
-                OptionsBackButton(title: "Advanced") { modelsPresented = false }
-                ModelStorageView()
             } else if advancedPresented {
                 OptionsBackButton { advancedPresented = false }
                 AdvancedTranscriptionView(
                     settings: $model.speechSettings, hints: $model.transcriptionHints,
-                    modelSelectionDisabled: model.modelPreparationTask != nil,
-                    onManageModels: { modelsPresented = true }
+                    modelSelectionDisabled: model.modelPreparationTask != nil
                 )
                 .disabled(model.updates.isBusy())
             } else if appSettingsPresented {
@@ -338,8 +333,8 @@ struct AdvancedTranscriptionView: View {
     @Binding var settings: SpeechSettings
     @Binding var hints: String
     var modelSelectionDisabled = false
-    var onManageModels: (() -> Void)?
     @State var decodingExpanded = false
+    @State var modelsExpanded = true
 
     private var engineBinding: Binding<TranscriptionEngine> {
         Binding(get: { settings.selectedEngine }, set: { settings.engine = $0 })
@@ -347,15 +342,7 @@ struct AdvancedTranscriptionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Advanced transcription").font(.headline)
-                Spacer()
-                if let onManageModels {
-                    Button("Models…", action: onManageModels)
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("Downloaded speech models")
-                }
-            }
+            Text("Advanced transcription").font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                 GridRow {
                     Text("Engine")
@@ -399,6 +386,10 @@ struct AdvancedTranscriptionView: View {
                             .help("Comma-separated names, companies, or technical terms to help Whisper recognize them")
                     }
                 }
+            }
+            DisclosureGroup("Models", isExpanded: $modelsExpanded) {
+                ModelStorageView()
+                    .padding(.top, 8)
             }
             if settings.usesWhisperOptions {
                 DisclosureGroup("Decoding", isExpanded: $decodingExpanded) {

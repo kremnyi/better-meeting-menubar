@@ -11,7 +11,6 @@ struct ModelStorageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Models").font(.headline)
             ForEach(model.storedModels) { item in
                 row(item)
             }
