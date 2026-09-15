@@ -98,7 +98,7 @@ To update the README screenshot with fictional meetings:
 BETTER_MEETING_PREVIEW_PATH="$PWD/docs/menu-bar.png" swift test --filter testRenderMenuBarPreview
 ```
 
-To render Options, Settings tabs, update states, and recording audio warnings in light and dark
+To render Options, update states, and recording audio warnings in light and dark
 mode without launching the app:
 
 ```bash
@@ -174,7 +174,7 @@ security checks or remove meetings.
 
 Beta builds share the archive, signing identity, and feed with stable releases.
 The feed item carries `sparkle:channel beta`, which hides it from everyone who has
-not enabled **Options → Settings… → General → Include beta releases**. The same feed
+not enabled **Options → App & updates → Include beta releases**. The same feed
 keeps the current stable item, so stable users only ever see stable releases.
 
 Stable 0.3.42 and later carry the toggle, so opted-in users receive beta cuts

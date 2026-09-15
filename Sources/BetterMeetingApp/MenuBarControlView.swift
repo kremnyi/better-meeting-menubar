@@ -4,8 +4,9 @@ import SwiftUI
 struct MenuBarControlView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updates: AppUpdater
-    @Environment(\.openSettings) private var openSettings
     @State var captureOptionsPresented = false
+    @State private var calendarOptionsPresented = false
+    @State private var appSettingsPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
     @State private var hoveredMeetingID: MeetingHistoryItem.ID?
 
@@ -27,7 +28,16 @@ struct MenuBarControlView: View {
                 .help("Recording and app options")
                 .accessibilityLabel("Options")
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
-                    CaptureOptionsView()
+                    CaptureOptionsView(
+                        calendarsPresented: calendarOptionsPresented,
+                        appSettingsPresented: appSettingsPresented
+                    )
+                }
+                .onChange(of: captureOptionsPresented) { _, presented in
+                    if !presented {
+                        calendarOptionsPresented = false
+                        appSettingsPresented = false
+                    }
                 }
 
                 updateStatus
@@ -43,7 +53,7 @@ struct MenuBarControlView: View {
             .padding(.vertical, 8)
         }
         .frame(width: 304)
-        .background(WindowReader { model.menuWindow = $0 }.frame(width: 0, height: 0).accessibilityHidden(true))
+        .background(MenuWindowReader(model: model).frame(width: 0, height: 0).accessibilityHidden(true))
         .sheet(item: $retranscribingMeeting) { meeting in
             RetranscriptionView(
                 meeting: meeting, languages: model.transcriptionLanguages, hints: model.transcriptionHints,
@@ -85,7 +95,8 @@ struct MenuBarControlView: View {
                     : "Install the update and relaunch Better Meeting")
         case .failed:
             Button("Update failed — View details") {
-                model.showSettings(.general, using: openSettings)
+                appSettingsPresented = true
+                captureOptionsPresented = true
             }
             .buttonStyle(.plain)
             .font(.caption)
@@ -132,7 +143,8 @@ struct MenuBarControlView: View {
             Divider()
 
             UpcomingMeetingView(calendar: model.calendar) {
-                model.showSettings(.calendars, using: openSettings)
+                calendarOptionsPresented = true
+                captureOptionsPresented = true
             } record: { event in
                 model.startCalendarRecording(event)
             }
@@ -609,24 +621,23 @@ struct MenuBarControlView: View {
     }
 }
 
-/// Reports the AppKit window that hosts a SwiftUI view.
-struct WindowReader: NSViewRepresentable {
-    let found: @MainActor (NSWindow) -> Void
+private struct MenuWindowReader: NSViewRepresentable {
+    let model: AppModel
 
     func makeNSView(context: Context) -> WindowView {
         let view = WindowView()
-        view.found = found
+        view.model = model
         return view
     }
 
     func updateNSView(_ view: WindowView, context: Context) {}
 
     final class WindowView: NSView {
-        var found: (@MainActor (NSWindow) -> Void)?
+        weak var model: AppModel?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let window { found?(window) }
+            model?.menuWindow = window
         }
     }
 }

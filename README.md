@@ -35,7 +35,7 @@ Managed Macs may not allow this exception.
 
 ## Update the app
 
-Open **Options → Settings… → General** to see the installed version, release notes, and
+Open **Options → App & updates** to see the installed version, release notes, and
 **Check for Updates** below the automatic-download setting. Update progress and
 errors stay on that page, without separate update dialogs. Sparkle verifies updates
 with a separate signing key before extraction.
@@ -105,14 +105,14 @@ You can change notification access in macOS **System Settings → Notifications
 → Better Meeting**.
 
 To open the app automatically when you sign in, enable **Launch at login** in
-**Options → Settings… → General**.
+**Options → App & updates**.
 If macOS requires approval, use **Open Login Items…** below the checkbox and allow
 Better Meeting to open at login.
 
 ## Calendar integration
 
 The menu can show your meetings from the macOS Calendar app. Enable
-**Options → Settings… → Calendars** and choose which calendars to read. The menu lists
+**Options → Calendars** and choose which calendars to read. The menu lists
 today's remaining meetings, with a **Record this meeting** button on the first
 one that starts a recording named after the event. It becomes a labeled
 **Record** button once the meeting is under way or starts within five minutes.
@@ -127,19 +127,15 @@ between recordings and calendar events are stored in the meeting folder; see
 
 ## Recording settings
 
-**Options** in the menu holds the choices you change per meeting: display,
-microphone, languages, speaker labels, save folder, and automatic export.
-**Settings…** at its bottom opens the Settings window with **General** (launch at
-login, updates, and version), **Recording**, **Transcription**, **Models**, and
-**Calendars** tabs.
-
-Settings stay available after an error. Display, microphone, resolution, and frame
-rate lock only while recording. Transcription settings lock only while a
-transcription runs; changes made during a recording apply when it stops. The save
-folder and automatic export lock during either. General and Calendars never lock,
-so a prepared update can install as soon as the meeting finishes.
-
-**Resolution** and **Frame rate** are in **Settings → Recording** and default
+Options groups settings under **Recording**, **Transcription**, and **Files**.
+Rows below them open the **Calendars**, **Advanced transcription**, and **App &
+updates** pages; the arrow beside each page title returns to Options. Settings stay
+available after an error. Display, microphone, and video quality lock only while
+recording. Transcription settings, including **Advanced transcription**, lock only
+while a transcription runs; changes made during a recording apply when it stops.
+The save folder and automatic export lock during either. Calendars and App &
+updates never lock, so a prepared update can install as soon as the meeting finishes.
+The **Video** menu under Recording sets **Resolution** and **Frame rate**, which default
 to 1440 px and 10 fps. Resolution
 limits the video's longest edge to 1280, 1440, 1920, or 2560 pixels. It uses
 Retina pixels, preserves the display's proportions,
@@ -151,7 +147,7 @@ compression bitrate. These settings do not affect audio or transcription.
 
 ### Engine
 
-**Settings → Transcription → Engine** chooses the transcription engine. **Whisper** is the
+**Advanced transcription → Engine** chooses the transcription engine. **Whisper** is the
 default: it supports every language WhisperKit lists and runs one pass per
 selected language. **Parakeet v3** runs one fast pass with automatic language
 detection and punctuation for 25 European languages, including Ukrainian,
@@ -159,7 +155,7 @@ Russian, and English; its model is about 470 MB and downloads once. The
 language, model, vocabulary, and decoding rows apply to Whisper only. Changing
 engines only downloads the model if it is missing; it loads on the next
 transcription. Parakeet segments get a script-based uk/ru/en tag for the
-transcript and bundles — treat it as a hint, not model output. **Settings →
+transcript and bundles — treat it as a hint, not model output. **Advanced transcription →
 Models** lists every model with its size, where each one can be deleted or
 downloaded ahead of time.
 
@@ -177,7 +173,7 @@ by WhisperKit are available.
 
 ### Model
 
-**Settings → Transcription → Model** offers multilingual Small, Large v3 Turbo
+**Advanced transcription → Model** offers multilingual Small, Large v3 Turbo
 (default), and Large v3.
 Small uses less memory; Large v3 takes longer and uses more memory. Changing
 models downloads it if it is missing; it loads on the next transcription. The
@@ -185,16 +181,16 @@ picker waits for an active download to finish.
 
 ### Vocabulary
 
-Use **Settings → Transcription → Vocabulary** for names, companies, and technical terms separated
+Use **Advanced transcription → Vocabulary** for names, companies, and technical terms separated
 by commas. These optional hints use Whisper's existing prompt support and stay on
 your Mac. The app remembers them; changing hints reruns the affected language passes.
 
 ### Decoding
 
-**Settings → Transcription** shows engine, model, and vocabulary settings.
-**Decoding** below them expands temperature, fallback attempts and temperature
-increase, no-speech and log-probability thresholds, and the repetition threshold.
-**Re-transcribe… → Advanced…** offers the same options for one meeting.
+**Advanced transcription** shows engine, model, and vocabulary settings with
+**Decoding** right below them. It expands temperature, fallback attempts and
+temperature increase, no-speech and log-probability thresholds, and the repetition
+threshold. Downloaded models are listed last on the page.
 
 **Reset decoding defaults** resets decoding without changing the selected model,
 vocabulary, or speaker-label option. Model and decoding settings are saved with
@@ -362,7 +358,7 @@ under `models/argmaxinc/speakerkit-coreml/`. Speaker detection runs locally
 and releases its models after each run. Its memory
 use also includes the decoded recording, so longer meetings need more memory.
 
-**Settings → Models** lists every model. Downloaded ones show
+**Advanced transcription → Models** lists every model. Downloaded ones show
 their size with a **Delete** button; models that are missing show their
 approximate download size with a **Download** button, so they can be fetched
 ahead of time. Progress appears on the row during a download, **Show models
@@ -372,7 +368,7 @@ time it is needed. Deleting one that is in memory releases it first.
 Updating from an earlier version moves models stored under
 `~/Documents/huggingface/` to the new location on first launch, so they are not
 downloaded again. Removing the app does not delete saved meetings or downloaded
-models. To free the model files, delete them under **Settings → Models**, or run
+models. To free the model files, delete them under **Advanced transcription → Models**, or run
 `brew uninstall --zap --cask kremnyi/better-meeting/better-meeting` if you
 installed with Homebrew. Saved meetings are always kept.
 

@@ -7,7 +7,7 @@ struct CalendarOptionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Menu").font(.headline)
+            Text("In the menu").font(.callout.weight(.medium))
             Toggle("Show upcoming meetings", isOn: Binding(
                 get: { calendar.enabled },
                 set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
@@ -21,7 +21,7 @@ struct CalendarOptionsView: View {
 
             Group {
                 Divider()
-                Text("Calendars").font(.headline)
+                Text("Calendars to show").font(.callout.weight(.medium))
                 if calendar.authorization == .fullAccess {
                     if calendar.isLoading && calendar.calendars.isEmpty && !calendar.hasLoaded {
                         VStack(alignment: .leading, spacing: 10) {
@@ -108,7 +108,7 @@ private struct CalendarReminderOptionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Meeting reminders").font(.headline)
+            Text("Meeting reminders").font(.callout.weight(.medium))
             Toggle("Notify me when meetings start", isOn: Binding(
                 get: { calendar.notifyAtStart },
                 set: { value in Task { await calendar.setNotifyAtStart(value) } }
@@ -275,7 +275,7 @@ struct UpcomingMeetingView: View {
                                 }
                             }
                         } else if !calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) }) {
-                            Text("Choose calendars in Settings to see meetings.")
+                            Text("Choose calendars in Options to see meetings.")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else {

@@ -87,8 +87,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var audioWarning = false
     private(set) var recordingID: UUID?
     weak var menuWindow: NSWindow?
-    weak var settingsWindow: NSWindow?
-    @Published var settingsTab: SettingsTab = .general
     @Published private(set) var statusText = "Ready to record your display and audio."
     @Published private(set) var errorMessage: String?
     @Published private(set) var completedFolder: URL?

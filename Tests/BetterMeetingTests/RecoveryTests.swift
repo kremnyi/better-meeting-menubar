@@ -414,24 +414,26 @@ final class RecoveryTests: XCTestCase {
             folderURL: root,
             needsTranscription: false, titleWasProvided: true
         )
-        let pane = SettingsView.paneWidth
         var panels: [(String, AnyView, CGFloat, AppUpdater.Status)] = [
-            ("options", AnyView(CaptureOptionsView()), 360, .unchecked),
-            ("options-current", AnyView(CaptureOptionsView()), 360, .current),
-            ("options-checking", AnyView(CaptureOptionsView()), 360, .checking),
-            ("options-ready", AnyView(CaptureOptionsView()), 360, .ready("0.3.24")),
-            ("options-enabled", AnyView(CaptureOptionsView()), 360, .unchecked),
-            ("options-single-language", AnyView(CaptureOptionsView()), 360, .unchecked),
-            ("options-many-languages", AnyView(CaptureOptionsView()), 360, .unchecked),
-            ("settings-general", AnyView(GeneralSettingsView(version: "0.3.23").settingsPane()), pane, .unchecked),
-            ("settings-login-enabled", AnyView(GeneralSettingsView(launchAtLoginStatus: .enabled, version: "0.3.23").settingsPane()), pane, .unchecked),
-            ("settings-login-approval", AnyView(GeneralSettingsView(launchAtLoginStatus: .requiresApproval, version: "0.3.23").settingsPane()), pane, .unchecked),
-            ("settings-login-error", AnyView(GeneralSettingsView(launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23").settingsPane()), pane, .unchecked),
-            ("settings-login-missing", AnyView(GeneralSettingsView(launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.", version: "0.3.23").settingsPane()), pane, .unchecked),
-            ("settings-recording", AnyView(RecordingSettingsView().settingsPane()), pane, .unchecked),
-            ("settings-transcription", AnyView(TranscriptionSettingsView().settingsPane()), pane, .unchecked),
-            ("settings-models", AnyView(ModelStorageView().settingsPane()), pane, .unchecked),
-            ("settings-models-dark", AnyView(ModelStorageView().settingsPane()), pane, .unchecked),
+            ("options", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("options-current", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .current),
+            ("options-checking", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .checking),
+            ("options-ready", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .ready("0.3.24")),
+            ("options-app", AnyView(CaptureOptionsView(appSettingsPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("options-login-enabled", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .enabled, version: "0.3.23")), 360, .unchecked),
+            ("options-login-approval", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .requiresApproval, version: "0.3.23")), 360, .unchecked),
+            ("options-login-error", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23")), 360, .unchecked),
+            ("options-login-missing", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.", version: "0.3.23")), 360, .unchecked),
+            ("options-enabled", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("options-single-language", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("options-many-languages", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("advanced", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("advanced-models", AnyView(AdvancedTranscriptionView(
+                settings: .constant(SpeechSettings()), hints: .constant("")
+            ).frame(width: 328)), 328, .unchecked),
+            ("advanced-models-dark", AnyView(AdvancedTranscriptionView(
+                settings: .constant(SpeechSettings()), hints: .constant("")
+            ).frame(width: 328)), 328, .unchecked),
             ("advanced-decoding", AnyView(AdvancedTranscriptionView(
                 settings: .constant(SpeechSettings()), hints: .constant("Anna, Approck"), decodingExpanded: true
             ).frame(width: 328)), 328, .unchecked),
@@ -455,7 +457,7 @@ final class RecoveryTests: XCTestCase {
         panels.append(("updates-development", AnyView(UpdateOptionsView(
             updates: model.updates, version: nil
         ).frame(width: 328)), 328, .unchecked))
-        panels.append(("settings-update-error", AnyView(GeneralSettingsView(version: "0.3.23").settingsPane()), pane, .failed))
+        panels.append(("options-update-error", AnyView(CaptureOptionsView(appSettingsPresented: true, version: "0.3.23")), 360, .failed))
         var optionsHeight: CGFloat?
         var appHeight: CGFloat?
         var updatesHeight: CGFloat?
@@ -464,7 +466,7 @@ final class RecoveryTests: XCTestCase {
             if case .ready = status { model.updates.showReady(toInstallAndRelaunch: { _ in }) }
             else { model.updates.dismissUpdateInstallation() }
             model.updates.status = status
-            if name == "settings-update-error" {
+            if name == "options-update-error" {
                 model.updates.showUpdaterError(NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet,
                     userInfo: [NSLocalizedDescriptionKey: "The update could not be downloaded because the internet connection was lost. Check your connection and try again. Your installed version is unchanged."])) {}
             }
@@ -481,14 +483,14 @@ final class RecoveryTests: XCTestCase {
                 if let optionsHeight { XCTAssertEqual(view.fittingSize.height, optionsHeight, "Update states must not resize Options") }
                 else { optionsHeight = view.fittingSize.height }
             }
-            if name == "settings-transcription" {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 600, "Decoding must stay collapsed")
+            if name == "advanced" {
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 600, "Models stays visible; Decoding must stay collapsed")
             }
-            if name == "settings-general" {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 300, "General settings must stay compact")
+            if name == "options-app" {
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 300, "App settings must stay compact")
                 appHeight = view.fittingSize.height
             }
-            if name == "settings-update-error", let appHeight {
+            if name == "options-update-error", let appHeight {
                 XCTAssertGreaterThan(view.fittingSize.height, appHeight, "Error details must remain visible inline")
             }
             if ["updates-unchecked", "updates-checking", "updates-current", "updates-failed"].contains(name) {

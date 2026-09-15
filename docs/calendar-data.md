@@ -29,7 +29,7 @@ The search box matches attendee and organizer names and emails, including partia
 
 ## EventKit MVP
 
-Settings → Calendars (Options → Settings…) enables the integration and explicitly selects calendars already synced with macOS. It defaults off with an empty selection. Calendar permission is requested only from the Allow calendar access button. macOS requires full event access to read calendars; the app has no EventKit save/delete operations. No Google credentials or backend are involved.
+Options → Calendars enables the integration and explicitly selects calendars already synced with macOS. It defaults off with an empty selection. Calendar permission is requested only from the Allow calendar access button. macOS requires full event access to read calendars; the app has no EventKit save/delete operations. No Google credentials or backend are involved.
 
 The selected calendars are read for ongoing events and events starting in the next 24 hours. The view refreshes on appearance; while enabled, the integration also refreshes every minute, when EventKit announces changes, on app activation, and after wake. All-day, ended, cancelled, and current-user-declined events are excluded. Sync freshness depends on macOS Calendar; the app does not force a Google server sync. No events are automatically selected for recording.
 
@@ -43,7 +43,7 @@ There is deliberately no historical matching, manual linking, automatic recordin
 
 ## Meeting-start notifications
 
-Settings → Calendars → Notify me when meetings start is separately opt-in and defaults off. Enabling it requests macOS alert/sound permission; denied or disabled alerts show a settings link and retry action. Focus, notification settings, and sleep can silence or delay delivery.
+Options → Calendars → Notify me when meetings start is separately opt-in and defaults off. Enabling it requests macOS alert/sound permission; denied or disabled alerts show a settings link and retry action. Focus, notification settings, and sleep can silence or delay delivery.
 
 Calendar options group the control under Meeting reminders and omit routine explanatory hints. The summary shows the number of future alerts confirmed in the notification center and the next event. Failed scheduling never counts as success; partial failures retain the confirmed count with an error and retry action. Empty, loading, and permission states remain explicit. Relative timing updates every minute while visible.
 
