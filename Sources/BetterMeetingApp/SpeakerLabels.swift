@@ -53,13 +53,20 @@ enum SpeakerLabels {
         audioURL: URL, downloadBase: URL,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> [Turn] {
+        try await detect(audio: MeetingAudio(url: audioURL), downloadBase: downloadBase, progress: progress)
+    }
+
+    static func detect(
+        audio: MeetingAudio, downloadBase: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> [Turn] {
         try Task.checkCancellation()
         let kit = try await SpeakerKit(PyannoteConfig(downloadBase: downloadBase.path, verbose: false))
         do {
             try Task.checkCancellation()
-            let audio = try AudioProcessor.loadAudioAsFloatArray(fromPath: audioURL.path)
+            let samples = try audio.load()
             try Task.checkCancellation()
-            let result = try await kit.diarize(audioArray: audio, progressCallback: { update in
+            let result = try await kit.diarize(audioArray: samples, progressCallback: { update in
                 progress(update.fractionCompleted)
             })
             try Task.checkCancellation()

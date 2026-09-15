@@ -2,6 +2,7 @@ import AVFoundation
 import CoreML
 import FluidAudio
 import Foundation
+import os
 import SpeakerKit
 import WhisperKit
 
@@ -34,6 +35,7 @@ actor LocalTranscriber {
     private var whisper: WhisperKit?
     private var loadedModel: SpeechModel?
     private var parakeet: AsrManager?
+    private var activeTranscriptions = 0
     private let downloadBase: URL
 
     static let defaultDownloadBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -152,6 +154,8 @@ actor LocalTranscriber {
         return total
     }
 
+    var hasLoadedModels: Bool { whisper != nil || parakeet != nil }
+
     @discardableResult
     func prepare(
         model: SpeechModel = .turbo,
@@ -213,12 +217,22 @@ actor LocalTranscriber {
         }
     }
 
+    /// Releases loaded engines unless a transcription is still using them.
+    func unloadIfIdle() async {
+        guard activeTranscriptions == 0 else { return }
+        await unloadLoadedModels()
+    }
+
     private func unloadLoadedModels() async {
-        if let whisper { await whisper.unloadModels() }
+        // Forget the engines before awaiting their cleanup, so a transcription that starts
+        // meanwhile loads a fresh engine instead of using one that is being unloaded.
+        let loadedWhisper = whisper
+        let loadedParakeet = parakeet
         whisper = nil
         loadedModel = nil
-        if let parakeet { await parakeet.cleanup() }
         parakeet = nil
+        if let loadedWhisper { await loadedWhisper.unloadModels() }
+        if let loadedParakeet { await loadedParakeet.cleanup() }
     }
 
     func deleteStoredModel(at url: URL) async {
@@ -293,15 +307,19 @@ actor LocalTranscriber {
 
     func transcribe(
         audioURL: URL,
+        audio: MeetingAudio? = nil,
         languages: [String] = TranscriptionLanguage.defaultCandidates,
         hints: String = "",
         settings: SpeechSettings = SpeechSettings(),
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
+        activeTranscriptions += 1
+        defer { activeTranscriptions -= 1 }
         switch settings.selectedEngine {
         case .whisper:
             return try await transcribeWhisper(
-                audioURL: audioURL, languages: languages, hints: hints, settings: settings,
+                audioURL: audioURL, audio: audio ?? MeetingAudio(url: audioURL),
+                languages: languages, hints: hints, settings: settings,
                 progressHandler: progressHandler
             )
         case .parakeet:
@@ -313,6 +331,7 @@ actor LocalTranscriber {
 
     private func transcribeWhisper(
         audioURL: URL,
+        audio: MeetingAudio,
         languages: [String],
         hints: String,
         settings: SpeechSettings,
@@ -340,16 +359,20 @@ actor LocalTranscriber {
                 ))
             }
             report(0)
+            // Chunks decoded in parallel finish out of order; report the furthest point reached.
+            let furthest = OSAllocatedUnfairLock(initialState: 0.0)
             whisper.segmentDiscoveryCallback = { segments in
-                guard duration > 0, let end = segments.last?.end else { return }
-                report(min(max(Double(end) / duration, 0), 0.99))
+                guard duration > 0, let end = segments.map(\.end).max() else { return }
+                report(furthest.withLock { reached in
+                    reached = max(reached, min(max(Double(end) / duration, 0), 0.99))
+                    return reached
+                })
             }
             defer { whisper.segmentDiscoveryCallback = nil }
-            let results = try await whisper.transcribe(
-                audioPath: audioURL.path,
-                audioInputOptions: AudioInputOptions(audioLoadingMode: .incremental),
-                decodeOptions: options
-            )
+            // Decoded samples let WhisperKit split the audio at silences and decode several chunks at once.
+            let samples = try audio.load()
+            try Task.checkCancellation()
+            let results = try await whisper.transcribe(audioArray: samples, decodeOptions: options)
             try Task.checkCancellation()
             return results.flatMap(\.segments).compactMap { segment in
                 let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)

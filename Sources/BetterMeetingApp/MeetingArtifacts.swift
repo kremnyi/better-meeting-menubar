@@ -241,15 +241,7 @@ enum MeetingArtifacts {
     }
 
     static func meetings(in root: URL) -> [MeetingHistoryItem] {
-        let folders = (try? FileManager.default.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        return folders.compactMap { folder in
-            Task.isCancelled ? nil : meeting(in: folder)
-        }
-        .sorted { $0.recordedAt > $1.recordedAt }
+        MeetingLibrary().meetings(in: root)
     }
 
     static func meeting(in folder: URL) -> MeetingHistoryItem? {
@@ -317,17 +309,7 @@ enum MeetingArtifacts {
 
     // ponytail: scan saved Markdown on demand; add an index if large libraries make search slow.
     static func search(_ meetings: [MeetingHistoryItem], query: String) -> [MeetingHistoryItem] {
-        var matches: [MeetingHistoryItem] = []
-        for meeting in meetings {
-            guard !Task.isCancelled else { return [] }
-            if meeting.title.localizedStandardContains(query)
-                || MeetingCalendar.matches(in: meeting.folderURL, query: query)
-                || (try? String(contentsOf: meeting.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8)
-                    .localizedStandardContains(query)) == true {
-                matches.append(meeting)
-            }
-        }
-        return matches
+        MeetingLibrary().search(meetings, query: query)
     }
 
     static func sanitizedTitle(_ title: String) -> String {

@@ -4,13 +4,6 @@ import Combine
 import CoreGraphics
 import Foundation
 
-enum AppState: Equatable {
-    case idle
-    case preparing
-    case recording
-    case failed
-}
-
 private struct ProcessingRun {
     let folder: URL
     let recordedAt: Date
@@ -23,47 +16,6 @@ private struct ProcessingRun {
     var stopTask: Task<Void, Error>?
     /// The title a capture folder was created with; the name can change while recording.
     var folderTitle: String?
-}
-
-enum ProcessingPhase: Equatable {
-    case finalizingRecording
-    case preparingAudio
-    case preparingModel
-    case downloadingModel
-    case loadingModel
-    case transcribing
-    case labelingSpeakers
-    case writingFiles
-    case extractingScreens
-    case exportingBundle
-
-    var stepText: String {
-        switch self {
-        case .finalizingRecording: "Step 1 of 5"
-        case .preparingAudio: "Step 2 of 5"
-        case .preparingModel, .downloadingModel, .loadingModel: "Step 3 of 5"
-        case .transcribing: "Step 4 of 5"
-        case .writingFiles: "Step 5 of 5"
-        case .labelingSpeakers: "Speaker labels"
-        case .extractingScreens: "Step 1 of 2"
-        case .exportingBundle: "Step 2 of 2"
-        }
-    }
-
-    var statusText: String {
-        switch self {
-        case .finalizingRecording: "Finalizing the recording…"
-        case .preparingAudio: "Preparing audio for transcription…"
-        case .preparingModel: "Checking the speech model…"
-        case .downloadingModel: "Downloading the speech model…"
-        case .loadingModel: "Loading the speech model…"
-        case .transcribing: "Transcribing…"
-        case .labelingSpeakers: "Preparing speaker labels…"
-        case .writingFiles: "Writing transcript.md…"
-        case .extractingScreens: "Extracting screenshots and screen text…"
-        case .exportingBundle: "Writing the export bundle…"
-        }
-    }
 }
 
 private extension LocalTranscriptionProgress {
@@ -84,8 +36,7 @@ final class AppModel: ObservableObject {
     @Published var meetingTitle = ""
     @Published private(set) var state: AppState = .idle
     @Published private(set) var elapsed: TimeInterval = 0
-    @Published private(set) var microphoneLevel = 0.0
-    @Published private(set) var systemAudioLevel = 0.0
+    let meters = AudioMeters()
     @Published private(set) var audioWarning = false
     private(set) var recordingID: UUID?
     weak var menuWindow: NSWindow?
@@ -98,7 +49,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var processingPhase: ProcessingPhase?
     @Published private(set) var processingStatusText = ""
     @Published private(set) var processingTitle = ""
-    @Published private(set) var transcriptionHistory: [MeetingHistoryItem] = []
+    @Published private(set) var transcriptionHistory: [MeetingHistoryItem] = [] {
+        didSet { historyDays = MeetingDayGroup.groups(transcriptionHistory) }
+    }
+    /// The listed meetings grouped by day, computed when the list changes rather than on every redraw.
+    private(set) var historyDays: [MeetingDayGroup] = []
     @Published var historyQuery = "" {
         didSet { searchHistory() }
     }
@@ -196,6 +151,10 @@ final class AppModel: ObservableObject {
     private let defaults: UserDefaults
     private let recorder = MeetingRecorder()
     private let transcriber = LocalTranscriber()
+    private let library = MeetingLibrary()
+    private(set) var modelUnloadTask: Task<Void, Never>?
+    /// How long a loaded speech model stays in memory after the last job. Loading it again takes a few seconds.
+    var modelIdleUnloadDelay: Duration = .seconds(300)
     private var activeFolder: URL?
     private var recordedAt: Date?
     private var titleWasProvided = true
@@ -492,6 +451,7 @@ final class AppModel: ObservableObject {
 
     func transcribeAllRecordings(_ process: @escaping (MeetingHistoryItem) async -> Bool) {
         guard state == .idle, !isProcessing, !isTranscribingBatch, !unfinishedRecordings.isEmpty else { return }
+        cancelModelUnload()
         let recordings = unfinishedRecordings
         transcriptionBatchTotal = recordings.count
         transcriptionBatchIndex = 1
@@ -689,11 +649,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshHistory(
-        scan: @escaping @Sendable (URL) -> [MeetingHistoryItem] = { MeetingArtifacts.meetings(in: $0) }
-    ) {
+    func refreshHistory(scan: (@Sendable (URL) -> [MeetingHistoryItem])? = nil) {
         historyRefreshTask?.cancel()
         let root = outputRoot
+        let scan = scan ?? { [library] in library.meetings(in: $0) }
         historyRefreshTask = Task.detached(priority: .userInitiated) { [weak self] in
             let meetings = scan(root)
             await self?.showHistory(meetings)
@@ -729,8 +688,8 @@ final class AppModel: ObservableObject {
         }
         let meetings = meetingsByRecency
         searchingHistory = true
-        historySearchTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let matches = MeetingArtifacts.search(meetings, query: query)
+        historySearchTask = Task.detached(priority: .userInitiated) { [weak self, library] in
+            let matches = library.search(meetings, query: query)
             await self?.showSearchResults(matches)
         }
     }
@@ -944,6 +903,7 @@ final class AppModel: ObservableObject {
     }
 
     private func enqueue(_ run: ProcessingRun) {
+        cancelModelUnload()
         pendingRuns.append(run)
         guard processingTask == nil else { return }
         processingTask = Task { await runProcessingQueue() }
@@ -982,7 +942,24 @@ final class AppModel: ObservableObject {
         finishProcessingUI()
         processingTask = nil
         cancellingTranscription = false
+        scheduleModelUnload()
         if !isCapturing { completeTermination(succeeded) }
+    }
+
+    private func cancelModelUnload() {
+        modelUnloadTask?.cancel()
+        modelUnloadTask = nil
+    }
+
+    /// Frees the speech model after a quiet period. A recording in progress keeps it for its own transcription.
+    private func scheduleModelUnload() {
+        modelUnloadTask?.cancel()
+        let delay = modelIdleUnloadDelay
+        modelUnloadTask = Task { [weak self, transcriber] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self, !self.isProcessing, !self.isCapturing else { return }
+            await transcriber.unloadIfIdle()
+        }
     }
 
     private func finishProcessingUI() {
@@ -1043,8 +1020,12 @@ final class AppModel: ObservableObject {
                 }
                 try Task.checkCancellation()
             }
+            // Decoded once, for every language pass and speaker labels.
+            let meetingAudio = MeetingAudio(url: audioURL)
+            defer { meetingAudio.discard() }
             var segments = try await transcriber.transcribe(
-                audioURL: audioURL, languages: run.languages, hints: run.hints, settings: run.settings
+                audioURL: audioURL, audio: meetingAudio,
+                languages: run.languages, hints: run.hints, settings: run.settings
             ) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     self?.updateTranscriptionProgress(progress)
@@ -1058,7 +1039,7 @@ final class AppModel: ObservableObject {
                 ) {
                     self.setProcessingPhase(.labelingSpeakers)
                     return try await SpeakerLabels.detect(
-                        audioURL: audioURL, downloadBase: LocalTranscriber.defaultDownloadBase
+                        audio: meetingAudio, downloadBase: LocalTranscriber.defaultDownloadBase
                     ) { [weak self] fraction in
                         Task { @MainActor [weak self] in
                             guard let self, self.processingPhase == .labelingSpeakers,
@@ -1072,6 +1053,7 @@ final class AppModel: ObservableObject {
                 try Task.checkCancellation()
                 speakerWarning = "Transcript saved without speaker labels: \(error.localizedDescription)"
             }
+            meetingAudio.discard()
 
             try Task.checkCancellation()
             setProcessingPhase(.writingFiles)
@@ -1161,10 +1143,14 @@ final class AppModel: ObservableObject {
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.state == .recording, self.recordingID == recordingID else { return }
-                self.elapsed = Date().timeIntervalSince(startDate)
-                self.microphoneLevel = self.recorder.audioLevel(microphone: true)
-                self.systemAudioLevel = self.recorder.audioLevel(microphone: false)
-                self.checkRecordingAudio(elapsed: self.elapsed, audioDetected: self.recorder.hasDetectedAudio)
+                let elapsed = Date().timeIntervalSince(startDate)
+                // The clocks show whole seconds; publishing every tick would redraw the menu four times a second.
+                if Int(elapsed) != Int(self.elapsed) { self.elapsed = elapsed }
+                self.meters.update(
+                    microphone: self.recorder.audioLevel(microphone: true),
+                    system: self.recorder.audioLevel(microphone: false)
+                )
+                self.checkRecordingAudio(elapsed: elapsed, audioDetected: self.recorder.hasDetectedAudio)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -1197,8 +1183,7 @@ final class AppModel: ObservableObject {
         clearAudioWarning()
         audioWarning = false
         recordingID = nil
-        microphoneLevel = 0
-        systemAudioLevel = 0
+        meters.update(microphone: 0, system: 0)
     }
 
     private func updateTranscriptionProgress(_ progress: LocalTranscriptionProgress) {
@@ -1245,37 +1230,6 @@ final class AppModel: ObservableObject {
             privacyPermission = .microphone
         default:
             privacyPermission = nil
-        }
-    }
-}
-
-enum PrivacyPermission: Equatable {
-    case screenRecording
-    case microphone
-
-    var accessNeededText: String {
-        switch self {
-        case .screenRecording: "Screen access needed"
-        case .microphone: "Microphone access needed"
-        }
-    }
-
-    var settingsURL: URL? {
-        let anchor = switch self {
-        case .screenRecording: "Privacy_ScreenCapture"
-        case .microphone: "Privacy_Microphone"
-        }
-        return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")
-    }
-}
-
-enum AppError: LocalizedError {
-    case missingRecording
-
-    var errorDescription: String? {
-        switch self {
-        case .missingRecording:
-            "The active recording folder is missing. Start a new recording."
         }
     }
 }

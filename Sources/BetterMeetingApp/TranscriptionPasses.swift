@@ -40,7 +40,8 @@ struct TranscriptionLanguage: RawRepresentable, Hashable {
 }
 
 enum TranscriptionPasses {
-    private static let backend = "WhisperKit-1.1.0-nospeech-2"
+    // Bumped when decoding decoded samples split at silences, which segments speech differently than streaming did.
+    private static let backend = "WhisperKit-1.1.0-nospeech-2-vad-samples"
 
     private struct Cache: Codable {
         let model: String

@@ -571,7 +571,7 @@ final class RecoveryTests: XCTestCase {
                 duration: 3_934, folderURL: URL(fileURLWithPath: "/tmp/layout-preview"),
                 needsTranscription: unfinished, titleWasProvided: false
             )
-            let row = NSHostingView(rootView: MenuBarControlView().historyRow(item, isNew: saved, canEdit: true, status: status)
+            let row = NSHostingView(rootView: MeetingHistorySection(retranscribingMeeting: .constant(nil)).historyRow(item, isNew: saved, canEdit: true, status: status)
                 .environment(\.locale, Locale(identifier: "en_US"))
                 .frame(width: 264))
             XCTAssertEqual(row.fittingSize.height, 47, "The status indicators must not wrap meeting details")

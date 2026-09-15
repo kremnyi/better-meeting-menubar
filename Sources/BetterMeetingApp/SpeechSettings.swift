@@ -69,6 +69,9 @@ struct SpeechSettings: Codable, Equatable, Sendable {
 
     var usesWhisperOptions: Bool { selectedEngine == .whisper }
 
+    /// Silence-separated chunks Whisper decodes at once; each worker holds one chunk's decoder state.
+    static let whisperWorkers = 8
+
     func validate() throws {
         guard (0...1).contains(temperature), (0...10).contains(fallbackCount),
               (0...1).contains(fallbackIncrement), (0...1).contains(noSpeechThreshold),
@@ -83,7 +86,7 @@ struct SpeechSettings: Codable, Equatable, Sendable {
             temperatureIncrementOnFallback: fallbackIncrement, temperatureFallbackCount: fallbackCount,
             detectLanguage: false, skipSpecialTokens: true, wordTimestamps: false,
             compressionRatioThreshold: compressionRatioThreshold, logProbThreshold: logProbThreshold,
-            noSpeechThreshold: noSpeechThreshold, concurrentWorkerCount: 1, chunkingStrategy: .vad
+            noSpeechThreshold: noSpeechThreshold, concurrentWorkerCount: Self.whisperWorkers, chunkingStrategy: .vad
         )
     }
 }

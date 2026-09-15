@@ -272,9 +272,43 @@ final class MeetingActionTests: XCTestCase {
                 MeetingHistoryItem(title: iso, recordedAt: try XCTUnwrap(dates.date(from: iso)), duration: 60,
                                    folderURL: URL(fileURLWithPath: "/tmp/\(iso)"), needsTranscription: false, titleWasProvided: true)
             }
-        let groups = MenuBarControlView.dayGroups(items, calendar: calendar)
+        let groups = MeetingDayGroup.groups(items, calendar: calendar)
         XCTAssertEqual(groups.map(\.items.count), [2, 1, 1])
-        XCTAssertEqual(groups.prefix(2).map { MenuBarControlView.dayTitle($0.day, now: now, calendar: calendar) },
+        XCTAssertEqual(groups.prefix(2).map { MeetingHistorySection.dayTitle($0.day, now: now, calendar: calendar) },
                        ["Today", "Yesterday"])
+    }
+
+    func testLibraryReusesUnchangedFoldersAndRereadsEditedOnes() throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let date = Date(timeIntervalSince1970: 1_788_530_400)
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Alpha", recordedAt: date)
+        try MeetingArtifacts.write(title: "Alpha", recordedAt: date, duration: 60, segments: [], to: folder)
+        let metadata = folder.appendingPathComponent("metadata.json")
+        let transcript = folder.appendingPathComponent("transcript.md")
+        // The library only keeps entries whose files are more than a couple of seconds old.
+        let past = Date().addingTimeInterval(-3_600)
+        func settle() throws {
+            for url in [metadata, transcript, folder] {
+                try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: url.path)
+            }
+        }
+        try settle()
+        let library = MeetingLibrary()
+        let meetings = library.meetings(in: root)
+        XCTAssertEqual(meetings.map(\.title), ["Alpha"])
+        XCTAssertTrue(library.search(meetings, query: "pricing").isEmpty)
+
+        // Same size and date: the parsed folder is reused, so this in-place edit stays unseen.
+        let edited = try String(contentsOf: metadata, encoding: .utf8).replacingOccurrences(of: "Alpha", with: "Omega")
+        try edited.write(to: metadata, atomically: false, encoding: .utf8)
+        try settle()
+        XCTAssertEqual(library.meetings(in: root).map(\.title), ["Alpha"])
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-60)], ofItemAtPath: metadata.path)
+        XCTAssertEqual(library.meetings(in: root).map(\.title), ["Omega"], "A changed date reads the folder again")
+
+        try "# Alpha\n\nPricing notes\n".write(to: transcript, atomically: false, encoding: .utf8)
+        XCTAssertEqual(library.search(meetings, query: "pricing"), meetings, "An edited transcript is searched again")
+        XCTAssertEqual(MeetingArtifacts.search(meetings, query: "pricing"), meetings)
     }
 }

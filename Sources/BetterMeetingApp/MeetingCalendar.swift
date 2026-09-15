@@ -19,13 +19,21 @@ enum MeetingCalendar {
     }
 
     static func matches(in folder: URL, query: String) -> Bool {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let data = try? Data(contentsOf: folder.appendingPathComponent("calendar.json")),
+        matches(searchFields(in: folder), query: query)
+    }
+
+    static func matches(_ fields: [String], query: String) -> Bool {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return fields.contains { $0.localizedStandardContains(query) }
+    }
+
+    /// The event title and participant names and emails; empty when the sidecar is missing or unreadable.
+    static func searchFields(in folder: URL) -> [String] {
+        guard let data = try? Data(contentsOf: folder.appendingPathComponent("calendar.json")),
               let attachment = try? JSONDecoder().decode(Attachment.self, from: data),
-              attachment.schemaVersion == 1 else { return false }
+              attachment.schemaVersion == 1 else { return [] }
         let event = attachment.event
         let people = event.attendees + [event.organizer].compactMap { $0 }
-        let fields = [event.title] + people.flatMap { [$0.email, $0.name].compactMap { $0 } }
-        return fields.contains { $0.localizedStandardContains(query) }
+        return [event.title] + people.flatMap { [$0.email, $0.name].compactMap { $0 } }
     }
 }

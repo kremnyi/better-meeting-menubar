@@ -102,7 +102,7 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertFalse(options.detectLanguage)
         XCTAssertTrue(options.skipSpecialTokens)
         XCTAssertNil(options.promptTokens)
-        XCTAssertEqual(options.concurrentWorkerCount, 1)
+        XCTAssertEqual(options.concurrentWorkerCount, SpeechSettings.whisperWorkers)
         let logits = try MLMultiArray(shape: [1, 1, 3], dataType: .float32)
         logits[0] = 1000
         logits[1] = 1000
@@ -110,6 +110,14 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertEqual(SpeechProbabilityDecoder.probability(of: 1, in: logits), 1 / 3, accuracy: 0.00001)
         logits[1] = 1010
         XCTAssertGreaterThan(SpeechProbabilityDecoder.probability(of: 1, in: logits), 0.99)
+        // The model's logits are half precision; reading the buffer must match reading each boxed value.
+        let half = try MLMultiArray(shape: [1, 1, 3], dataType: .float16)
+        half[0] = 2.5
+        half[1] = 7
+        half[2] = -1
+        let boxed = (0..<3).map { half[$0].doubleValue }
+        let expected = Float(exp(boxed[1] - 7) / boxed.reduce(0) { $0 + exp($1 - 7) })
+        XCTAssertEqual(SpeechProbabilityDecoder.probability(of: 1, in: half), expected)
     }
 
     func testCancellationKeepsOnlyCompletedPasses() async throws {

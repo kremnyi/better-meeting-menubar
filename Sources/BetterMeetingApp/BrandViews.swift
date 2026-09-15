@@ -28,12 +28,20 @@ enum BrandAssets {
         return image
     }
 
+    // The label redraws often while recording; build each appearance's icon once.
+    private static let recordingIconLight = makeRecordingMenuBarIcon(dark: false)
+    private static let recordingIconDark = makeRecordingMenuBarIcon(dark: true)
+
     static func recordingMenuBarIcon(for colorScheme: ColorScheme) -> NSImage {
+        colorScheme == .dark ? recordingIconDark : recordingIconLight
+    }
+
+    private static func makeRecordingMenuBarIcon(dark: Bool) -> NSImage {
         let pointSize = NSSize(width: 18, height: 18)
         let image = NSImage(size: pointSize, flipped: false) { rect in
             NSGraphicsContext.saveGraphicsState()
             menuBarIcon.draw(in: rect)
-            (colorScheme == .dark ? NSColor.white : NSColor.black).setFill()
+            (dark ? NSColor.white : NSColor.black).setFill()
             rect.fill(using: .sourceIn)
             NSGraphicsContext.restoreGraphicsState()
 
@@ -85,9 +93,12 @@ struct MenuBarStatusIcon: View {
 }
 
 struct MenuBarStatusLabel: View {
-    @ObservedObject var model: AppModel
     @ObservedObject var calendar: CalendarIntegration
     let state: AppState
+    // Plain values rather than the model, so progress updates don't redraw the menu bar item.
+    var processing = false
+    /// The elapsed time to show while recording, or nil to show the icon alone.
+    var recordingTime: String?
     var processingFrame = 0
 
     // Menu bar space is scarce and macOS 26 sizes MenuBarExtra from the label's
@@ -97,8 +108,7 @@ struct MenuBarStatusLabel: View {
     static let previewLeadTime: TimeInterval = 60 * 60
 
     var body: some View {
-        if state == .recording, model.menuBarRecordingTime {
-            let elapsed = model.elapsedText
+        if state == .recording, let elapsed = recordingTime {
             HStack(spacing: 5) {
                 MenuBarStatusIcon(state: state)
                 Text(elapsed)
@@ -120,7 +130,7 @@ struct MenuBarStatusLabel: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Better Meeting, next meeting \(event.title), \(relative)")
         } else {
-            MenuBarStatusIcon(state: state, processing: model.isProcessing, processingFrame: processingFrame)
+            MenuBarStatusIcon(state: state, processing: processing, processingFrame: processingFrame)
         }
     }
 
@@ -135,7 +145,7 @@ struct MenuBarStatusLabel: View {
 
     private var previewEvent: CalendarEvent? {
         guard state == .idle,
-              !model.isProcessing,
+              !processing,
               calendar.menuBarPreview,
               calendar.enabled,
               calendar.authorization == .fullAccess

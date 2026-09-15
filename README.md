@@ -84,6 +84,8 @@ needed. The menu shows progress; you can record during setup, but transcription
 waits until the model is ready. If setup fails, use **Retry setup**.
 If Core ML cannot load the model files, the app clears that model's cache so retrying
 downloads a fresh copy. Other downloaded models and saved meetings are kept.
+Five minutes after the last transcription, the app releases the model from memory;
+the next transcription loads it again, which takes a few seconds.
 
 While recording, separate microphone and system-audio meters show incoming sound.
 An empty meter can mean silence; check the selected input if it stays empty while

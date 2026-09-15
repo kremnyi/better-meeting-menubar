@@ -24,18 +24,21 @@ enum ScreenExtractor {
         let thumbnails = generator(for: asset, width: 320)
         let frames = generator(for: asset, width: 1920)
         defer { thumbnails.cancelAllCGImageGeneration(); frames.cancelAllCGImageGeneration() }
+        let recognitionLanguages = try recognitionLanguages(for: languages)
         var previousSignature: [UInt8]?
         var previousTime = -90.0
         var previousText: [String] = []
         var keyframes: [ScreenEvent] = []
-        for time in stride(from: 0.0, to: duration, by: 2.0) {
+        let times = stride(from: 0.0, to: duration, by: 2.0).map { CMTime(seconds: $0, preferredTimescale: 600) }
+        // One batch request reads the video forward instead of starting a separate request per sample.
+        for await sample in thumbnails.images(for: times) {
             try Task.checkCancellation()
-            let timestamp = CMTime(seconds: time, preferredTimescale: 600)
-            let thumbnail = try await thumbnails.image(at: timestamp).image
-            let signature = try signature(of: thumbnail)
+            let timestamp = sample.requestedTime
+            let time = timestamp.seconds
+            let signature = try signature(of: try sample.image)
             if shouldKeep(signature, previous: previousSignature, gap: time - previousTime) {
                 let image = try await frames.image(at: timestamp).image
-                let lines = try recognizeText(in: image, languages: languages)
+                let lines = try recognizeText(in: image, recognitionLanguages: recognitionLanguages)
                 let added = addedLines(lines, previous: previousText)
                 keyframes.append(ScreenEvent(time: time, added: added))
                 previousText = lines
@@ -96,19 +99,29 @@ enum ScreenExtractor {
         return gap >= 90 || changes.filter { $0 > 14 }.count >= 3 || (changes.max() ?? 0) > 60
     }
 
-    static func recognizeText(in image: CGImage, languages: [String]) throws -> [String] {
-        try Task.checkCancellation()
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = false
+    /// The meeting languages Vision can read, looked up once per export rather than per screenshot.
+    static func recognitionLanguages(for languages: [String]) throws -> [String] {
+        let request = textRequest()
         let supported = try request.supportedRecognitionLanguages()
-        let preferred = languages.compactMap { language in
+        return languages.compactMap { language in
             supported.first { $0 == language || $0.hasPrefix(language + "-") }
         }
-        if !preferred.isEmpty { request.recognitionLanguages = preferred }
+    }
+
+    static func recognizeText(in image: CGImage, recognitionLanguages: [String]) throws -> [String] {
+        try Task.checkCancellation()
+        let request = textRequest()
+        if !recognitionLanguages.isEmpty { request.recognitionLanguages = recognitionLanguages }
         try VNImageRequestHandler(cgImage: image).perform([request])
         try Task.checkCancellation()
         return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+    }
+
+    private static func textRequest() -> VNRecognizeTextRequest {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        return request
     }
 
     static func addedLines(_ lines: [String], previous: [String]) -> [String] {
