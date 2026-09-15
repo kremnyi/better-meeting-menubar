@@ -151,7 +151,6 @@ final class RecoveryTests: XCTestCase {
             throw URLError(.notConnectedToInternet)
         }
         let first = try XCTUnwrap(model.modelPreparationTask)
-        model.prepareSpeechModel { _ in XCTFail("Setup must reuse the running task") }
         _ = await first.result
         XCTAssertEqual(attempts, 1)
         XCTAssertEqual(model.state, .idle)
@@ -178,6 +177,25 @@ final class RecoveryTests: XCTestCase {
         XCTAssertFalse(model.modelReady)
         XCTAssertNil(model.modelPreparationTask)
         XCTAssertEqual(model.state, .idle)
+    }
+
+    @MainActor
+    func testChangingSetupReplacesRunningTask() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingSetupReplace")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let model = AppModel(defaults: defaults)
+        var replacedRan = false
+        model.prepareSpeechModel { _ in
+            try await Task.sleep(for: .seconds(30))
+        }
+        let first = try XCTUnwrap(model.modelPreparationTask)
+        model.prepareSpeechModel { _ in replacedRan = true }
+        _ = await first.result
+        try await model.modelPreparationTask?.value
+        XCTAssertTrue(first.isCancelled)
+        XCTAssertTrue(replacedRan, "A newer setup must replace the running one")
+        XCTAssertTrue(model.modelReady)
+        XCTAssertNil(model.modelPreparationTask)
     }
 
     @MainActor

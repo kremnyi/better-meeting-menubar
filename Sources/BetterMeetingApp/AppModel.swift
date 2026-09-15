@@ -116,6 +116,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var modelDownloads: [String: Double] = [:]
     @Published private(set) var modelDownloadError: String?
     private(set) var modelPreparationTask: Task<Void, Error>?
+    private var modelPreparationToken = 0
     private(set) var modelDownloadTask: Task<Void, Never>?
     @Published private(set) var cancellingTranscription = false
     @Published private(set) var displays: [(id: CGDirectDisplayID, name: String)] = []
@@ -162,7 +163,7 @@ final class AppModel: ObservableObject {
     }
 
     func speechModelChanged() {
-        modelReady = false
+        modelReady = Self.modelIsCached(speechSettings)
         prepareSpeechModel()
     }
 
@@ -324,31 +325,42 @@ final class AppModel: ObservableObject {
         ).devices
     }
 
+    // ponytail: download-only; each engine loads on first transcription so picking one never compiles in the background.
     func prepareSpeechModel() {
         guard !modelReady, !isProcessing, state == .idle || state == .recording else { return }
         let settings = speechSettings
         prepareSpeechModel { [transcriber] progress in
-            try await transcriber.prepare(settings: settings, progressHandler: progress)
+            let report: @Sendable (Double) -> Void = { progress(.downloadingModel($0)) }
+            switch settings.selectedEngine {
+            case .whisper: try await transcriber.download(model: settings.model, progress: report)
+            case .parakeet: try await transcriber.downloadParakeet(progress: report)
+            }
         }
     }
 
     func prepareSpeechModel(
         _ prepare: @escaping (@escaping @Sendable (LocalTranscriptionProgress) -> Void) async throws -> Void
     ) {
-        guard modelPreparationTask == nil else { return }
+        modelPreparationTask?.cancel()
+        modelPreparationToken += 1
+        let token = modelPreparationToken
         modelReady = false
         modelSetupError = nil
         modelSetupFraction = nil
         modelSetupStatus = "Preparing speech model…"
         modelPreparationTask = Task {
-            defer { modelPreparationTask = nil }
+            defer {
+                if modelPreparationToken == token { modelPreparationTask = nil }
+            }
             do {
                 try await prepare { [weak self] progress in
                     Task { @MainActor [weak self] in self?.updateModelSetupProgress(progress) }
                 }
+                guard modelPreparationToken == token else { return }
                 modelReady = true
                 modelSetupStatus = "Speech model ready"
             } catch {
+                guard modelPreparationToken == token else { return }
                 modelReady = false
                 if error is CancellationError {
                     modelSetupStatus = "Speech model download cancelled"
