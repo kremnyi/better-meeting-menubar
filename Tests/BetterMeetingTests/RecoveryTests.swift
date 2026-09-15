@@ -409,10 +409,10 @@ final class RecoveryTests: XCTestCase {
             ("options-many-languages", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("advanced", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
             ("advanced-models", AnyView(AdvancedTranscriptionView(
-                settings: .constant(SpeechSettings()), hints: .constant(""), modelsExpanded: true
+                settings: .constant(SpeechSettings()), hints: .constant("")
             ).frame(width: 328)), 328, .unchecked),
             ("advanced-models-dark", AnyView(AdvancedTranscriptionView(
-                settings: .constant(SpeechSettings()), hints: .constant(""), modelsExpanded: true
+                settings: .constant(SpeechSettings()), hints: .constant("")
             ).frame(width: 328)), 328, .unchecked),
             ("advanced-decoding", AnyView(AdvancedTranscriptionView(
                 settings: .constant(SpeechSettings()), hints: .constant("Anna, Approck"), decodingExpanded: true
@@ -464,7 +464,7 @@ final class RecoveryTests: XCTestCase {
                 else { optionsHeight = view.fittingSize.height }
             }
             if name == "advanced" {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 600, "Models expands by default; Decoding must stay collapsed")
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 600, "Models stays visible; Decoding must stay collapsed")
             }
             if name == "options-app" {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 300, "App settings must stay compact")

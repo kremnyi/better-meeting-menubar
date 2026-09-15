@@ -50,18 +50,24 @@ actor LocalTranscriber {
             "models/argmaxinc/whisperkit-coreml",
             "models/argmaxinc/speakerkit-coreml",
             "models/openai",
-            "parakeet-tdt-0.6b-v3",
         ] {
-            let source = legacy.appendingPathComponent(path)
-            let target = destination.appendingPathComponent(path)
-            guard fm.fileExists(atPath: source.path) else { continue }
-            if fm.fileExists(atPath: target.path) {
-                // A build before the move downloaded the model here again; the legacy copy is a duplicate.
-                try? fm.removeItem(at: source)
-            } else {
-                try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? fm.moveItem(at: source, to: target)
-            }
+            move(legacy.appendingPathComponent(path), to: destination.appendingPathComponent(path))
+        }
+        // Parakeet lives under models/ too; earlier builds kept it beside models/ and the original copy sits at the legacy root.
+        let parakeet = destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3")
+        move(destination.appendingPathComponent("parakeet-tdt-0.6b-v3"), to: parakeet)
+        move(legacy.appendingPathComponent("parakeet-tdt-0.6b-v3"), to: parakeet)
+    }
+
+    private static func move(_ source: URL, to target: URL) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: source.path) else { return }
+        if fm.fileExists(atPath: target.path) {
+            // The model was downloaded again at the new location; the source copy is a duplicate.
+            try? fm.removeItem(at: source)
+        } else {
+            try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.moveItem(at: source, to: target)
         }
     }
 
@@ -79,7 +85,7 @@ actor LocalTranscriber {
     }
 
     private static func parakeetDirectory(in downloadBase: URL) -> URL {
-        downloadBase.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
+        downloadBase.appendingPathComponent("models/parakeet-tdt-0.6b-v3", isDirectory: true)
     }
 
     private static let parakeetVersion = AsrModelVersion.v3

@@ -342,7 +342,7 @@ under `models/openai/`. WhisperKit calls the turbo model
 Downloaded model files are kept when switching. The first load can take longer
 while Core ML prepares the model.
 
-Parakeet models live under `parakeet-tdt-0.6b-v3/` (about 470 MB) and are
+Parakeet models live under `models/parakeet-tdt-0.6b-v3/` (about 470 MB) and are
 downloaded only when the Parakeet engine is selected. The FluidAudio runtime is
 Apache-2.0; the model weights are CC-BY-4.0, © NVIDIA Corporation. See
 [ThirdPartyNotices.md](ThirdPartyNotices.md).

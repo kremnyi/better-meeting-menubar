@@ -334,7 +334,6 @@ struct AdvancedTranscriptionView: View {
     @Binding var hints: String
     var modelSelectionDisabled = false
     @State var decodingExpanded = false
-    @State var modelsExpanded = true
 
     private var engineBinding: Binding<TranscriptionEngine> {
         Binding(get: { settings.selectedEngine }, set: { settings.engine = $0 })
@@ -387,10 +386,9 @@ struct AdvancedTranscriptionView: View {
                     }
                 }
             }
-            DisclosureGroup("Models", isExpanded: $modelsExpanded) {
-                ModelStorageView()
-                    .padding(.top, 8)
-            }
+            Divider()
+            Text("Models").font(.headline)
+            ModelStorageView()
             if settings.usesWhisperOptions {
                 DisclosureGroup("Decoding", isExpanded: $decodingExpanded) {
                     Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {

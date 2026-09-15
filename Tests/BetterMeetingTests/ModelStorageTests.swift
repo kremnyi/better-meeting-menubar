@@ -12,11 +12,11 @@ final class ModelStorageTests: XCTestCase {
             "models/argmaxinc/whisperkit-coreml/openai_whisper-small/model.bin",
             "models/argmaxinc/speakerkit-coreml/segmenter/model.bin",
             "models/openai/tokenizer.json",
-            "parakeet-tdt-0.6b-v3/model.bin",
         ]
         for path in moved {
             try write("data", to: legacy.appendingPathComponent(path))
         }
+        try write("data", to: legacy.appendingPathComponent("parakeet-tdt-0.6b-v3/model.bin"))
         try write("keep", to: legacy.appendingPathComponent("other/file.txt"))
 
         LocalTranscriber.prepareModelStorage(legacy: legacy, destination: destination)
@@ -25,6 +25,10 @@ final class ModelStorageTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent(path).path), path)
             XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent(path).path), path)
         }
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3/model.bin").path
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("parakeet-tdt-0.6b-v3").path))
         XCTAssertEqual(try String(contentsOf: legacy.appendingPathComponent("other/file.txt")), "keep")
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("other/file.txt").path))
     }
@@ -42,6 +46,20 @@ final class ModelStorageTests: XCTestCase {
         let tokenizer = destination.appendingPathComponent("models/openai/tokenizer.json")
         XCTAssertEqual(try String(contentsOf: tokenizer), "new")
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("models/openai").path))
+    }
+
+    func testPrepareModelStorageRelocatesStrayParakeetFolder() throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let destination = root.appendingPathComponent("current")
+        try write("model", to: destination.appendingPathComponent("parakeet-tdt-0.6b-v3/model.bin"))
+
+        LocalTranscriber.prepareModelStorage(legacy: root.appendingPathComponent("legacy"), destination: destination)
+
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3/model.bin").path
+        ))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("parakeet-tdt-0.6b-v3").path))
     }
 
     func testStoredModelsReportInstallationAndSize() throws {
@@ -68,6 +86,8 @@ final class ModelStorageTests: XCTestCase {
         XCTAssertFalse(turbo.installed)
         XCTAssertEqual(turbo.sizeBytes, 0)
         XCTAssertEqual(turbo.downloadBytes, SpeechModel.turbo.downloadBytes)
+        let parakeet = try XCTUnwrap(models.first { $0.title == "Parakeet v3" })
+        XCTAssertEqual(parakeet.url.deletingLastPathComponent().lastPathComponent, "models")
         XCTAssertTrue(try XCTUnwrap(models.last).installed)
         XCTAssertGreaterThan(SpeechModel.small.downloadBytes, 0)
         XCTAssertLessThan(SpeechModel.small.downloadBytes, SpeechModel.turbo.downloadBytes)
