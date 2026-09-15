@@ -160,10 +160,8 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertTrue(delegate.shouldPresentAudioWarning(request))
         delegate.openNotification(request)
         XCTAssertEqual(clicks.count, 1, "A click must activate the existing native menu button")
-        let view = NSHostingView(rootView: MenuBarControlView()
-            .environmentObject(model).environmentObject(model.updates))
+        let view = hostingView(MenuBarControlView(), model: model)
         window.contentView = view
-        view.layoutSubtreeIfNeeded()
         XCTAssertTrue(model.menuWindow === window, "The menu must track its own native window")
         window.orderFront(nil)
         XCTAssertTrue(window.isVisible)

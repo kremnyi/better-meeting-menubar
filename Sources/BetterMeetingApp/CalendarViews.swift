@@ -95,12 +95,6 @@ struct CalendarOptionsView: View {
         }
         .task { await calendar.refresh() }
     }
-
-    private func openCalendar() {
-        if let url = URL(string: "ical://") {
-            NSWorkspace.shared.open(url)
-        }
-    }
 }
 
 private struct CalendarReminderOptionsView: View {

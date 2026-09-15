@@ -419,11 +419,7 @@ final class MeetingCalendarTests: XCTestCase {
                     ("menu", AnyView(MenuBarControlView()))
                 ]
                 for (name, content) in panels {
-                    let view = NSHostingView(rootView: content.environmentObject(model).environmentObject(model.updates)
-                        .environment(\.colorScheme, scheme).background(Color(nsColor: .windowBackgroundColor)))
-                    view.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
-                    view.frame = NSRect(origin: .zero, size: view.fittingSize)
-                    view.layoutSubtreeIfNeeded()
+                    let view = hostingView(content, model: model, scheme: scheme)
                     XCTAssertEqual(view.fittingSize.width, name == "menu" ? 304 : 360)
                     // Guards against runaway growth: the tallest stress state (2-line title plus a second today meeting) sits at 727, so 740 keeps a real budget while still catching an unbounded list.
                     XCTAssertLessThan(view.fittingSize.height, 740)

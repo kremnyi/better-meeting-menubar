@@ -14,36 +14,21 @@ struct CaptureOptionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if calendarsPresented {
-                Button { calendarsPresented = false } label: {
-                    Label("Options", systemImage: "chevron.left")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                OptionsBackButton { calendarsPresented = false }
                 CalendarOptionsView(calendar: model.calendar)
+            } else if modelsPresented {
+                OptionsBackButton(title: "Advanced") { modelsPresented = false }
+                ModelStorageView()
             } else if advancedPresented {
-                Button { advancedPresented = false } label: {
-                    Label("Options", systemImage: "chevron.left")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                OptionsBackButton { advancedPresented = false }
                 AdvancedTranscriptionView(
                     settings: $model.speechSettings, hints: $model.transcriptionHints,
-                    modelSelectionDisabled: model.modelPreparationTask != nil
+                    modelSelectionDisabled: model.modelPreparationTask != nil,
+                    onManageModels: { modelsPresented = true }
                 )
                 .disabled(model.updates.isBusy())
-            } else if modelsPresented {
-                Button { modelsPresented = false } label: {
-                    Label("Options", systemImage: "chevron.left")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
-                ModelStorageView()
             } else if appSettingsPresented {
-                Button { appSettingsPresented = false } label: {
-                    Label("Options", systemImage: "chevron.left")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                OptionsBackButton { appSettingsPresented = false }
                 appSettings
             } else {
                 basicOptions
@@ -173,9 +158,6 @@ struct CaptureOptionsView: View {
                 HStack {
                     Text("Transcription").font(.headline)
                     Spacer()
-                    Button("Models…") { modelsPresented = true }
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("Downloaded speech models")
                     Button("Advanced…") { advancedPresented = true }
                         .buttonStyle(.bordered)
                         .accessibilityLabel("Advanced transcription")
@@ -288,7 +270,7 @@ struct TranscriptionOptionsView: View {
                     .frame(minWidth: 0, maxWidth: .infinity)
                     .accessibilityLabel("Spoken languages")
                     .accessibilityValue(languageNames)
-                    .help(languageNames + ". Select the languages you expect. At least one is required.")
+                    .help(languageNames + ". One transcription pass per language; at least one is required.")
                 }
             }
             GridRow {
@@ -297,16 +279,8 @@ struct TranscriptionOptionsView: View {
                     set: { settings.speakerLabels = $0 }
                 ))
                 .toggleStyle(.checkbox)
-                .help("Adds Speaker 1, Speaker 2… Downloads about 11 MB once. Labels may need correction.")
+                .help("Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
                 .gridCellColumns(2)
-            }
-            GridRow {
-                Text(settings.usesWhisperOptions
-                     ? "Extra languages and speaker labels take longer."
-                     : "Speaker labels take longer.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .gridCellColumns(2)
             }
         }
     }
@@ -324,11 +298,7 @@ struct RetranscriptionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if advancedPresented {
-                Button { advancedPresented = false } label: {
-                    Label("Transcription options", systemImage: "chevron.left")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                OptionsBackButton(title: "Transcription options") { advancedPresented = false }
                 AdvancedTranscriptionView(settings: $settings, hints: $hints)
             } else {
                 HStack {
@@ -368,6 +338,8 @@ struct AdvancedTranscriptionView: View {
     @Binding var settings: SpeechSettings
     @Binding var hints: String
     var modelSelectionDisabled = false
+    var onManageModels: (() -> Void)?
+    @State var decodingExpanded = false
 
     private var engineBinding: Binding<TranscriptionEngine> {
         Binding(get: { settings.selectedEngine }, set: { settings.engine = $0 })
@@ -375,7 +347,15 @@ struct AdvancedTranscriptionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Advanced transcription").font(.headline)
+            HStack {
+                Text("Advanced transcription").font(.headline)
+                Spacer()
+                if let onManageModels {
+                    Button("Models…", action: onManageModels)
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Downloaded speech models")
+                }
+            }
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                 GridRow {
                     Text("Engine")
@@ -421,38 +401,42 @@ struct AdvancedTranscriptionView: View {
                 }
             }
             if settings.usesWhisperOptions {
-                Divider()
-                Text("Retries and filtering").font(.headline)
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                    option("Temperature", value: $settings.temperature, range: 0...1,
-                           help: "Higher values allow more varied wording; zero uses greedy decoding.")
-                    GridRow {
-                        Text("Fallback attempts")
-                        Stepper(value: $settings.fallbackCount, in: 0...10) {
-                            Text("\(settings.fallbackCount)").monospacedDigit()
-                                .frame(maxWidth: .infinity, alignment: .trailing)
+                DisclosureGroup("Decoding", isExpanded: $decodingExpanded) {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                        option("Temperature", value: $settings.temperature, range: 0...1,
+                               help: "Higher values allow more varied wording; zero uses greedy decoding.")
+                        GridRow {
+                            Text("Fallback attempts")
+                            Stepper(value: $settings.fallbackCount, in: 0...10) {
+                                Text("\(settings.fallbackCount)").monospacedDigit()
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
+                                .frame(width: 76)
+                                .accessibilityLabel("Fallback attempts")
+                                .help("Retries when decoding fails the quality thresholds. Zero disables retries.")
                         }
-                            .frame(width: 76)
-                            .accessibilityLabel("Fallback attempts")
-                            .help("Retries when decoding fails the quality thresholds. Zero disables retries.")
+                        option("Temperature increase", value: $settings.fallbackIncrement, range: 0...1,
+                               help: "Temperature increase for each retry.")
+                        option("No-speech threshold", value: $settings.noSpeechThreshold, range: 0...1,
+                               help: "A segment is treated as silence when its no-speech probability exceeds this and its log probability is below the threshold.")
+                        option("Log probability threshold", value: $settings.logProbThreshold, range: -5...0,
+                               help: "Average token log probability below this triggers a retry, or silence removal when the no-speech threshold is also exceeded.")
+                        option("Repetition threshold", value: $settings.compressionRatioThreshold, range: 1...5,
+                               help: "Compression ratio above this triggers a retry for repetitive output.")
                     }
-                    option("Temperature increase", value: $settings.fallbackIncrement, range: 0...1,
-                           help: "Temperature increase for each retry.")
-                    option("No-speech threshold", value: $settings.noSpeechThreshold, range: 0...1,
-                           help: "A segment is treated as silence when its no-speech probability exceeds this and its log probability is below the threshold.")
-                    option("Log probability threshold", value: $settings.logProbThreshold, range: -5...0,
-                           help: "Average token log probability below this triggers a retry, or silence removal when the no-speech threshold is also exceeded.")
-                    option("Repetition threshold", value: $settings.compressionRatioThreshold, range: 1...5,
-                           help: "Compression ratio above this triggers a retry for repetitive output.")
-                }
-                Button("Reset decoding defaults") {
-                    settings = SpeechSettings(
-                        engine: settings.engine, model: settings.model, speakerLabels: settings.speakerLabels
-                    )
+                    .padding(.top, 8)
+                    HStack {
+                        Button("Reset decoding defaults") {
+                            settings = SpeechSettings(
+                                engine: settings.engine, model: settings.model, speakerLabels: settings.speakerLabels
+                            )
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.top, 2)
                 }
             } else {
-                Divider()
-                Text("Parakeet detects the language and adds punctuation. It downloads about 600 MB once and substitutes its own text for the vocabulary and decoding options.")
+                Text("Vocabulary and decoding options apply to Whisper only.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -473,5 +457,18 @@ struct AdvancedTranscriptionView: View {
             .accessibilityLabel(title)
             .help(help)
         }
+    }
+}
+
+private struct OptionsBackButton: View {
+    var title = "Options"
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: "chevron.left")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.tint)
     }
 }

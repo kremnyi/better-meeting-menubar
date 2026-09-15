@@ -11,7 +11,7 @@ struct ModelStorageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Downloaded models").font(.headline)
+            Text("Models").font(.headline)
             ForEach(model.storedModels) { item in
                 row(item)
             }
@@ -24,9 +24,6 @@ struct ModelStorageView: View {
             Button("Show models folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([LocalTranscriber.defaultDownloadBase])
             }
-            Text("Models stay on this Mac. A downloaded model is used the next time it is selected; deleting one frees its disk space.")
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { await model.refreshStoredModels() }
@@ -62,14 +59,13 @@ struct ModelStorageView: View {
             Text(fraction.formatted(.percent.precision(.fractionLength(0))))
                 .font(.caption).foregroundStyle(.secondary)
         } else if item.installed {
-            Button("Reveal") {
-                NSWorkspace.shared.activateFileViewerSelecting([item.url])
-            }
             Button("Delete…") { pendingDelete = item }
                 .disabled(busy)
+                .help("Deletes the downloaded files and frees their disk space. They download again when next needed.")
         } else {
             Button("Download") { model.downloadStoredModel(item) }
                 .disabled(busy)
+                .help("Downloads now so transcription does not wait later")
         }
     }
 

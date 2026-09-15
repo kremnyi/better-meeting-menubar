@@ -291,10 +291,7 @@ final class RecoveryTests: XCTestCase {
         model.retryTranscription(item)
         let processing = try XCTUnwrap(model.processingTask)
         XCTAssertTrue(model.isProcessing)
-        let view = NSHostingView(rootView: MenuBarControlView().environmentObject(model).environmentObject(model.updates)
-            .environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))
-        view.frame = NSRect(origin: .zero, size: view.fittingSize)
-        view.layoutSubtreeIfNeeded()
+        let view = hostingView(MenuBarControlView(), model: model)
         func searchField(in view: NSView) -> NSSearchField? {
             (view as? NSSearchField) ?? view.subviews.lazy.compactMap { searchField(in: $0) }.first
         }
@@ -303,8 +300,7 @@ final class RecoveryTests: XCTestCase {
         XCTAssertTrue(model.updates.isBusy())
         if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("processing.png"))
-            let options = NSHostingView(rootView: CaptureOptionsView().environmentObject(model)
-                .environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))
+            let options = hostingView(CaptureOptionsView(), model: model)
             try writePreview(options, to: URL(fileURLWithPath: path).appendingPathComponent("options-processing.png"))
         }
         field.stringValue = "Product"
@@ -325,8 +321,7 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(model.state, .failed)
         XCTAssertFalse(model.updates.isBusy(), "A failure must unlock settings so the user can recover")
         if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
-            let options = NSHostingView(rootView: CaptureOptionsView().environmentObject(model)
-                .environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))
+            let options = hostingView(CaptureOptionsView(), model: model)
             try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("failed.png"))
             try writePreview(options, to: URL(fileURLWithPath: path).appendingPathComponent("options-failed.png"))
         }
@@ -348,10 +343,7 @@ final class RecoveryTests: XCTestCase {
             XCTAssertFalse(model.captureAccessNotice.isSecondary, "Blocked access must not look like quiet ready status")
             XCTAssertEqual(model.primaryButtonTitle, title, "Keep the existing restart or retry as the secondary action")
             XCTAssertNotNil(permission.settingsURL)
-            let view = NSHostingView(rootView: MenuBarControlView()
-                .environmentObject(model).environmentObject(model.updates)
-                .environment(\.colorScheme, .light)
-                .background(Color(nsColor: .windowBackgroundColor)))
+            let view = hostingView(MenuBarControlView(), model: model)
             XCTAssertEqual(view.fittingSize.width, 304)
             XCTAssertGreaterThan(view.fittingSize.height, 0)
             if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
@@ -370,8 +362,8 @@ final class RecoveryTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
-        let closed = NSHostingView(rootView: MenuBarControlView().environmentObject(model).environmentObject(model.updates))
-        let presented = NSHostingView(rootView: MenuBarControlView(captureOptionsPresented: true).environmentObject(model).environmentObject(model.updates))
+        let closed = hostingView(MenuBarControlView(), model: model)
+        let presented = hostingView(MenuBarControlView(captureOptionsPresented: true), model: model)
         let initialSize = closed.fittingSize
         XCTAssertGreaterThan(initialSize.height, 0)
         XCTAssertEqual(presented.fittingSize, initialSize)
@@ -388,7 +380,7 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
-    func testOptionsAndUpdateLayouts() throws {
+    func testOptionsAndUpdateLayouts() async throws {
         let suite = "BetterMeetingPanelLayout.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         let root = makeTempRoot(suite)
@@ -396,6 +388,7 @@ final class RecoveryTests: XCTestCase {
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
+        await model.refreshStoredModels()
         let meeting = MeetingHistoryItem(
             title: "Design review", recordedAt: Date(), duration: 60,
             folderURL: root,
@@ -415,6 +408,10 @@ final class RecoveryTests: XCTestCase {
             ("options-single-language", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("options-many-languages", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("advanced", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("models", AnyView(CaptureOptionsView(advancedPresented: true, modelsPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("advanced-decoding", AnyView(AdvancedTranscriptionView(
+                settings: .constant(SpeechSettings()), hints: .constant("Anna, Approck"), decodingExpanded: true
+            ).frame(width: 328)), 328, .unchecked),
             ("retranscribe", AnyView(RetranscriptionView(
                 meeting: meeting, languages: ["uk", "ru", "en"],
                 hints: "", settings: SpeechSettings(), start: { _, _, _ in }
@@ -453,15 +450,16 @@ final class RecoveryTests: XCTestCase {
             model.transcriptionLanguages = name == "options-single-language" ? ["uk"]
                 : name == "options-many-languages" ? ["uk", "ru", "en", "fr", "de", "es", "pt", "ja"]
                 : ["uk", "ru", "en"]
-            let view = NSHostingView(rootView: content.environmentObject(model).environmentObject(model.updates)
-                .environment(\.colorScheme, .light)
-                .background(Color(nsColor: .windowBackgroundColor)))
+            let view = hostingView(content, model: model)
             XCTAssertEqual(view.fittingSize.width, width, "\(name) must keep its panel width")
             XCTAssertGreaterThan(view.fittingSize.height, 0)
             if ["options", "options-current", "options-checking", "options-ready"].contains(name) {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 400, "Options must stay compact")
                 if let optionsHeight { XCTAssertEqual(view.fittingSize.height, optionsHeight, "Update states must not resize Options") }
                 else { optionsHeight = view.fittingSize.height }
+            }
+            if name == "advanced" {
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 320, "Decoding must stay collapsed by default")
             }
             if name == "options-app" {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 300, "App settings must stay compact")
@@ -495,10 +493,11 @@ final class RecoveryTests: XCTestCase {
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
         func size() -> NSSize {
-            NSHostingView(rootView: MenuBarControlView().environmentObject(model).environmentObject(model.updates)).fittingSize
+            NSHostingView(rootView: MenuBarControlView()
+                .environmentObject(model).environmentObject(model.updates)).fittingSize
         }
         let initial = size()
-        let menu = NSHostingView(rootView: MenuBarControlView().environmentObject(model).environmentObject(model.updates))
+        let menu = hostingView(MenuBarControlView(), model: model)
         menu.frame = NSRect(origin: .zero, size: initial)
         menu.layoutSubtreeIfNeeded()
         func searchField(in view: NSView) -> NSSearchField? {
@@ -568,10 +567,7 @@ final class RecoveryTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
-        let view = NSHostingView(rootView: MenuBarControlView()
-            .environmentObject(model).environmentObject(model.updates)
-            .environment(\.colorScheme, .light)
-            .background(Color(nsColor: .windowBackgroundColor)))
+        let view = hostingView(MenuBarControlView(), model: model)
         try writePreview(view, to: URL(fileURLWithPath: path))
         if let panels = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
             let initialSize = view.fittingSize
@@ -584,11 +580,10 @@ final class RecoveryTests: XCTestCase {
                 updates.canCheckForUpdates = true
                 if case .ready = status { updates.showReady(toInstallAndRelaunch: { _ in }) }
                 updates.status = status
-                let updated = NSHostingView(rootView: MenuBarControlView()
-                    .environmentObject(model).environmentObject(updates)
-                    .environment(\.colorScheme, name == "ready-dark" ? .dark : .light)
-                    .background(Color(nsColor: .windowBackgroundColor)))
-                updated.appearance = NSAppearance(named: name == "ready-dark" ? .darkAqua : .aqua)
+                let updated = hostingView(
+                    MenuBarControlView(), model: model, updates: updates,
+                    scheme: name == "ready-dark" ? .dark : .light
+                )
                 XCTAssertEqual(updated.fittingSize.width, initialSize.width)
                 XCTAssertEqual(updated.fittingSize.height, initialSize.height, "Update feedback must not resize the menu")
                 try writePreview(updated, to: URL(fileURLWithPath: panels).appendingPathComponent("menu-update-\(name).png"))
@@ -687,10 +682,7 @@ final class RecoveryTests: XCTestCase {
         var warnings = 0
         let observation = model.$audioWarning.sink { if $0 { warnings += 1 } }
         defer { observation.cancel() }
-        let view = NSHostingView(rootView: MenuBarControlView()
-            .environmentObject(model).environmentObject(model.updates)
-            .environment(\.colorScheme, .light)
-            .background(Color(nsColor: .windowBackgroundColor)))
+        let view = hostingView(MenuBarControlView(), model: model)
         let initialSize = view.fittingSize
         model.checkRecordingAudio(elapsed: 29.99, audioDetected: false)
         XCTAssertFalse(model.audioWarning)
@@ -701,15 +693,11 @@ final class RecoveryTests: XCTestCase {
         model.checkRecordingAudio(elapsed: 120, audioDetected: false)
         XCTAssertEqual(warnings, 1)
         XCTAssertEqual(model.state, .recording, "A warning must not stop recording")
-        let warningView = NSHostingView(rootView: view.rootView)
+        let warningView = hostingView(view.rootView, model: model)
         XCTAssertEqual(warningView.fittingSize, initialSize, "The warning must not move the recording controls")
         if let panels {
             try writePreview(warningView, to: panels.appendingPathComponent("recording-audio-warning.png"))
-            let dark = NSHostingView(rootView: MenuBarControlView()
-                .environmentObject(model).environmentObject(model.updates)
-                .environment(\.colorScheme, .dark)
-                .background(Color(nsColor: .windowBackgroundColor)))
-            dark.appearance = NSAppearance(named: .darkAqua)
+            let dark = hostingView(MenuBarControlView(), model: model, scheme: .dark)
             XCTAssertEqual(dark.fittingSize, initialSize)
             try writePreview(dark, to: panels.appendingPathComponent("recording-audio-warning-dark.png"))
         }
@@ -734,7 +722,7 @@ final class RecoveryTests: XCTestCase {
             XCTAssertFalse(model.audioWarning)
         }
         XCTAssertEqual(warnings, 1)
-        XCTAssertEqual(NSHostingView(rootView: view.rootView).fittingSize, initialSize)
+        XCTAssertEqual(hostingView(view.rootView, model: model).fittingSize, initialSize)
         model.recordingDidStart(at: Date())
         model.checkRecordingAudio(elapsed: 30, audioDetected: false)
         XCTAssertEqual(warnings, 2, "A new recording must get its own warning")

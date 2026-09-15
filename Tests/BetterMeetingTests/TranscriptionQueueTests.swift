@@ -162,13 +162,7 @@ final class TranscriptionQueueTests: XCTestCase {
     }
 
     private func render(_ model: AppModel, name: String, scheme: ColorScheme) throws {
-        let view = NSHostingView(rootView: MenuBarControlView()
-            .environmentObject(model).environmentObject(model.updates)
-            .environment(\.colorScheme, scheme)
-            .background(Color(nsColor: .windowBackgroundColor)))
-        view.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
-        view.frame = NSRect(origin: .zero, size: view.fittingSize)
-        view.layoutSubtreeIfNeeded()
+        let view = hostingView(MenuBarControlView(), model: model, scheme: scheme)
         XCTAssertEqual(view.fittingSize.width, 304)
         XCTAssertLessThan(view.fittingSize.height, 700)
         guard let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] else { return }
