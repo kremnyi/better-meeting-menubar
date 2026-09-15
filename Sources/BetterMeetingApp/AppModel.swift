@@ -205,8 +205,11 @@ final class AppModel: ObservableObject {
     private var quitWhenFinished = false
     private var startTask: Task<Void, Never>?
     private(set) var processingTask: Task<Void, Never>?
-    private var pendingRuns: [ProcessingRun] = []
-    private var processingFolder: URL?
+    private var pendingRuns: [ProcessingRun] = [] { didSet { updateQueuedFolders() } }
+    private var batchRemaining: [URL] = [] { didSet { updateQueuedFolders() } }
+    @Published private(set) var processingFolder: URL?
+    /// Meetings waiting behind the current job, in order, so the list can mark them.
+    @Published private(set) var queuedFolders: [URL] = []
     private(set) var historySearchTask: Task<Void, Never>?
     private(set) var historyRefreshTask: Task<Void, Never>?
     private var completedMeetings: [MeetingHistoryItem] = []
@@ -249,7 +252,12 @@ final class AppModel: ObservableObject {
     }
 
     var elapsedText: String {
-        Timecode.string(elapsed)
+        Timecode.compact(elapsed)
+    }
+
+    /// Screen Recording and microphone access. Previews replace it to show the granted state.
+    var captureAccess: () -> (screen: Bool, microphone: AVAuthorizationStatus) = {
+        (CGPreflightScreenCaptureAccess(), AVCaptureDevice.authorizationStatus(for: .audio))
     }
 
     var primaryButtonTitle: String {
@@ -287,8 +295,7 @@ final class AppModel: ObservableObject {
             return ("Stop here or from the macOS recording menu", true)
         }
 
-        let screenReady = CGPreflightScreenCaptureAccess()
-        let microphone = AVCaptureDevice.authorizationStatus(for: .audio)
+        let (screenReady, microphone) = captureAccess()
         if screenReady && microphone == .authorized {
             return ("Screen, system audio, and mic ready", true)
         }
@@ -306,10 +313,11 @@ final class AppModel: ObservableObject {
 
     var captureAccessSettingsURL: URL? {
         guard state == .idle, !isProcessing else { return nil }
-        if !CGPreflightScreenCaptureAccess() {
+        let access = captureAccess()
+        if !access.screen {
             return PrivacyPermission.screenRecording.settingsURL
         }
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        switch access.microphone {
         case .denied, .restricted: return PrivacyPermission.microphone.settingsURL
         default: return nil
         }
@@ -326,8 +334,8 @@ final class AppModel: ObservableObject {
     var captureAccessNeedsAttention: Bool {
         if privacyPermission != nil { return true }
         guard state != .recording else { return false }
-        return !CGPreflightScreenCaptureAccess()
-            || [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .audio))
+        let access = captureAccess()
+        return !access.screen || [.denied, .restricted].contains(access.microphone)
     }
 
     var captureAccessSymbol: String {
@@ -493,6 +501,7 @@ final class AppModel: ObservableObject {
             for (index, item) in recordings.enumerated() {
                 guard !Task.isCancelled else { break }
                 transcriptionBatchIndex = index + 1
+                batchRemaining = recordings.dropFirst(index + 1).map(\.folderURL)
                 if index > 0 { prepareSavedTranscription(item) }
                 guard await process(item) else { break }
                 completed += 1
@@ -504,6 +513,7 @@ final class AppModel: ObservableObject {
                     ? "Transcription cancelled. \(completed) of \(recordings.count) finished; remaining recordings are kept."
                     : "Transcribed \(completed) of \(recordings.count) recordings."
             }
+            batchRemaining = []
             transcriptionBatchTotal = 0
             transcriptionBatchIndex = 0
             refreshHistory()
@@ -557,6 +567,7 @@ final class AppModel: ObservableObject {
 
     func exportBundle(_ meeting: MeetingHistoryItem) {
         guard state == .idle, !isProcessing else { return }
+        processingFolder = meeting.folderURL
         elapsed = meeting.duration
         completionMessage = nil
         errorMessage = nil
@@ -731,9 +742,37 @@ final class AppModel: ObservableObject {
     }
 
     func copyTranscript(_ meeting: MeetingHistoryItem, to pasteboard: NSPasteboard = .general) throws {
-        let text = try String(contentsOf: meeting.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8)
+        try Self.copyTranscript(in: meeting.folderURL, to: pasteboard)
+    }
+
+    static func copyTranscript(in folder: URL, to pasteboard: NSPasteboard = .general) throws {
+        let text = try String(contentsOf: folder.appendingPathComponent("transcript.md"), encoding: .utf8)
         pasteboard.clearContents()
         guard pasteboard.setString(text, forType: .string) else { throw MeetingActionError.clipboardUnavailable }
+    }
+
+    /// Opens the transcript, or the folder when there is none or no app opens Markdown.
+    static func openTranscript(in folder: URL) {
+        let transcript = folder.appendingPathComponent("transcript.md")
+        if !FileManager.default.fileExists(atPath: transcript.path) || !NSWorkspace.shared.open(transcript) {
+            NSWorkspace.shared.open(folder)
+        }
+    }
+
+    /// Moves a meeting folder to the Trash, where Finder can put it back.
+    func moveMeetingToTrash(
+        _ meeting: MeetingHistoryItem,
+        trash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+    ) {
+        guard state == .idle, !isProcessing else { return }
+        do {
+            try trash(meeting.folderURL)
+            completedFolder = nil
+            completionMessage = "Moved “\(meeting.title)” to the Trash."
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+        refreshHistory()
     }
 
     func renameMeeting(_ meeting: MeetingHistoryItem) {
@@ -898,6 +937,10 @@ final class AppModel: ObservableObject {
             settings: speechSettings,
             folderTitle: recordingFolderTitle
         )
+    }
+
+    private func updateQueuedFolders() {
+        queuedFolders = batchRemaining + pendingRuns.map(\.folder)
     }
 
     private func enqueue(_ run: ProcessingRun) {

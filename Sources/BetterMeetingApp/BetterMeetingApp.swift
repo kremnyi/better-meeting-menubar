@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         MeetingNotifications.center?.delegate = self
-        MeetingNotifications.center?.setNotificationCategories([CalendarReminder.category])
+        MeetingNotifications.center?.setNotificationCategories([CalendarReminder.category, MeetingNotifications.transcriptReady])
     }
 
     nonisolated func userNotificationCenter(
@@ -84,8 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             await handleCalendarReminder(response.notification.request, action: response.actionIdentifier)
             return
         }
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
-        openNotification(response.notification.request)
+        openNotification(response.notification.request, action: response.actionIdentifier)
     }
 
     func shouldPresentCalendarReminder(_ request: UNNotificationRequest) async -> Bool {
@@ -136,8 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    func openNotification(_ request: UNNotificationRequest) {
+    func openNotification(_ request: UNNotificationRequest, action: String = UNNotificationDefaultActionIdentifier) {
         if request.content.categoryIdentifier == MeetingNotifications.audioWarningCategory {
+            guard action == UNNotificationDefaultActionIdentifier else { return }
             guard model?.state == .recording, model?.recordingID?.uuidString == request.identifier else { return }
             if let window = model?.menuWindow, window.isVisible {
                 window.makeKeyAndOrderFront(nil)
@@ -147,7 +147,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             return
         }
         guard let folder = MeetingNotifications.folder(from: request.content) else { return }
-        NSWorkspace.shared.open(folder)
+        guard request.content.categoryIdentifier == MeetingNotifications.transcriptReadyCategory else {
+            if action == UNNotificationDefaultActionIdentifier { NSWorkspace.shared.open(folder) }
+            return
+        }
+        switch action {
+        case UNNotificationDefaultActionIdentifier, MeetingNotifications.openTranscriptAction:
+            AppModel.openTranscript(in: folder)
+        case MeetingNotifications.copyTranscriptAction:
+            do {
+                try AppModel.copyTranscript(in: folder)
+            } catch {
+                NSApp.activate(ignoringOtherApps: true)
+                NSAlert(error: error).runModal()
+            }
+        case MeetingNotifications.showInFinderAction:
+            NSWorkspace.shared.activateFileViewerSelecting([folder])
+        default:
+            break
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

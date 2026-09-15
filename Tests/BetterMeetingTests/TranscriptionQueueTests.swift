@@ -36,6 +36,9 @@ final class TranscriptionQueueTests: XCTestCase {
                 XCTAssertEqual(model.transcriptionBatchIndex, visited.count + 1)
                 XCTAssertEqual(model.transcriptionBatchWaiting, 2 - visited.count)
                 XCTAssertEqual(model.processingTitle, item.title)
+                XCTAssertEqual(model.processingFolder, item.folderURL)
+                XCTAssertEqual(model.queuedFolders, expected.dropFirst(visited.count + 1).map(\.folderURL),
+                               "The list marks the meetings still waiting")
                 XCTAssertTrue(model.isProcessing)
                 XCTAssertTrue(model.updates.isBusy())
                 model.transcribeAllRecordings { _ in XCTFail("No overlapping batch"); return false }
@@ -48,6 +51,7 @@ final class TranscriptionQueueTests: XCTestCase {
             await task.value
             XCTAssertEqual(visited, expected)
             XCTAssertEqual(model.completionMessage, "Transcribed 3 of 3 recordings.")
+            XCTAssertTrue(model.queuedFolders.isEmpty)
             XCTAssertFalse(model.isTranscribingBatch)
             XCTAssertEqual(model.state, .idle)
             XCTAssertNil(model.processingTask)

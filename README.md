@@ -9,7 +9,7 @@ Requires Apple Silicon and macOS 15+. Downloads approximately 1.6 GB of speech
 model files during initial setup. Transcription runs locally and works offline
 afterward.
 
-<img src="docs/menu-bar.png" alt="Better Meeting menu with a search field, meeting rows with action buttons, and an Open meetings folder button" width="304">
+<img src="docs/menu-bar.png" alt="Better Meeting menu with a search field and meeting rows grouped by day, each with an action button" width="304">
 
 The app's menu, shown with fictional meetings.
 
@@ -106,7 +106,9 @@ transcription and export; renaming and starting another job wait until processin
 
 Before your first recording or retry, the app asks permission to send notifications
 for missing audio and transcription results. Click an audio warning to open the
-recording controls, or a transcription notification to open the meeting's folder.
+recording controls. Click **Transcript ready** to open the transcript, or use its
+**Copy Transcript** and **Show in Finder** actions; a notification about a failed
+transcription opens the meeting's folder.
 You can change notification access in macOS **System Settings → Notifications
 → Better Meeting**.
 
@@ -221,8 +223,9 @@ shows the error. Cancellation keeps completed passes for a later retry.
 
 ## Saved meetings
 
-The menu lists all completed meetings, most recent first; scroll to see older
-ones. Search finds matching titles
+The menu lists all completed meetings under day headings, most recent first, with
+each meeting's start time and length; scroll to see older ones. The folder button
+beside **Recorded meetings** opens the meetings folder. Search finds matching titles
 and saved transcript text across all completed meetings in the selected folder,
 including older meetings and manual Markdown edits. Search runs locally. While the
 menu is open, ⌘F searches, ⌘, opens Options, and ⌘Q quits.
@@ -230,9 +233,14 @@ menu is open, ⌘F searches, ⌘, opens Options, and ⌘Q quits.
 Click a meeting to open its transcript; recordings that are not transcribed open
 their folder instead. Use the **•••** button on a meeting row, or right-click the
 row, for **Open Transcript**, **Show in Finder**, **Copy Transcript**, **Rename…**,
-**Re-transcribe…**, and **Export bundle…**.
+**Re-transcribe…**, **Export bundle…**, and **Move to Trash**.
 Copy uses the saved Markdown, including any edits. Rename updates the folder,
-title, and metadata while keeping the transcript body and media files.
+title, and metadata while keeping the transcript body and media files. Move to
+Trash moves the whole meeting folder to the macOS Trash, so you can still restore it
+from there.
+
+After a transcript is saved, the menu offers **Open Transcript**, **Copy Transcript**,
+and **Show in Finder** below the confirmation.
 
 ### Re-transcribe a meeting
 
@@ -247,7 +255,8 @@ When recordings failed, were cancelled, or are waiting for transcription, the
 menu shows their count with **Transcribe**, or **Transcribe all** for several; the
 arrow beside it picks a single recording. Choosing it transcribes them in
 order; progress shows **Transcribing 2 of 3** plus the current meeting and the
-number still waiting. Cancel stops the queue and reports how many finished;
+number still waiting, and the list marks the current meeting with its progress and
+the rest as **Queued**. Cancel stops the queue and reports how many finished;
 every recording keeps its completed language passes. If you quit while the
 queue runs, the app asks whether to wait until it finishes.
 

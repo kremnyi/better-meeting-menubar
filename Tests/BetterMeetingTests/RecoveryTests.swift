@@ -561,13 +561,17 @@ final class RecoveryTests: XCTestCase {
     @MainActor
     func testSavedMeetingKeepsTheSameRowHeight() {
         _ = NSApplication.shared
-        for (saved, unfinished) in [(false, false), (true, false), (false, true)] {
+        let cases: [(Bool, Bool, MeetingRowStatus?)] = [
+            (false, false, nil), (true, false, nil), (false, true, nil),
+            (false, true, .queued), (false, true, .working("Transcribing · 100%"))
+        ]
+        for (saved, unfinished, status) in cases {
             let item = MeetingHistoryItem(
                 title: "2026-09-05 14.39.08", recordedAt: Date(timeIntervalSince1970: 1_788_611_948),
-                duration: 34, folderURL: URL(fileURLWithPath: "/tmp/layout-preview"),
+                duration: 3_934, folderURL: URL(fileURLWithPath: "/tmp/layout-preview"),
                 needsTranscription: unfinished, titleWasProvided: false
             )
-            let row = NSHostingView(rootView: MenuBarControlView().historyRow(item, isNew: saved, canEdit: true)
+            let row = NSHostingView(rootView: MenuBarControlView().historyRow(item, isNew: saved, canEdit: true, status: status)
                 .environment(\.locale, Locale(identifier: "en_US"))
                 .frame(width: 264))
             XCTAssertEqual(row.fittingSize.height, 47, "The status indicators must not wrap meeting details")
@@ -583,15 +587,19 @@ final class RecoveryTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         let root = makeTempRoot(suite)
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        defaults.set(root.appendingPathComponent("Better Meetings"), forKey: "outputFolder")
-        for (index, title) in ["Product sync", "Release planning", "Design review"].enumerated() {
-            let date = Date(timeIntervalSince1970: 1_788_530_400 - Double(index * 3_600))
-            let folder = try MeetingArtifacts.createDirectory(in: root, title: title, recordedAt: date)
+        let output = root.appendingPathComponent("Better Meetings")
+        defaults.set(output, forKey: "outputFolder")
+        for (index, title) in ["Product sync", "Release planning", "Design review", "Customer interview"].enumerated() {
+            // Three meetings on one day and one the day before, so the preview shows day headings.
+            let date = Date(timeIntervalSince1970: 1_788_530_400 - Double(index < 3 ? index * 3_600 : 86_400))
+            let folder = try MeetingArtifacts.createDirectory(in: output, title: title, recordedAt: date)
             try MeetingArtifacts.write(title: title, recordedAt: date, duration: Double(720 + index * 180), segments: [], to: folder)
         }
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
+        model.captureAccess = { (true, .authorized) }
         await model.historyRefreshTask?.value
+        XCTAssertEqual(model.transcriptionHistory.count, 4, "The README preview must show its fictional meetings")
         let view = hostingView(MenuBarControlView(), model: model)
         try writePreview(view, to: URL(fileURLWithPath: path))
         if let panels = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {

@@ -124,11 +124,15 @@ final class MeetingActionTests: XCTestCase {
         let renamed = try MeetingArtifacts.renameDirectory(folder, title: "New name", recordedAt: date)
         XCTAssertEqual(notification.title, "Transcript ready")
         XCTAssertEqual(notification.body, "Original")
+        XCTAssertEqual(notification.categoryIdentifier, MeetingNotifications.transcriptReadyCategory)
+        XCTAssertEqual(MeetingNotifications.transcriptReady.actions.map(\.title),
+                       ["Open Transcript", "Copy Transcript", "Show in Finder"])
         XCTAssertEqual(MeetingNotifications.folder(from: notification)?.resolvingSymlinksInPath().path,
                        renamed.resolvingSymlinksInPath().path)
         let failure = try MeetingNotifications.content(title: "", folder: renamed, failed: true)
         XCTAssertEqual(failure.title, "Transcription needs attention")
         XCTAssertEqual(failure.body, renamed.lastPathComponent)
+        XCTAssertEqual(failure.categoryIdentifier, "", "A failure opens the folder and offers no transcript actions")
         XCTAssertNil(MeetingNotifications.folder(from: UNMutableNotificationContent()))
     }
 
@@ -222,5 +226,55 @@ final class MeetingActionTests: XCTestCase {
         try FileManager.default.removeItem(at: markdownURL)
         XCTAssertThrowsError(try model.copyTranscript(item, to: pasteboard))
         XCTAssertEqual(pasteboard.string(forType: .string), text)
+    }
+
+    @MainActor
+    func testMoveToTrashRemovesTheMeetingFromTheList() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingTrash")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let date = Date()
+        for title in ["Keep me", "Trash me"] {
+            let folder = try MeetingArtifacts.createDirectory(in: root, title: title, recordedAt: date)
+            try MeetingArtifacts.write(title: title, recordedAt: date, duration: 60, segments: [], to: folder)
+        }
+        let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
+        let item = try XCTUnwrap(model.transcriptionHistory.first { $0.title == "Trash me" })
+        var trashed: [URL] = []
+        // Tests must not fill the real Trash; removing the folder stands in for it.
+        model.moveMeetingToTrash(item) { url in
+            trashed.append(url)
+            try FileManager.default.removeItem(at: url)
+        }
+        await model.historyRefreshTask?.value
+        XCTAssertEqual(trashed, [item.folderURL])
+        XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Keep me"])
+        XCTAssertEqual(model.completionMessage, "Moved “Trash me” to the Trash.")
+    }
+
+    @MainActor
+    func testListTimesAndDayGroupsReadNaturally() throws {
+        XCTAssertEqual(Timecode.compact(0), "0:00")
+        XCTAssertEqual(Timecode.compact(245), "4:05")
+        XCTAssertEqual(Timecode.compact(3_753), "1:02:33")
+        let english = Locale(identifier: "en_US")
+        XCTAssertEqual(Timecode.readable(34, locale: english), "34 sec")
+        XCTAssertEqual(Timecode.readable(779, locale: english), "12 min")
+        XCTAssertEqual(Timecode.readable(3_600, locale: english), "1 hr")
+        XCTAssertEqual(Timecode.readable(3_934, locale: english), "1 hr, 5 min")
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let dates = ISO8601DateFormatter()
+        let now = try XCTUnwrap(dates.date(from: "2026-09-15T12:00:00Z"))
+        let items = try ["2026-09-15T09:00:00Z", "2026-09-15T08:00:00Z", "2026-09-14T17:00:00Z", "2026-09-04T14:00:00Z"]
+            .map { iso in
+                MeetingHistoryItem(title: iso, recordedAt: try XCTUnwrap(dates.date(from: iso)), duration: 60,
+                                   folderURL: URL(fileURLWithPath: "/tmp/\(iso)"), needsTranscription: false, titleWasProvided: true)
+            }
+        let groups = MenuBarControlView.dayGroups(items, calendar: calendar)
+        XCTAssertEqual(groups.map(\.items.count), [2, 1, 1])
+        XCTAssertEqual(groups.prefix(2).map { MenuBarControlView.dayTitle($0.day, now: now, calendar: calendar) },
+                       ["Today", "Yesterday"])
     }
 }

@@ -3,6 +3,18 @@ import UserNotifications
 
 enum MeetingNotifications {
     static let audioWarningCategory = "recording-audio-warning"
+    static let transcriptReadyCategory = "transcript-ready"
+    static let openTranscriptAction = "open-transcript"
+    static let copyTranscriptAction = "copy-transcript"
+    static let showInFinderAction = "show-in-finder"
+
+    static var transcriptReady: UNNotificationCategory {
+        UNNotificationCategory(identifier: transcriptReadyCategory, actions: [
+            UNNotificationAction(identifier: openTranscriptAction, title: "Open Transcript", options: [.foreground]),
+            UNNotificationAction(identifier: copyTranscriptAction, title: "Copy Transcript", options: []),
+            UNNotificationAction(identifier: showInFinderAction, title: "Show in Finder", options: [.foreground])
+        ], intentIdentifiers: [])
+    }
 
     static var center: UNUserNotificationCenter? {
         // Command-line tests do not have an application identity for notifications.
@@ -46,6 +58,7 @@ enum MeetingNotifications {
     static func content(title: String, folder: URL, failed: Bool) throws -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = failed ? "Transcription needs attention" : "Transcript ready"
+        if !failed { content.categoryIdentifier = transcriptReadyCategory }
         content.body = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? folder.lastPathComponent : title
         // A bookmark follows the folder if the meeting is renamed before the click.
         content.userInfo = ["meetingFolder": try folder.bookmarkData(options: .minimalBookmark)]

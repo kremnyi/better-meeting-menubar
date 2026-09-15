@@ -10,6 +10,7 @@ struct MenuBarControlView: View {
     @State private var retranscribingMeeting: MeetingHistoryItem?
     @State private var hoveredMeetingID: MeetingHistoryItem.ID?
     @State private var searchFocusRequest = 0
+    @State private var copiedTranscript = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -70,6 +71,7 @@ struct MenuBarControlView: View {
             model.refreshHistory()
             model.refreshInputs()
         }
+        .onChange(of: model.completionMessage) { copiedTranscript = false }
         .onDisappear {
             // The idle menu showed the message while it was open; don't repeat it next time.
             if model.state == .idle, !model.isProcessing {
@@ -171,14 +173,33 @@ struct MenuBarControlView: View {
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
                 if let folder = model.completedFolder {
-                    Button("Show in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([folder])
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) { completionActions(folder) }
+                        VStack(alignment: .leading, spacing: 4) { completionActions(folder) }
                     }
                     .buttonStyle(.link)
                     .controlSize(.small)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func completionActions(_ folder: URL) -> some View {
+        if FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path) {
+            Button("Open Transcript") { AppModel.openTranscript(in: folder) }
+            Button(copiedTranscript ? "Copied" : "Copy Transcript") {
+                do {
+                    try AppModel.copyTranscript(in: folder)
+                    copiedTranscript = true
+                } catch {
+                    NSAlert(error: error).runModal()
+                }
+            }
+        }
+        Button("Show in Finder") {
+            NSWorkspace.shared.activateFileViewerSelecting([folder])
         }
     }
 
@@ -233,8 +254,22 @@ struct MenuBarControlView: View {
                 }
             }
 
-            Text("Recorded meetings")
-                .font(.callout.weight(.medium))
+            HStack(spacing: 6) {
+                Text("Recorded meetings")
+                    .font(.callout.weight(.medium))
+                Spacer()
+                if model.searchingHistory {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .accessibilityLabel("Searching meetings")
+                }
+                Button(action: model.openMeetingsFolder) {
+                    Image(systemName: "folder").frame(width: 24, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Open meetings folder")
+                .help("Open meetings folder in Finder")
+            }
 
             if model.hasMeetings {
                 MeetingSearchField(text: $model.historyQuery, focusRequest: searchFocusRequest)
@@ -250,20 +285,32 @@ struct MenuBarControlView: View {
             }
 
             Group {
-                if model.searchingHistory {
-                    Text("Searching meetings…")
-                } else if model.transcriptionHistory.isEmpty {
-                    Text(model.historyQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                if model.transcriptionHistory.isEmpty {
+                    Text(model.searchingHistory ? "Searching meetings…"
+                         : model.historyQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                          ? "Finished meetings will appear here. Click one to open its transcript."
                          : "No matching meetings.")
                 } else {
+                    // Earlier results stay while a search runs; the header shows its progress.
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(model.transcriptionHistory) { item in
-                                historyRow(item, isNew: item.folderURL == model.completedFolder, canEdit: model.state == .idle && !model.isProcessing)
-
-                                if item.id != model.transcriptionHistory.last?.id {
-                                    Divider()
+                            let groups = Self.dayGroups(model.transcriptionHistory)
+                            ForEach(groups) { group in
+                                Text(Self.dayTitle(group.day))
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, group.id == groups.first?.id ? 0 : 10)
+                                    .padding(.bottom, 2)
+                                    .accessibilityAddTraits(.isHeader)
+                                ForEach(group.items) { item in
+                                    historyRow(
+                                        item, isNew: item.folderURL == model.completedFolder,
+                                        canEdit: model.state == .idle && !model.isProcessing,
+                                        status: rowStatus(item)
+                                    )
+                                    if item.id != group.items.last?.id {
+                                        Divider()
+                                    }
                                 }
                             }
                         }
@@ -274,19 +321,53 @@ struct MenuBarControlView: View {
             .font(.callout)
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(height: model.historyListHeight, alignment: .top)
-
-            Button {
-                model.openMeetingsFolder()
-            } label: {
-                Label("Open meetings folder", systemImage: "folder")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
         }
     }
 
-    func historyRow(_ item: MeetingHistoryItem, isNew: Bool, canEdit: Bool) -> some View {
+    struct DayGroup: Identifiable {
+        let day: Date
+        var items: [MeetingHistoryItem]
+        var id: Date { day }
+    }
+
+    /// Runs of meetings from the same day, keeping the list's order.
+    static func dayGroups(_ items: [MeetingHistoryItem], calendar: Calendar = .current) -> [DayGroup] {
+        var groups: [DayGroup] = []
+        for item in items {
+            let day = calendar.startOfDay(for: item.recordedAt)
+            if groups.last?.day == day {
+                groups[groups.count - 1].items.append(item)
+            } else {
+                groups.append(DayGroup(day: day, items: [item]))
+            }
+        }
+        return groups
+    }
+
+    static func dayTitle(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if calendar.isDate(day, inSameDayAs: now) { return "Today" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(day, inSameDayAs: yesterday) {
+            return "Yesterday"
+        }
+        return calendar.isDate(day, equalTo: now, toGranularity: .year)
+            ? day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+            : day.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+
+    private func rowStatus(_ item: MeetingHistoryItem) -> MeetingRowStatus? {
+        let path = item.folderURL.standardizedFileURL.path
+        if model.isProcessing, model.processingFolder?.standardizedFileURL.path == path {
+            let verb = model.processingPhase == .finalizingRecording ? "Saving"
+                : model.isExportingBundle ? "Exporting" : "Transcribing"
+            guard let fraction = model.processingFraction else { return .working(verb) }
+            return .working("\(verb) · \(fraction.formatted(.percent.precision(.fractionLength(0))))")
+        }
+        if model.queuedFolders.contains(where: { $0.standardizedFileURL.path == path }) { return .queued }
+        return item.needsTranscription ? .notTranscribed : nil
+    }
+
+    func historyRow(_ item: MeetingHistoryItem, isNew: Bool, canEdit: Bool, status: MeetingRowStatus? = nil) -> some View {
         HStack(spacing: 10) {
             Button {
                 open(item)
@@ -306,24 +387,23 @@ struct MenuBarControlView: View {
                                 .background(Color.accentColor.opacity(0.15), in: Capsule())
                                 .help("Just saved")
                         }
-                        if item.needsTranscription {
-                            Text("Not transcribed")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        if let badge = status ?? (item.needsTranscription ? .notTranscribed : nil) {
+                            Text(badge.text)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(badge.isWorking ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                                 .lineLimit(1)
                                 .fixedSize()
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 1)
-                                .background(Color.secondary.opacity(0.15), in: Capsule())
+                                .background((badge.isWorking ? Color.accentColor : Color.secondary).opacity(0.15), in: Capsule())
                         }
                     }
                     .font(.callout)
 
                     HStack(spacing: 4) {
-                        Text(item.recordedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                        Text(item.recordedAt, format: .dateTime.hour().minute())
                         Text("·")
-                        Text(Timecode.string(item.duration))
-                            .monospacedDigit()
+                        Text(Timecode.readable(item.duration))
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -337,6 +417,7 @@ struct MenuBarControlView: View {
             .accessibilityLabel(item.needsTranscription
                 ? "Open \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard)), in Finder"
                 : "Open transcript of \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard))")
+            .accessibilityValue((status ?? (item.needsTranscription ? .notTranscribed : nil))?.text ?? "")
 
             Menu {
                 meetingActions(item, canEdit: canEdit)
@@ -351,7 +432,7 @@ struct MenuBarControlView: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel("More actions for \(item.title)")
-            .help("Open, copy, rename, re-transcribe, or export")
+            .help("Open, copy, rename, re-transcribe, export, or move to Trash")
         }
         .frame(minHeight: 47)
         .contentShape(Rectangle())
@@ -367,11 +448,11 @@ struct MenuBarControlView: View {
         }
     }
 
-    /// Opens the transcript, or the folder when there is none or no app opens Markdown.
     private func open(_ item: MeetingHistoryItem) {
-        let transcript = item.folderURL.appendingPathComponent("transcript.md")
-        if item.needsTranscription || !NSWorkspace.shared.open(transcript) {
+        if item.needsTranscription {
             NSWorkspace.shared.open(item.folderURL)
+        } else {
+            AppModel.openTranscript(in: item.folderURL)
         }
     }
 
@@ -392,6 +473,9 @@ struct MenuBarControlView: View {
         Button("Re-transcribe…") { retranscribingMeeting = item }
             .disabled(!canEdit)
         Button("Export bundle…") { model.exportBundle(item) }
+            .disabled(!canEdit)
+        Divider()
+        Button("Move to Trash") { model.moveMeetingToTrash(item) }
             .disabled(!canEdit)
     }
 
@@ -460,11 +544,6 @@ struct MenuBarControlView: View {
         VStack(alignment: .leading, spacing: 12) {
             captureSummary
 
-            Text("You can start a new recording while this finishes in the background.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
             primaryActionButton
 
             Divider()
@@ -530,8 +609,18 @@ struct MenuBarControlView: View {
     private func audioMeter(_ label: String, level: Double) -> some View {
         HStack(spacing: 8) {
             Text(label).font(.caption).frame(width: 78, alignment: .leading)
-            ProgressView(value: level)
-                .tint(level > 0 ? Color.green : Color.gray)
+            // Empty when silent; a progress bar's rounded start looked like a slider knob.
+            Capsule()
+                .fill(Color.primary.opacity(0.1))
+                .overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(Color.green)
+                            .frame(width: proxy.size.width * min(max(level, 0), 1))
+                    }
+                }
+                .frame(height: 5)
+                .accessibilityElement()
                 .accessibilityLabel(label)
                 .accessibilityValue(level > 0 ? "Audio detected" : "No audio detected")
         }
@@ -648,6 +737,25 @@ struct MenuBarControlView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+enum MeetingRowStatus: Equatable {
+    case working(String)
+    case queued
+    case notTranscribed
+
+    var text: String {
+        switch self {
+        case .working(let text): text
+        case .queued: "Queued"
+        case .notTranscribed: "Not transcribed"
+        }
+    }
+
+    var isWorking: Bool {
+        if case .working = self { return true }
+        return false
     }
 }
 

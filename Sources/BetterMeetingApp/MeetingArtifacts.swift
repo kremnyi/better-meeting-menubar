@@ -371,6 +371,26 @@ enum MeetingActionError: LocalizedError {
 }
 
 enum Timecode {
+    /// "4:05" under an hour and "1:02:33" after, for clocks that tick.
+    static func compact(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded(.down)))
+        let hours = seconds / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let remainder = seconds % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, remainder)
+            : String(format: "%d:%02d", minutes, remainder)
+    }
+
+    /// "34 sec", "12 min", or "1 hr, 5 min", for meeting lengths in lists.
+    static func readable(_ interval: TimeInterval, locale: Locale = .autoupdatingCurrent) -> String {
+        let seconds = max(0, Int(interval.rounded(.down)))
+        let duration = Duration.seconds(seconds)
+        return seconds < 60
+            ? duration.formatted(.units(allowed: [.seconds], width: .abbreviated).locale(locale))
+            : duration.formatted(.units(allowed: [.hours, .minutes], width: .abbreviated, fractionalPart: .hide(rounded: .down)).locale(locale))
+    }
+
     static func string(_ interval: TimeInterval) -> String {
         let seconds = max(0, Int(interval.rounded(.down)))
         let hours = seconds / 3_600
