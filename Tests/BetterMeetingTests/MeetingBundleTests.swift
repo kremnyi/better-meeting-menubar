@@ -41,7 +41,7 @@ final class MeetingBundleTests: XCTestCase {
         var markdown = try String(contentsOf: markdownURL, encoding: .utf8)
         markdown += "\nManual correction: release on Tuesday.\n"
         try markdown.write(to: markdownURL, atomically: true, encoding: .utf8)
-        let meeting = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let meeting = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         let bundle = try await MeetingBundle.build(for: meeting) { _ in }
         for file in ["transcript.md", "transcript.json", "timeline.md", "screens_index.md", "screen.json", "languages.json", "HOW-TO.md", "PROMPT.md"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent(file).path), file)

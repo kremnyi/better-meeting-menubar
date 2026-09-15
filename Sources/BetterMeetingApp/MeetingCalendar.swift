@@ -18,10 +18,6 @@ enum MeetingCalendar {
         let name: String?
     }
 
-    static func matches(in folder: URL, query: String) -> Bool {
-        matches(searchFields(in: folder), query: query)
-    }
-
     static func matches(_ fields: [String], query: String) -> Bool {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         return fields.contains { $0.localizedStandardContains(query) }

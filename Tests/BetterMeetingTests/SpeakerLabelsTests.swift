@@ -91,7 +91,7 @@ final class SpeakerLabelsTests: XCTestCase {
             throw XCTSkip("Set BETTER_MEETING_SPEAKER_CHECK to disposable speech audio for local model verification")
         }
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/speaker-check")
-        let turns = try await SpeakerLabels.detect(audioURL: URL(fileURLWithPath: path), downloadBase: root) { _ in }
+        let turns = try await SpeakerLabels.detect(audio: MeetingAudio(url: URL(fileURLWithPath: path)), downloadBase: root) { _ in }
         XCTAssertFalse(turns.isEmpty)
         XCTAssertTrue(turns.allSatisfy(\.isValid))
         print("Speaker check: \(Set(turns.map(\.speaker)).count) speakers, \(turns.count) turns")

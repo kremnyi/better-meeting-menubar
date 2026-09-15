@@ -55,7 +55,7 @@ final class MeetingActionTests: XCTestCase {
         try fm.setAttributes([.immutable: false], ofItemAtPath: json.path)
         try MeetingArtifacts.replaceTranscript(for: item, duration: 12, segments: segments)
         XCTAssertTrue(try String(contentsOf: folder.appendingPathComponent("transcript.md"), encoding: .utf8).contains("Replacement"))
-        let updated = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let updated = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertEqual(updated.title, item.title)
         XCTAssertFalse(updated.titleWasProvided)
         XCTAssertFalse(try fm.contentsOfDirectory(atPath: folder.path).contains { $0.hasPrefix(".transcript-") })
@@ -100,7 +100,7 @@ final class MeetingActionTests: XCTestCase {
         var metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: metadataURL)) as? [String: Any])
         metadata["customField"] = "Keep this"
         try JSONSerialization.data(withJSONObject: metadata).write(to: metadataURL)
-        let item = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let item = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         _ = try MeetingArtifacts.createDirectory(in: root, title: "Pricing Review", recordedAt: date)
 
         let renamed = try MeetingArtifacts.renameMeeting(item, to: " Pricing / Review ")
@@ -193,7 +193,7 @@ final class MeetingActionTests: XCTestCase {
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Original", recordedAt: date)
         try MeetingArtifacts.write(title: "Original", recordedAt: date, duration: 0, segments: [], to: folder)
-        let item = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let item = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         let markdown = try Data(contentsOf: folder.appendingPathComponent("transcript.md"))
         let metadata = try Data(contentsOf: folder.appendingPathComponent("metadata.json"))
         XCTAssertThrowsError(try MeetingArtifacts.renameMeeting(item, to: " \n "))
@@ -309,6 +309,6 @@ final class MeetingActionTests: XCTestCase {
 
         try "# Alpha\n\nPricing notes\n".write(to: transcript, atomically: false, encoding: .utf8)
         XCTAssertEqual(library.search(meetings, query: "pricing"), meetings, "An edited transcript is searched again")
-        XCTAssertEqual(MeetingArtifacts.search(meetings, query: "pricing"), meetings)
+        XCTAssertEqual(MeetingLibrary().search(meetings, query: "pricing"), meetings)
     }
 }

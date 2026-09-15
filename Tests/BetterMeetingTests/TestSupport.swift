@@ -20,6 +20,29 @@ func hostingView(
     return view
 }
 
+/// Writes a panel to `BETTER_MEETING_PANELS_PREVIEW_PATH/<name>.png`; without that variable the view is never built.
+@MainActor
+func writePanelPreview(_ view: @autoclosure () -> NSView, name: String) throws {
+    guard let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] else { return }
+    try writePreview(view(), to: URL(fileURLWithPath: path).appendingPathComponent("\(name).png"))
+}
+
+/// Resizes a view to its current content and writes it as a PNG.
+@MainActor
+func writePreview(_ view: NSView, to output: URL) throws {
+    if view.appearance == nil { view.appearance = NSAppearance(named: .aqua) }
+    view.frame = NSRect(origin: .zero, size: view.fittingSize)
+    view.layoutSubtreeIfNeeded()
+    let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    try writePNG(bitmap, to: output)
+}
+
+func writePNG(_ bitmap: NSBitmapImageRep, to output: URL) throws {
+    try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: output)
+}
+
 /// A unique temporary directory for one test, created up front so writers can nest into it.
 func makeTempRoot(_ label: String = "BetterMeeting") -> URL {
     let root = FileManager.default.temporaryDirectory

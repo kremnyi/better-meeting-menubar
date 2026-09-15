@@ -50,13 +50,6 @@ enum SpeakerLabels {
     }
 
     static func detect(
-        audioURL: URL, downloadBase: URL,
-        progress: @escaping @Sendable (Double) -> Void
-    ) async throws -> [Turn] {
-        try await detect(audio: MeetingAudio(url: audioURL), downloadBase: downloadBase, progress: progress)
-    }
-
-    static func detect(
         audio: MeetingAudio, downloadBase: URL,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> [Turn] {

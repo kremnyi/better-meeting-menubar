@@ -75,6 +75,7 @@ final class MeetingLibrary: Sendable {
         return meetings
     }
 
+    // ponytail: scan saved Markdown on demand; add an index if large libraries make search slow.
     func search(_ meetings: [MeetingHistoryItem], query: String) -> [MeetingHistoryItem] {
         var matches: [MeetingHistoryItem] = []
         for meeting in meetings {

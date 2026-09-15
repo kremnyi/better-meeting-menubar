@@ -254,16 +254,16 @@ final class MeetingCalendarTests: XCTestCase {
         let item = MeetingHistoryItem(title: "Recording", recordedAt: Date(), duration: 30,
                                       folderURL: root, needsTranscription: true, titleWasProvided: true)
         for query in ["alex@example.com", "EXAMPLE.COM", "Alex Example", "host@organizer.test", "Portfolio"] {
-            XCTAssertEqual(MeetingArtifacts.search([item], query: query), [item])
+            XCTAssertEqual(MeetingLibrary().search([item], query: query), [item])
         }
-        XCTAssertTrue(MeetingArtifacts.search([item], query: "unrelated@example.net").isEmpty)
+        XCTAssertTrue(MeetingLibrary().search([item], query: "unrelated@example.net").isEmpty)
         XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), sidecar)
         try MeetingArtifacts.write(title: "Recording", recordedAt: Date(), duration: 30, segments: [], to: root)
         XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), sidecar, "Transcription must preserve calendar data")
         for invalid in ["{", sidecar.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":2")] {
             try invalid.write(to: url, atomically: true, encoding: .utf8)
-            XCTAssertFalse(MeetingCalendar.matches(in: root, query: "example.com"))
-            XCTAssertEqual(MeetingArtifacts.search([item], query: "Recording"), [item])
+            XCTAssertFalse(MeetingCalendar.matches(MeetingCalendar.searchFields(in: root), query: "example.com"))
+            XCTAssertEqual(MeetingLibrary().search([item], query: "Recording"), [item])
         }
     }
 
@@ -354,7 +354,7 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(link["recordedAtAtLink"] as? String, ISO8601DateFormatter().string(from: actualStart))
         XCTAssertNil(json["match"], "Explicit selection has no matching score")
         XCTAssertEqual((json["event"] as? [String: Any])?["occurrenceId"] as? String, event.id)
-        XCTAssertTrue(MeetingCalendar.matches(in: root, query: "EXAMPLE.COM"))
+        XCTAssertTrue(MeetingCalendar.matches(MeetingCalendar.searchFields(in: root), query: "EXAMPLE.COM"))
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o600)
         XCTAssertThrowsError(try selected.attach(to: root, recordedAt: Date()))
         XCTAssertEqual(try Data(contentsOf: url), data)
@@ -423,13 +423,7 @@ final class MeetingCalendarTests: XCTestCase {
                     XCTAssertEqual(view.fittingSize.width, name == "menu" ? 304 : 360)
                     // Guards against runaway growth: the tallest stress state (2-line title plus a second today meeting) sits at 727, so 740 keeps a real budget while still catching an unbounded list.
                     XCTAssertLessThan(view.fittingSize.height, 740)
-                    if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
-                        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-                        view.cacheDisplay(in: view.bounds, to: bitmap)
-                        let url = URL(fileURLWithPath: path).appendingPathComponent("calendar-\(name)-\(state)-\(scheme).png")
-                        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                        try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: url)
-                    }
+                    try writePanelPreview(view, name: "calendar-\(name)-\(state)-\(scheme)")
                 }
             }
         }

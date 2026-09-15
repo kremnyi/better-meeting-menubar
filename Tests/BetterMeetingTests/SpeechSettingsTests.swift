@@ -112,7 +112,7 @@ final class SpeechSettingsTests: XCTestCase {
         XCTAssertNil(MeetingArtifacts.speechSettings(in: folder))
         try MeetingArtifacts.write(title: "Options", recordedAt: date, duration: 1, segments: [], speechSettings: model.speechSettings, to: folder)
         XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder), model.speechSettings)
-        let meeting = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let meeting = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         var changed = model.speechSettings
         changed.model = .small
         try MeetingArtifacts.replaceTranscript(for: meeting, duration: 1, segments: [], speechSettings: changed)

@@ -35,7 +35,10 @@ final class EngineComparisonTests: XCTestCase {
             ("parakeet-v3", SpeechSettings(engine: .parakeet)),
         ].filter { engines?.contains($0.name) ?? true }
         for run in runs {
-            try await transcriber.prepare(settings: run.settings, progressHandler: { _ in })
+            switch run.settings.selectedEngine {
+            case .whisper: try await transcriber.prepare(model: run.settings.model, progressHandler: { _ in })
+            case .parakeet: _ = try await transcriber.prepareParakeet(progressHandler: { _ in })
+            }
             let probe = MemoryProbe()
             let sampler = Task {
                 while !Task.isCancelled {

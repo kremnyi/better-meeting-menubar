@@ -14,9 +14,9 @@ final class RecoveryTests: XCTestCase {
         defer { removeTempRoot(root) }
         let date = Date(timeIntervalSince1970: 1_788_530_400)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Product / sync", recordedAt: date)
-        XCTAssertTrue(MeetingArtifacts.meetings(in: root).isEmpty, "A failed start with no recording is not recoverable")
+        XCTAssertTrue(MeetingLibrary().meetings(in: root).isEmpty, "A failed start with no recording is not recoverable")
         try Data([1]).write(to: folder.appendingPathComponent("recording.mp4"))
-        let pending = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let pending = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertTrue(pending.needsTranscription)
         XCTAssertEqual(pending.title, "Product sync")
         XCTAssertEqual(pending.recordedAt, date)
@@ -24,10 +24,10 @@ final class RecoveryTests: XCTestCase {
         // A crash between transcript writes must not turn a pending meeting into a completed one.
         try "partial".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
         try "[]".write(to: folder.appendingPathComponent("transcript.json"), atomically: true, encoding: .utf8)
-        XCTAssertTrue(try XCTUnwrap(MeetingArtifacts.meetings(in: root).first).needsTranscription)
+        XCTAssertTrue(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).needsTranscription)
 
         try MeetingArtifacts.write(title: pending.title, recordedAt: date, duration: 12, segments: [], to: folder)
-        XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meetings(in: root).first).needsTranscription)
+        XCTAssertFalse(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).needsTranscription)
 
         // Completed metadata from earlier app versions has no completion flag.
         let metadataURL = folder.appendingPathComponent("metadata.json")
@@ -35,12 +35,12 @@ final class RecoveryTests: XCTestCase {
         metadata.removeValue(forKey: "transcriptionComplete")
         metadata.removeValue(forKey: "titleWasProvided")
         try JSONSerialization.data(withJSONObject: metadata).write(to: metadataURL)
-        XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meetings(in: root).first).needsTranscription)
-        XCTAssertTrue(try XCTUnwrap(MeetingArtifacts.meetings(in: root).first).titleWasProvided)
+        XCTAssertFalse(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).needsTranscription)
+        XCTAssertTrue(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).titleWasProvided)
 
         // Earlier failures wrote no metadata at all. Their raw recording is still discoverable.
         try FileManager.default.removeItem(at: metadataURL)
-        let legacy = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let legacy = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertTrue(legacy.needsTranscription)
         XCTAssertEqual(legacy.title, "Product sync")
         XCTAssertEqual(legacy.recordedAt, date)
@@ -286,9 +286,7 @@ final class RecoveryTests: XCTestCase {
             }
             XCTAssertGreaterThan(redPixels, 0, "The existing lower-right dot must turn red")
             if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
-                let output = URL(fileURLWithPath: path).appendingPathComponent("recording-icon-\(scheme).png")
-                try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: output)
+                try writePNG(bitmap, to: URL(fileURLWithPath: path).appendingPathComponent("recording-icon-\(scheme).png"))
             }
         }
     }
@@ -318,11 +316,8 @@ final class RecoveryTests: XCTestCase {
         XCTAssertTrue(model.updates.isBusy())
         XCTAssertFalse(model.captureSettingsLocked, "Transcribing must not lock the display and microphone for the next recording")
         XCTAssertTrue(model.transcriptionSettingsLocked)
-        if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
-            try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("processing.png"))
-            let options = hostingView(CaptureOptionsView(), model: model)
-            try writePreview(options, to: URL(fileURLWithPath: path).appendingPathComponent("options-processing.png"))
-        }
+        try writePanelPreview(view, name: "processing")
+        try writePanelPreview(hostingView(CaptureOptionsView(), model: model), name: "options-processing")
         field.stringValue = "Product"
         field.sendAction(field.action, to: field.target)
         XCTAssertEqual(model.historyQuery, "Product")
@@ -333,18 +328,13 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Product sync"])
         XCTAssertEqual(model.completionMessage, "Transcription cancelled. Recording kept; transcribe it from the menu to resume.")
         XCTAssertEqual(model.unfinishedRecordings.first?.folderURL.resolvingSymlinksInPath(), pending.resolvingSymlinksInPath())
-        if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
-            try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("cancelled.png"))
-        }
+        try writePanelPreview(view, name: "cancelled")
         model.retryTranscription(item)
         await model.processingTask?.value
         XCTAssertEqual(model.state, .failed)
         XCTAssertFalse(model.updates.isBusy(), "A failure must unlock settings so the user can recover")
-        if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
-            let options = hostingView(CaptureOptionsView(), model: model)
-            try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("failed.png"))
-            try writePreview(options, to: URL(fileURLWithPath: path).appendingPathComponent("options-failed.png"))
-        }
+        try writePanelPreview(view, name: "failed")
+        try writePanelPreview(hostingView(CaptureOptionsView(), model: model), name: "options-failed")
     }
 
     @MainActor
@@ -366,9 +356,7 @@ final class RecoveryTests: XCTestCase {
             let view = hostingView(MenuBarControlView(), model: model)
             XCTAssertEqual(view.fittingSize.width, 304)
             XCTAssertGreaterThan(view.fittingSize.height, 0)
-            if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
-                try writePreview(view, to: URL(fileURLWithPath: path).appendingPathComponent("permission-\(permission).png"))
-            }
+            try writePanelPreview(view, name: "permission-\(permission)")
             model.dismissFailure()
             XCTAssertEqual(model.state, .idle)
             XCTAssertNil(model.privacyPermission)
@@ -498,10 +486,7 @@ final class RecoveryTests: XCTestCase {
                 if let updatesHeight { XCTAssertEqual(view.fittingSize.height, updatesHeight, "Checking must not resize update controls") }
                 else { updatesHeight = view.fittingSize.height }
             }
-            if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
-                let output = URL(fileURLWithPath: path).appendingPathComponent("\(name).png")
-                try writePreview(view, to: output)
-            }
+            try writePanelPreview(view, name: name)
         }
     }
 
@@ -622,18 +607,6 @@ final class RecoveryTests: XCTestCase {
                 try writePreview(updated, to: URL(fileURLWithPath: panels).appendingPathComponent("menu-update-\(name).png"))
             }
         }
-    }
-
-    @MainActor
-    private func writePreview(_ view: NSView, to output: URL) throws {
-        if view.appearance == nil { view.appearance = NSAppearance(named: .aqua) }
-        view.frame = NSRect(origin: .zero, size: view.fittingSize)
-        view.layoutSubtreeIfNeeded()
-        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
-        try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try png.write(to: output)
     }
 
     @MainActor

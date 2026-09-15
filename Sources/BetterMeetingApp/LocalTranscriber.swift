@@ -154,8 +154,6 @@ actor LocalTranscriber {
         return total
     }
 
-    var hasLoadedModels: Bool { whisper != nil || parakeet != nil }
-
     @discardableResult
     func prepare(
         model: SpeechModel = .turbo,
@@ -203,18 +201,6 @@ actor LocalTranscriber {
         loadedModel = model
         try Task.checkCancellation()
         return loaded
-    }
-
-    func prepare(
-        settings: SpeechSettings,
-        progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
-    ) async throws {
-        switch settings.selectedEngine {
-        case .whisper:
-            _ = try await prepare(model: settings.model, progressHandler: progressHandler)
-        case .parakeet:
-            _ = try await prepareParakeet(progressHandler: progressHandler)
-        }
     }
 
     /// Releases loaded engines unless a transcription is still using them.

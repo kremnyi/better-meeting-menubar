@@ -243,10 +243,6 @@ enum MeetingArtifacts {
         }
     }
 
-    static func meetings(in root: URL) -> [MeetingHistoryItem] {
-        MeetingLibrary().meetings(in: root)
-    }
-
     static func meeting(in folder: URL) -> MeetingHistoryItem? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -308,11 +304,6 @@ enum MeetingArtifacts {
 
         lines.append("")
         return lines.joined(separator: "\n")
-    }
-
-    // ponytail: scan saved Markdown on demand; add an index if large libraries make search slow.
-    static func search(_ meetings: [MeetingHistoryItem], query: String) -> [MeetingHistoryItem] {
-        MeetingLibrary().search(meetings, query: query)
     }
 
     static func sanitizedTitle(_ title: String) -> String {

@@ -171,11 +171,6 @@ final class TranscriptionQueueTests: XCTestCase {
         let view = hostingView(MenuBarControlView(), model: model, scheme: scheme)
         XCTAssertEqual(view.fittingSize.width, 304)
         XCTAssertLessThan(view.fittingSize.height, 700)
-        guard let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] else { return }
-        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        let output = URL(fileURLWithPath: path).appendingPathComponent("\(name).png")
-        try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: output)
+        try writePanelPreview(view, name: name)
     }
 }

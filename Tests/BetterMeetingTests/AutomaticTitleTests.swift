@@ -22,7 +22,7 @@ final class AutomaticTitleTests: XCTestCase {
         let folder = try MeetingArtifacts.createDirectory(in: root, title: " \n ", recordedAt: date)
         let recording = Data("saved recording".utf8)
         try recording.write(to: folder.appendingPathComponent("recording.mp4"))
-        let pending = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let pending = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertFalse(pending.titleWasProvided)
         XCTAssertEqual(pending.title, folder.lastPathComponent)
         XCTAssertFalse(pending.title.contains("Meeting"))
@@ -30,7 +30,7 @@ final class AutomaticTitleTests: XCTestCase {
             title: pending.title, recordedAt: date, duration: 30,
             titleWasProvided: pending.titleWasProvided, to: folder
         )
-        XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meetings(in: root).first).titleWasProvided)
+        XCTAssertFalse(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).titleWasProvided)
 
         let title = try XCTUnwrap(MeetingTitle.suggest(from: pricing))
         let renamed = try MeetingArtifacts.renameDirectory(folder, title: title, recordedAt: date)
@@ -39,7 +39,7 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: renamed.appendingPathComponent("recording.mp4")), recording)
 
         // If writing was interrupted after the move, retry the same folder without adding another suffix.
-        let interrupted = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let interrupted = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertTrue(interrupted.needsTranscription)
         XCTAssertFalse(interrupted.titleWasProvided)
         let retried = try MeetingArtifacts.renameDirectory(URL(fileURLWithPath: renamed.path), title: title, recordedAt: date)
@@ -50,7 +50,7 @@ final class AutomaticTitleTests: XCTestCase {
             segments: [TranscriptSegment(start: 0, end: 30, text: pricing, language: "en")],
             titleWasProvided: false, to: renamed
         )
-        let completed = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let completed = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertFalse(completed.needsTranscription)
         XCTAssertFalse(completed.titleWasProvided)
         XCTAssertEqual(completed.title, title)
@@ -65,7 +65,7 @@ final class AutomaticTitleTests: XCTestCase {
         let date = Date(timeIntervalSince1970: 1_788_530_400)
         let unnamed = try MeetingArtifacts.createDirectory(in: root, title: "", recordedAt: date)
         try MeetingArtifacts.write(title: "", recordedAt: date, duration: 0, segments: [], to: unnamed)
-        let fallback = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let fallback = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertEqual(fallback.title, unnamed.lastPathComponent)
         XCTAssertFalse(fallback.titleWasProvided)
         XCTAssertTrue(try String(contentsOf: unnamed.appendingPathComponent("transcript.md"), encoding: .utf8)
@@ -79,7 +79,7 @@ final class AutomaticTitleTests: XCTestCase {
 
         let manual = try MeetingArtifacts.createDirectory(in: root, title: "Meeting", recordedAt: date)
         try MeetingArtifacts.write(title: "Meeting", recordedAt: date, duration: 0, segments: [], to: manual)
-        let manualItem = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first { $0.title == "Meeting" })
+        let manualItem = try XCTUnwrap(MeetingLibrary().meetings(in: root).first { $0.title == "Meeting" })
         XCTAssertEqual(manualItem.folderURL.resolvingSymlinksInPath().path, manual.resolvingSymlinksInPath().path)
         XCTAssertTrue(manualItem.titleWasProvided, "An explicitly typed 'Meeting' must not be treated as unnamed")
         XCTAssertEqual(manualItem.title, "Meeting")
@@ -97,12 +97,12 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertTrue(folder.lastPathComponent.hasSuffix(emoji), "Do not split a compound character")
         XCTAssertEqual(duplicate.lastPathComponent, folder.lastPathComponent + " 2")
         try MeetingArtifacts.write(title: title, recordedAt: date, duration: 0, segments: [], to: folder)
-        let meeting = try XCTUnwrap(MeetingArtifacts.meetings(in: root).first)
+        let meeting = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertEqual(meeting.title, title, "Only the folder name should be shortened")
         let renamedTitle = String(repeating: "🧑🏽‍💻", count: 50)
         let renamed = try MeetingArtifacts.renameMeeting(meeting, to: renamedTitle)
         XCTAssertLessThanOrEqual(renamed.lastPathComponent.utf8.count, 255)
-        XCTAssertEqual(try XCTUnwrap(MeetingArtifacts.meetings(in: root).first).title, renamedTitle)
+        XCTAssertEqual(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).title, renamedTitle)
         XCTAssertTrue(try String(contentsOf: renamed.appendingPathComponent("transcript.md"), encoding: .utf8)
             .hasPrefix("# " + renamedTitle + "\n"))
         XCTAssertEqual(try MeetingArtifacts.renameDirectory(renamed, title: renamedTitle, recordedAt: date), renamed)
