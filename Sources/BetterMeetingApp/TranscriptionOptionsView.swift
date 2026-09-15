@@ -95,6 +95,7 @@ struct CaptureOptionsView: View {
                     Button { calendarsPresented = true } label: {
                         Label("Calendars…", systemImage: "calendar")
                     }
+                    .help("Choose which calendars appear in Upcoming meetings")
                 }
                 .gridCellColumns(2)
             }
@@ -111,6 +112,7 @@ struct CaptureOptionsView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
+                .help("The entire selected display is recorded")
             }
             GridRow {
                 Text("Microphone")
@@ -125,6 +127,7 @@ struct CaptureOptionsView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
+                .help("Recorded along with system audio")
             }
             GridRow {
                 Text("Resolution")
@@ -153,9 +156,12 @@ struct CaptureOptionsView: View {
                 HStack {
                     Text("Transcription").font(.headline)
                     Spacer()
-                    Button("Advanced…") { advancedPresented = true }
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("Advanced transcription")
+                    Button { advancedPresented = true } label: {
+                        Label("Advanced…", systemImage: "waveform")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Advanced transcription")
+                    .help("Engine, model, vocabulary, and decoding options")
                 }
                 .gridCellColumns(2)
             }
@@ -187,10 +193,12 @@ struct CaptureOptionsView: View {
                 HStack {
                     Text("App").font(.headline)
                     Spacer()
-                    Button("Settings…") { appSettingsPresented = true }
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("App settings")
-                        .help("Launch at login, updates, and the installed version")
+                    Button { appSettingsPresented = true } label: {
+                        Label("Settings…", systemImage: "gearshape")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("App settings")
+                    .help("Launch at login, updates, and the installed version")
                 }
                 .gridCellColumns(2)
             }
@@ -246,27 +254,28 @@ struct TranscriptionOptionsView: View {
 
     var body: some View {
         Group {
-            if settings.usesWhisperOptions {
-                GridRow {
-                    Text("Languages")
-                    Menu(languageNames) {
-                        ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
-                            Toggle(language.label, isOn: Binding(
-                                get: { languages.contains(language.rawValue) },
-                                set: { selected in
-                                    if selected { languages.append(language.rawValue) }
-                                    else if languages.count > 1 { languages.removeAll { $0 == language.rawValue } }
-                                }
-                            ))
-                            .disabled(languages == [language.rawValue])
-                        }
+            GridRow {
+                Text("Languages")
+                Menu(settings.usesWhisperOptions ? languageNames : "Whisper only") {
+                    ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
+                        Toggle(language.label, isOn: Binding(
+                            get: { languages.contains(language.rawValue) },
+                            set: { selected in
+                                if selected { languages.append(language.rawValue) }
+                                else if languages.count > 1 { languages.removeAll { $0 == language.rawValue } }
+                            }
+                        ))
+                        .disabled(languages == [language.rawValue])
                     }
-                    .lineLimit(1)
-                    .frame(minWidth: 0, maxWidth: .infinity)
-                    .accessibilityLabel("Spoken languages")
-                    .accessibilityValue(languageNames)
-                    .help(languageNames + ". One transcription pass per language; at least one is required.")
                 }
+                .lineLimit(1)
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .disabled(!settings.usesWhisperOptions)
+                .accessibilityLabel("Spoken languages")
+                .accessibilityValue(settings.usesWhisperOptions ? languageNames : "Whisper only")
+                .help(settings.usesWhisperOptions
+                    ? languageNames + ". One transcription pass per language; at least one is required."
+                    : "Whisper only. Parakeet detects each language automatically.")
             }
             GridRow {
                 Toggle("Add speaker labels", isOn: Binding(
@@ -299,9 +308,12 @@ struct RetranscriptionView: View {
                 HStack {
                     Text("Re-transcribe meeting").font(.headline)
                     Spacer()
-                    Button("Advanced…") { advancedPresented = true }
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("Advanced transcription")
+                    Button { advancedPresented = true } label: {
+                        Label("Advanced…", systemImage: "waveform")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Advanced transcription")
+                    .help("Engine, model, vocabulary, and decoding options")
                 }
                 Text(meeting.title).lineLimit(2)
                 Text("Replaces the saved transcript, including edits, only after processing succeeds. The meeting name stays the same.")
