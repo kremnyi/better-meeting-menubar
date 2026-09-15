@@ -9,6 +9,7 @@ struct MenuBarControlView: View {
     @State private var appSettingsPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
     @State private var hoveredMeetingID: MeetingHistoryItem.ID?
+    @State private var searchFocusRequest = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -25,7 +26,8 @@ struct MenuBarControlView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.callout)
-                .help("Recording and app options")
+                .keyboardShortcut(",")
+                .help("Recording and app options (⌘,)")
                 .accessibilityLabel("Options")
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
                     CaptureOptionsView(
@@ -48,6 +50,8 @@ struct MenuBarControlView: View {
                     NSApp.terminate(nil)
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut("q")
+                .help("Quit Better Meeting (⌘Q)")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -65,6 +69,12 @@ struct MenuBarControlView: View {
         .onAppear {
             model.refreshHistory()
             model.refreshInputs()
+        }
+        .onDisappear {
+            // The idle menu showed the message while it was open; don't repeat it next time.
+            if model.state == .idle, !model.isProcessing {
+                model.completionMessage = nil
+            }
         }
     }
 
@@ -111,9 +121,7 @@ struct MenuBarControlView: View {
     private var content: some View {
         switch model.state {
         case .idle:
-            if model.isTranscribingBatch {
-                batchProcessingContent
-            } else if model.isProcessing {
+            if model.isTranscribingBatch || model.isProcessing {
                 processingContent
             } else {
                 idleContent
@@ -133,6 +141,8 @@ struct MenuBarControlView: View {
 
             TextField("Meeting name (optional)", text: $model.meetingTitle)
                 .textFieldStyle(.roundedBorder)
+                .onSubmit { model.primaryAction() }
+                .help("Press Return to start recording")
 
             primaryActionButton
 
@@ -200,8 +210,9 @@ struct MenuBarControlView: View {
     private var historySection: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !model.unfinishedRecordings.isEmpty, model.state == .idle, !model.isProcessing {
+                let count = model.unfinishedRecordings.count
                 HStack(spacing: 8) {
-                    Text("\(model.unfinishedRecordings.count) unfinished")
+                    Text("\(count) not transcribed")
                         .font(.callout)
                     Spacer(minLength: 0)
                     Menu {
@@ -211,14 +222,14 @@ struct MenuBarControlView: View {
                             }
                         }
                     } label: {
-                        Text("Transcribe all")
+                        Text(count == 1 ? "Transcribe" : "Transcribe all")
                     } primaryAction: {
                         model.transcribeAllRecordings()
                     }
                     .menuStyle(.button)
                     .buttonStyle(.bordered)
                     .fixedSize()
-                    .help("Transcribe all unfinished recordings, or choose one from the arrow")
+                    .help(count == 1 ? "Transcribe this recording" : "Transcribe all \(count) recordings, or choose one from the arrow")
                 }
             }
 
@@ -226,8 +237,16 @@ struct MenuBarControlView: View {
                 .font(.callout.weight(.medium))
 
             if model.hasMeetings {
-                MeetingSearchField(text: $model.historyQuery)
+                MeetingSearchField(text: $model.historyQuery, focusRequest: searchFocusRequest)
                     .frame(height: 24)
+                    .background {
+                        // Invisible target for ⌘F; the search field itself is AppKit.
+                        Button("Search meetings") { searchFocusRequest += 1 }
+                            .keyboardShortcut("f")
+                            .opacity(0)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
             }
 
             Group {
@@ -235,7 +254,7 @@ struct MenuBarControlView: View {
                     Text("Searching meetings…")
                 } else if model.transcriptionHistory.isEmpty {
                     Text(model.historyQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                         ? "Finished meetings will appear here. Open their folders in Finder."
+                         ? "Finished meetings will appear here. Click one to open its transcript."
                          : "No matching meetings.")
                 } else {
                     ScrollView {
@@ -270,7 +289,7 @@ struct MenuBarControlView: View {
     func historyRow(_ item: MeetingHistoryItem, isNew: Bool, canEdit: Bool) -> some View {
         HStack(spacing: 10) {
             Button {
-                NSWorkspace.shared.open(item.folderURL)
+                open(item)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
@@ -314,8 +333,10 @@ struct MenuBarControlView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Open meeting folder")
-            .accessibilityLabel("Open \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard)), in Finder")
+            .help(item.needsTranscription ? "Open meeting folder" : "Open transcript")
+            .accessibilityLabel(item.needsTranscription
+                ? "Open \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard)), in Finder"
+                : "Open transcript of \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard))")
 
             Menu {
                 meetingActions(item, canEdit: canEdit)
@@ -330,7 +351,7 @@ struct MenuBarControlView: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel("More actions for \(item.title)")
-            .help("Copy, rename, re-transcribe, or export")
+            .help("Open, copy, rename, re-transcribe, or export")
         }
         .frame(minHeight: 47)
         .contentShape(Rectangle())
@@ -346,8 +367,22 @@ struct MenuBarControlView: View {
         }
     }
 
+    /// Opens the transcript, or the folder when there is none or no app opens Markdown.
+    private func open(_ item: MeetingHistoryItem) {
+        let transcript = item.folderURL.appendingPathComponent("transcript.md")
+        if item.needsTranscription || !NSWorkspace.shared.open(transcript) {
+            NSWorkspace.shared.open(item.folderURL)
+        }
+    }
+
     @ViewBuilder
     private func meetingActions(_ item: MeetingHistoryItem, canEdit: Bool) -> some View {
+        Button("Open Transcript") { open(item) }
+            .disabled(item.needsTranscription)
+        Button("Show in Finder") {
+            NSWorkspace.shared.activateFileViewerSelecting([item.folderURL])
+        }
+        Divider()
         Button("Copy Transcript") {
             do { try model.copyTranscript(item) }
             catch { NSAlert(error: error).runModal() }
@@ -374,9 +409,12 @@ struct MenuBarControlView: View {
     private var recordingContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(model.elapsedText)
-                .font(.system(size: 32, weight: .medium, design: .monospaced))
-                .monospacedDigit()
+                .font(.system(size: 32, weight: .medium).monospacedDigit())
                 .contentTransition(.numericText())
+
+            TextField("Meeting name (optional)", text: $model.meetingTitle)
+                .textFieldStyle(.roundedBorder)
+                .help("The name is used when recording stops")
 
             VStack(spacing: 6) {
                 audioMeter("Microphone", level: model.microphoneLevel)
@@ -407,8 +445,6 @@ struct MenuBarControlView: View {
 
             primaryActionButton
 
-            captureSummary
-
             modelSetupStatus
 
             if model.isProcessing {
@@ -420,7 +456,7 @@ struct MenuBarControlView: View {
         }
     }
 
-    private var batchProcessingContent: some View {
+    private var processingContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             captureSummary
 
@@ -434,24 +470,27 @@ struct MenuBarControlView: View {
             Divider()
 
             HStack(spacing: 8) {
-                Image(systemName: "waveform")
+                Image(systemName: model.isExportingBundle ? "shippingbox" : "waveform")
                     .font(.title2)
                     .foregroundStyle(.tint)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Transcribing \(model.transcriptionBatchIndex) of \(model.transcriptionBatchTotal)")
+                    Text(processingHeadline)
                         .font(.callout.weight(.medium))
-                    Text(model.processingTitle)
+                    Text(processingSubject)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .help(model.processingTitle)
+                        .help(processingSubject)
                 }
                 Spacer(minLength: 0)
                 Button("Cancel", action: model.cancelTranscription)
                     .disabled(!model.canCancelTranscription)
-                    .accessibilityLabel("Cancel transcription queue")
-                    .help("Stops the queue and keeps saved transcripts and recordings")
+                    .accessibilityLabel(model.isTranscribingBatch ? "Cancel transcription queue"
+                        : model.isExportingBundle ? "Cancel export" : "Cancel transcription")
+                    .help(model.isTranscribingBatch ? "Stops the queue and keeps saved transcripts and recordings"
+                        : model.isExportingBundle ? "Keeps the transcript and previous export bundle"
+                        : "Keeps the recording and completed language passes so you can resume later")
             }
 
             processingIndicator
@@ -461,8 +500,13 @@ struct MenuBarControlView: View {
                 Text(model.processingStatusText)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
-                Text("\(model.transcriptionBatchWaiting) waiting")
-                    .fixedSize()
+                if model.isTranscribingBatch {
+                    Text("\(model.transcriptionBatchWaiting) waiting")
+                        .fixedSize()
+                } else if let phase = model.processingPhase {
+                    Text(phase.stepText)
+                        .fixedSize()
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -472,43 +516,15 @@ struct MenuBarControlView: View {
         }
     }
 
-    private var processingContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(model.elapsedText)
-                    .font(.title3.monospacedDigit())
-
-                Text("recorded")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(model.processingStatusText)
-                    .font(.callout)
-
-                Spacer()
-
-                if let phase = model.processingPhase {
-                    Text(phase.stepText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            processingIndicator
-                .accessibilityLabel(model.processingStatusText)
-
-            primaryActionButton
-
-            Button(model.isExportingBundle ? "Cancel export" : "Cancel transcription", action: model.cancelTranscription)
-                .disabled(!model.canCancelTranscription)
-                .help(model.isExportingBundle ? "Keeps the transcript and previous export bundle" : "Keeps the recording and completed language passes so you can resume later")
-
-            Divider()
-
-            historySection
+    private var processingHeadline: String {
+        if model.isTranscribingBatch {
+            return "Transcribing \(model.transcriptionBatchIndex) of \(model.transcriptionBatchTotal)"
         }
+        return model.isExportingBundle ? "Exporting bundle" : "Transcribing"
+    }
+
+    private var processingSubject: String {
+        model.processingTitle.isEmpty ? "Untitled meeting" : model.processingTitle
     }
 
     private func audioMeter(_ label: String, level: Double) -> some View {
@@ -558,16 +574,28 @@ struct MenuBarControlView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-
-                Button(model.primaryButtonTitle, action: model.primaryAction)
-                    .buttonStyle(.bordered)
             } else {
                 primaryActionButton
             }
 
-            Button("Back to meetings", action: model.dismissFailure)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { failureSecondaryActions }
+                VStack(alignment: .leading, spacing: 8) { failureSecondaryActions }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var failureSecondaryActions: some View {
+        if model.privacyPermission != nil {
+            Button(model.primaryButtonTitle, action: model.primaryAction)
+                .buttonStyle(.bordered)
+        } else if let folder = model.completedFolder {
+            Button("Show saved files") { NSWorkspace.shared.open(folder) }
                 .buttonStyle(.bordered)
         }
+        Button("Back to meetings", action: model.dismissFailure)
+            .buttonStyle(.bordered)
     }
 
     private var primaryActionButton: some View {
@@ -601,20 +629,22 @@ struct MenuBarControlView: View {
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                if let title = model.failureTitle {
+                    Text(title)
+                        .fontWeight(.medium)
+                }
                 Text(message)
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(model.failureTitle == nil ? .primary : .secondary)
+                    .textSelection(.enabled)
             }
-            .font(.callout)
-
-            if let folder = model.completedFolder {
-                Button("Show saved files") { NSWorkspace.shared.open(folder) }
-            }
+            .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
         }
+        .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
@@ -644,12 +674,14 @@ private struct MenuWindowReader: NSViewRepresentable {
 
 private struct MeetingSearchField: NSViewRepresentable {
     @Binding var text: String
+    /// Incremented to move keyboard focus into the field.
+    var focusRequest = 0
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
         field.placeholderString = "Search meetings"
         field.delegate = context.coordinator
-        field.toolTip = "Search titles, transcripts, and calendar attendees"
+        field.toolTip = "Search titles, transcripts, and calendar attendees (⌘F)"
         field.setAccessibilityLabel("Search all meetings")
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.sendsSearchStringImmediately = false
@@ -662,14 +694,22 @@ private struct MeetingSearchField: NSViewRepresentable {
     func updateNSView(_ field: NSSearchField, context: Context) {
         context.coordinator.text = $text
         if field.stringValue != text { field.stringValue = text }
+        if context.coordinator.focusRequest != focusRequest {
+            context.coordinator.focusRequest = focusRequest
+            field.window?.makeFirstResponder(field)
+        }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text, focusRequest: focusRequest) }
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var text: Binding<String>
+        var focusRequest: Int
 
-        init(text: Binding<String>) { self.text = text }
+        init(text: Binding<String>, focusRequest: Int) {
+            self.text = text
+            self.focusRequest = focusRequest
+        }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             guard commandSelector == #selector(NSResponder.cancelOperation(_:)) else { return false }

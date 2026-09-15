@@ -43,7 +43,7 @@ struct CaptureOptionsView: View {
                         advancedPresented = true
                     }
                     OptionsNavigationRow(title: "App & updates", systemImage: "gearshape",
-                                         help: "Launch at login, updates, and the installed version") {
+                                         help: "Launch at login, menu bar recording time, updates, and the installed version") {
                         appSettingsPresented = true
                     }
                 }
@@ -89,6 +89,8 @@ struct CaptureOptionsView: View {
                 .padding(.leading, 18)
                 .help(launchAtLoginError ?? "")
             }
+            Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
+                .help("Shows the elapsed time beside the menu bar icon while recording")
             Divider()
             Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
                 .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
@@ -101,7 +103,7 @@ struct CaptureOptionsView: View {
     }
 
     private var videoQualityLabel: String {
-        model.captureResolution.label + " · " + model.captureQuality.label
+        model.captureResolution.label + " · \(model.captureQuality.rawValue) fps"
     }
 
     private var basicOptions: some View {

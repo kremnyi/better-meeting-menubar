@@ -21,6 +21,8 @@ private struct ProcessingRun {
     let hints: String
     let settings: SpeechSettings
     var stopTask: Task<Void, Error>?
+    /// The title a capture folder was created with; the name can change while recording.
+    var folderTitle: String?
 }
 
 enum ProcessingPhase: Equatable {
@@ -163,6 +165,9 @@ final class AppModel: ObservableObject {
     @Published var automaticUpdateChecks: Bool {
         didSet { defaults.set(automaticUpdateChecks, forKey: "checkUpdatesOnLaunch") }
     }
+    @Published var menuBarRecordingTime: Bool {
+        didSet { defaults.set(menuBarRecordingTime, forKey: "menuBarRecordingTime") }
+    }
     @Published var betaUpdates: Bool {
         didSet {
             defaults.set(betaUpdates, forKey: "betaUpdates")
@@ -194,6 +199,7 @@ final class AppModel: ObservableObject {
     private var activeFolder: URL?
     private var recordedAt: Date?
     private var titleWasProvided = true
+    private var recordingFolderTitle = ""
     private var timer: Timer?
     private var audioWarningTask: Task<Void, Never>?
     private var quitWhenFinished = false
@@ -230,6 +236,7 @@ final class AppModel: ObservableObject {
         exportAfterRecording = defaults.bool(forKey: "exportAfterRecording")
         automaticUpdateChecks = defaults.bool(forKey: "checkUpdatesOnLaunch")
         betaUpdates = defaults.bool(forKey: "betaUpdates")
+        menuBarRecordingTime = defaults.object(forKey: "menuBarRecordingTime") as? Bool ?? true
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
         if (try? speechSettings.validate()) == nil { speechSettings = SpeechSettings() }
@@ -306,6 +313,13 @@ final class AppModel: ObservableObject {
         case .denied, .restricted: return PrivacyPermission.microphone.settingsURL
         default: return nil
         }
+    }
+
+    /// Names what failed, so the system's error text has context. Permission failures explain themselves.
+    var failureTitle: String? {
+        guard state == .failed, privacyPermission == nil else { return nil }
+        if let meeting = retryableMeeting { return "Couldn’t transcribe “\(meeting.title)”" }
+        return completedFolder == nil ? "Couldn’t start recording" : "Couldn’t finish this recording"
     }
 
     /// Access the user must grant in System Settings, as opposed to a prompt the next recording will show.
@@ -806,6 +820,7 @@ final class AppModel: ObservableObject {
                 let title = event?.title ?? manualTitle
                 meetingTitle = title
                 titleWasProvided = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                recordingFolderTitle = title
                 let startedAt = Date()
                 let folder = try MeetingArtifacts.createDirectory(
                     in: outputRoot,
@@ -870,15 +885,18 @@ final class AppModel: ObservableObject {
         guard let folder = activeFolder, let recordedAt else { return nil }
         activeFolder = nil
         self.recordedAt = nil
+        // A name typed or changed while recording wins; clearing the field keeps the folder's name.
+        let editedTitle = meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         return ProcessingRun(
             folder: folder,
             recordedAt: recordedAt,
-            title: meetingTitle,
-            titleWasProvided: titleWasProvided,
+            title: editedTitle.isEmpty ? recordingFolderTitle : meetingTitle,
+            titleWasProvided: titleWasProvided || !editedTitle.isEmpty,
             replacing: nil,
             languages: transcriptionLanguages,
             hints: transcriptionHints,
-            settings: speechSettings
+            settings: speechSettings,
+            folderTitle: recordingFolderTitle
         )
     }
 
@@ -1023,6 +1041,9 @@ final class AppModel: ObservableObject {
                     title = generatedTitle
                     processingTitle = generatedTitle
                 }
+            } else if run.replacing == nil, let folderTitle = run.folderTitle, title != folderTitle {
+                // The name changed while recording; the folder still carries the one it started with.
+                folder = try MeetingArtifacts.renameDirectory(folder, title: title, recordedAt: recordedAt)
             }
             if let replacing = run.replacing {
                 try MeetingArtifacts.replaceTranscript(for: replacing, duration: duration, segments: segments, speechSettings: run.settings)
@@ -1068,7 +1089,7 @@ final class AppModel: ObservableObject {
             completedFolder = run.folder
             if Task.isCancelled {
                 completionMessage = run.replacing == nil
-                    ? "Transcription cancelled. Recording kept; choose it from the Transcribe all menu to resume."
+                    ? "Transcription cancelled. Recording kept; transcribe it from the menu to resume."
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
                 refreshHistory()
                 return false

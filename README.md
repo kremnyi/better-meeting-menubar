@@ -3,7 +3,7 @@
 Record a display, system audio, and microphone from the macOS menu bar. After
 recording stops, Whisper transcribes the audio locally. Each meeting gets a
 folder with the video, audio, and transcript; clicking the finished meeting in
-the menu opens its files in Finder.
+the menu opens its transcript.
 
 Requires Apple Silicon and macOS 15+. Downloads approximately 1.6 GB of speech
 model files during initial setup. Transcription runs locally and works offline
@@ -42,8 +42,8 @@ with a separate signing key before extraction.
 
 Enable **Download updates automatically** there to check GitHub on each launch and
 periodically while the app is open, preparing updates in the background. This is off
-by default. A blue dot beside **Options** means an update is ready. Click **Restart to
-Update** in the menu footer to install and reopen the app; a prepared update also
+by default. When an update is ready, **Restart to Update** appears beside **Options**
+in the menu footer; click it to install and reopen the app; a prepared update also
 installs when you quit. Recording or processing must finish before restarting. If macOS
 requires authorization, click **Install Update** to continue. Failed updates show
 an inline retry action.
@@ -68,7 +68,8 @@ updates. Uninstalling the app keeps saved meetings and downloaded models; see
 ## Record a meeting
 
 1. Open the app.
-2. Enter a meeting name or leave it empty for automatic naming.
+2. Enter a meeting name or leave it empty for automatic naming. Press Return to
+   start recording right away.
 3. Open **Options** in the bottom-left corner to choose a display, microphone, and save folder.
    The app remembers these choices. Defaults are the main display, system
    microphone, and `~/Documents/Better Meetings`.
@@ -76,7 +77,7 @@ updates. Uninstalling the app keeps saved meetings and downloaded models; see
    **Microphone** access. If access is blocked, click **Open System Settings** to enable it,
    then use **Restart Better Meeting** for screen access or **Try again** for microphone access.
 5. Stop recording and wait for transcription. Click the finished meeting to
-   open its files in Finder.
+   open its transcript.
 
 The app downloads and prepares the selected speech model in the background when
 needed. The menu shows progress; you can record during setup, but transcription
@@ -87,6 +88,11 @@ downloads a fresh copy. Other downloaded models and saved meetings are kept.
 While recording, separate microphone and system-audio meters show incoming sound.
 An empty meter can mean silence; check the selected input if it stays empty while
 you expect sound.
+
+The meeting name stays editable while recording; a name typed or changed then is
+used when recording stops. The menu bar shows the elapsed time beside the icon;
+turn off **Show recording time in the menu bar** in **Options → App & updates** to
+hide it.
 
 If neither source has detected audio after 30 seconds, an amber warning replaces
 the recording status. With the menu closed, the app also sends one notification;
@@ -218,10 +224,13 @@ shows the error. Cancellation keeps completed passes for a later retry.
 The menu lists all completed meetings, most recent first; scroll to see older
 ones. Search finds matching titles
 and saved transcript text across all completed meetings in the selected folder,
-including older meetings and manual Markdown edits. Search runs locally.
+including older meetings and manual Markdown edits. Search runs locally. While the
+menu is open, ⌘F searches, ⌘, opens Options, and ⌘Q quits.
 
-Use the **•••** button on a meeting row, or right-click the row, to open
-**Copy Transcript**, **Rename…**, **Re-transcribe…**, and **Export bundle…**.
+Click a meeting to open its transcript; recordings that are not transcribed open
+their folder instead. Use the **•••** button on a meeting row, or right-click the
+row, for **Open Transcript**, **Show in Finder**, **Copy Transcript**, **Rename…**,
+**Re-transcribe…**, and **Export bundle…**.
 Copy uses the saved Markdown, including any edits. Rename updates the folder,
 title, and metadata while keeping the transcript body and media files.
 
@@ -235,7 +244,8 @@ edits, while preserving the meeting name. Cancellation or failure keeps the old 
 ### Transcribe all unfinished recordings
 
 When recordings failed, were cancelled, or are waiting for transcription, the
-menu shows **Transcribe all** with their count. Choosing it transcribes them in
+menu shows their count with **Transcribe**, or **Transcribe all** for several; the
+arrow beside it picks a single recording. Choosing it transcribes them in
 order; progress shows **Transcribing 2 of 3** plus the current meeting and the
 number still waiting. Cancel stops the queue and reports how many finished;
 every recording keeps its completed language passes. If you quit while the
@@ -248,7 +258,7 @@ to resume from saved audio or video, including after a restart. When quitting du
 **Finish and quit** or **Wait and quit** to let saving finish. Force Quit or power
 loss can leave an unfinished video that cannot be recovered.
 
-**Cancel transcription** stops processing and keeps the recording and completed
+**Cancel** next to the progress bar stops processing and keeps the recording and completed
 language passes. Use **Finish saved recording** to resume later, even after a restart.
 
 Each completed language pass is saved as `pass_uk.json`, `pass_ru.json`, or

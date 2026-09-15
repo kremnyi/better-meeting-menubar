@@ -96,8 +96,29 @@ struct MenuBarStatusLabel: View {
     // event names are too long to ever fit, so the label states the time only.
     static let previewLeadTime: TimeInterval = 60 * 60
 
+    /// "4:05" under an hour and "1:02:33" after, so the recording label stays short.
+    static func compactElapsed(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded(.down)))
+        let hours = seconds / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let remainder = seconds % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, remainder)
+            : String(format: "%d:%02d", minutes, remainder)
+    }
+
     var body: some View {
-        if let event = previewEvent {
+        if state == .recording, model.menuBarRecordingTime {
+            let elapsed = Self.compactElapsed(model.elapsed)
+            HStack(spacing: 5) {
+                MenuBarStatusIcon(state: state)
+                Text(elapsed)
+                    .monospacedDigit()
+            }
+            .font(.system(size: 13))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Better Meeting, recording, \(elapsed)")
+        } else if let event = previewEvent {
             let now = Date()
             let relative = event.relativeStart(at: now, compact: true)
             HStack(spacing: 5) {
