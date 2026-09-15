@@ -147,9 +147,11 @@ compression bitrate. These settings do not affect audio or transcription.
 default: it supports every language WhisperKit lists and runs one pass per
 selected language. **Parakeet v3** runs one fast pass with automatic language
 detection and punctuation for 25 European languages, including Ukrainian,
-Russian, and English; its model is about 600 MB and downloads once. The
+Russian, and English; its model is about 470 MB and downloads once. The
 language, model, vocabulary, and decoding rows apply to Whisper only. Changing
-engines releases the previous model before loading the other one. **Advanced… →
+engines only downloads the model if it is missing; it loads on the next
+transcription. Parakeet segments get a script-based uk/ru/en tag for the
+transcript and bundles — treat it as a hint, not model output. **Advanced… →
 Models** lists every model with its size, where each one can be deleted or
 downloaded ahead of time.
 
@@ -170,8 +172,8 @@ by WhisperKit are available.
 **Advanced… → Model** offers multilingual Small, Large v3 Turbo
 (default), and Large v3.
 Small uses less memory; Large v3 takes longer and uses more memory. Changing
-models releases the previous model before loading the next one. The picker waits
-for active setup to finish.
+models downloads it if it is missing; it loads on the next transcription. The
+picker waits for an active download to finish.
 
 ### Vocabulary
 

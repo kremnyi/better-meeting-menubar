@@ -17,7 +17,7 @@ enum TranscriptionEngine: String, CaseIterable, Codable, Sendable {
         case .whisper:
             "Runs one pass per language and keeps the best result. Slower, widest language support."
         case .parakeet:
-            "One fast pass with punctuation and language detection. European languages; model is about 600 MB."
+            "One fast pass with punctuation and language detection. European languages; model is about 470 MB."
         }
     }
 }

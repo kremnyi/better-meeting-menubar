@@ -34,6 +34,26 @@ final class ParakeetEngineTests: XCTestCase {
         XCTAssertEqual(segments.map { $0.text.split(separator: " ").count }, [40, 40, 10])
     }
 
+    func testParakeetLanguageTagsScriptAndWords() throws {
+        XCTAssertEqual(ParakeetLanguage.tag("Привіт, як справи?"), "uk")
+        XCTAssertEqual(ParakeetLanguage.tag("Що це таке"), "uk")
+        XCTAssertEqual(ParakeetLanguage.tag("Привет, как дела?"), "ru")
+        XCTAssertEqual(ParakeetLanguage.tag("Что это такое"), "ru")
+        XCTAssertEqual(ParakeetLanguage.tag("We should ship this today"), "en")
+        XCTAssertNil(ParakeetLanguage.tag("Ок"))
+        XCTAssertNil(ParakeetLanguage.tag("Так"))
+        XCTAssertNil(ParakeetLanguage.tag("Hallo zusammen"))
+    }
+
+    func testParakeetTaggingKeepsPinnedLanguage() throws {
+        let segments = [
+            TranscriptSegment(start: 0, end: 1, text: "Що це таке", language: nil),
+            TranscriptSegment(start: 1, end: 2, text: "We should ship this today", language: nil),
+        ]
+        XCTAssertEqual(ParakeetLanguage.tagging(segments).map(\.language), ["uk", "en"])
+        XCTAssertEqual(ParakeetLanguage.tagging(segments, pinned: "ru").map(\.language), ["ru", "ru"])
+    }
+
     func testSegmentsFallBackToWholeTextWithoutTimings() throws {
         let result = ASRResult(text: "  One line  ", confidence: 1, duration: 12, processingTime: 1)
         XCTAssertEqual(LocalTranscriber.segments(from: result).map(\.text), ["One line"])

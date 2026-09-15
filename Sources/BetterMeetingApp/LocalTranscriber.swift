@@ -368,7 +368,8 @@ actor LocalTranscriber {
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         let manager = try await prepareParakeet(progressHandler: progressHandler)
-        let language = languages.count == 1 ? Language(rawValue: languages[0]) : nil
+        let pinned = languages.count == 1 ? languages[0] : nil
+        let language = pinned.flatMap { Language(rawValue: $0) }
         progressHandler(.engineTranscribing(nil))
         let progressTask = Task {
             do {
@@ -382,7 +383,7 @@ actor LocalTranscriber {
         let result = try await manager.transcribe(audioURL, decoderState: &decoderState, language: language)
         try Task.checkCancellation()
         // ponytail: Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.
-        return Self.segments(from: result)
+        return ParakeetLanguage.tagging(Self.segments(from: result), pinned: pinned)
     }
 
     static func segments(from result: ASRResult) -> [TranscriptSegment] {
