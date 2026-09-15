@@ -4,9 +4,8 @@ import SwiftUI
 struct MenuBarControlView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updates: AppUpdater
+    @Environment(\.openSettings) private var openSettings
     @State var captureOptionsPresented = false
-    @State private var calendarOptionsPresented = false
-    @State private var appSettingsPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
     @State private var hoveredMeetingID: MeetingHistoryItem.ID?
 
@@ -28,16 +27,7 @@ struct MenuBarControlView: View {
                 .help("Recording and app options")
                 .accessibilityLabel("Options")
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
-                    CaptureOptionsView(
-                        calendarsPresented: calendarOptionsPresented,
-                        appSettingsPresented: appSettingsPresented
-                    )
-                }
-                .onChange(of: captureOptionsPresented) { _, presented in
-                    if !presented {
-                        calendarOptionsPresented = false
-                        appSettingsPresented = false
-                    }
+                    CaptureOptionsView()
                 }
 
                 updateStatus
@@ -53,7 +43,7 @@ struct MenuBarControlView: View {
             .padding(.vertical, 8)
         }
         .frame(width: 304)
-        .background(MenuWindowReader(model: model).frame(width: 0, height: 0).accessibilityHidden(true))
+        .background(WindowReader { model.menuWindow = $0 }.frame(width: 0, height: 0).accessibilityHidden(true))
         .sheet(item: $retranscribingMeeting) { meeting in
             RetranscriptionView(
                 meeting: meeting, languages: model.transcriptionLanguages, hints: model.transcriptionHints,
@@ -95,8 +85,7 @@ struct MenuBarControlView: View {
                     : "Install the update and relaunch Better Meeting")
         case .failed:
             Button("Update failed — View details") {
-                appSettingsPresented = true
-                captureOptionsPresented = true
+                model.showSettings(.general, using: openSettings)
             }
             .buttonStyle(.plain)
             .font(.caption)
@@ -143,8 +132,7 @@ struct MenuBarControlView: View {
             Divider()
 
             UpcomingMeetingView(calendar: model.calendar) {
-                calendarOptionsPresented = true
-                captureOptionsPresented = true
+                model.showSettings(.calendars, using: openSettings)
             } record: { event in
                 model.startCalendarRecording(event)
             }
@@ -204,49 +192,31 @@ struct MenuBarControlView: View {
                     Text("\(model.unfinishedRecordings.count) unfinished")
                         .font(.callout)
                     Spacer(minLength: 0)
-                    HStack(spacing: 0) {
-                        Button {
-                            model.transcribeAllRecordings()
-                        } label: {
-                            Text("Transcribe all")
-                                .padding(.horizontal, 10)
-                                .frame(height: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Transcribe all unfinished recordings")
-
-                        Rectangle().fill(.white.opacity(0.3)).frame(width: 1, height: 16)
-
-                        Menu {
-                            ForEach(model.unfinishedRecordings) { item in
-                                Button("\(item.title) · \(item.recordedAt.formatted(date: .abbreviated, time: .shortened))") {
-                                    model.retryTranscription(item)
-                                }
+                    Menu {
+                        ForEach(model.unfinishedRecordings) { item in
+                            Button("\(item.title) · \(item.recordedAt.formatted(date: .abbreviated, time: .shortened))") {
+                                model.retryTranscription(item)
                             }
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.caption.weight(.semibold))
-                                .frame(width: 26, height: 28)
                         }
-                        .menuStyle(.borderlessButton)
-                        .menuIndicator(.hidden)
-                        .fixedSize()
-                        .accessibilityLabel("Choose a recording to transcribe")
-                        .help("Choose one unfinished recording")
+                    } label: {
+                        Text("Transcribe all")
+                    } primaryAction: {
+                        model.transcribeAllRecordings()
                     }
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.white)
-                    .background(.blue, in: RoundedRectangle(cornerRadius: 6))
+                    .menuStyle(.button)
+                    .buttonStyle(.bordered)
                     .fixedSize()
+                    .help("Transcribe all unfinished recordings, or choose one from the arrow")
                 }
             }
 
             Text("Recorded meetings")
                 .font(.callout.weight(.medium))
 
-            MeetingSearchField(text: $model.historyQuery)
-                .frame(height: 24)
+            if model.hasMeetings {
+                MeetingSearchField(text: $model.historyQuery)
+                    .frame(height: 24)
+            }
 
             Group {
                 if model.searchingHistory {
@@ -259,7 +229,7 @@ struct MenuBarControlView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(model.transcriptionHistory) { item in
-                                historyRow(item, isSaved: item.folderURL == model.completedFolder, canEdit: model.state == .idle && !model.isProcessing)
+                                historyRow(item, isNew: item.folderURL == model.completedFolder, canEdit: model.state == .idle && !model.isProcessing)
 
                                 if item.id != model.transcriptionHistory.last?.id {
                                     Divider()
@@ -285,7 +255,7 @@ struct MenuBarControlView: View {
         }
     }
 
-    func historyRow(_ item: MeetingHistoryItem, isSaved: Bool, canEdit: Bool) -> some View {
+    func historyRow(_ item: MeetingHistoryItem, isNew: Bool, canEdit: Bool) -> some View {
         HStack(spacing: 10) {
             Button {
                 NSWorkspace.shared.open(item.folderURL)
@@ -294,11 +264,16 @@ struct MenuBarControlView: View {
                     HStack(spacing: 6) {
                         Text(item.title)
                             .lineLimit(1)
-                        if isSaved {
-                            Label("Saved", systemImage: "checkmark.circle.fill")
-                                .labelStyle(.iconOnly)
-                                .foregroundStyle(.green)
-                                .help("Saved")
+                        if isNew {
+                            Text("New")
+                                .font(.caption)
+                                .foregroundStyle(.tint)
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                .help("Just saved")
                         }
                         if item.needsTranscription {
                             Text("Not transcribed")
@@ -319,7 +294,8 @@ struct MenuBarControlView: View {
                         Text(Timecode.string(item.duration))
                             .monospacedDigit()
                     }
-                    .font(.callout)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -448,7 +424,7 @@ struct MenuBarControlView: View {
             HStack(spacing: 8) {
                 Image(systemName: "waveform")
                     .font(.title2)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(.tint)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Transcribing \(model.transcriptionBatchIndex) of \(model.transcriptionBatchTotal)")
@@ -467,7 +443,6 @@ struct MenuBarControlView: View {
             }
 
             processingIndicator
-                .tint(.blue)
                 .accessibilityLabel(model.processingStatusText)
 
             HStack(alignment: .top) {
@@ -510,7 +485,6 @@ struct MenuBarControlView: View {
             }
 
             processingIndicator
-                .tint(.signalCoral)
                 .accessibilityLabel(model.processingStatusText)
 
             primaryActionButton
@@ -529,7 +503,7 @@ struct MenuBarControlView: View {
         HStack(spacing: 8) {
             Text(label).font(.caption).frame(width: 78, alignment: .leading)
             ProgressView(value: level)
-                .tint(.green)
+                .tint(level > 0 ? Color.green : Color.gray)
                 .accessibilityLabel(label)
                 .accessibilityValue(level > 0 ? "Audio detected" : "No audio detected")
         }
@@ -572,7 +546,6 @@ struct MenuBarControlView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .tint(.signalCoral)
 
                 Button(model.primaryButtonTitle, action: model.primaryAction)
                     .buttonStyle(.bordered)
@@ -602,7 +575,7 @@ struct MenuBarControlView: View {
         return VStack(spacing: 6) {
             Label(notice.text, systemImage: model.captureAccessSymbol)
                 .font(notice.isSecondary ? .caption : .callout)
-                .foregroundStyle(model.privacyPermission != nil ? Color.orange : notice.isSecondary ? .secondary : .primary)
+                .foregroundStyle(model.captureAccessNeedsAttention ? Color.orange : notice.isSecondary ? .secondary : .primary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
@@ -617,10 +590,14 @@ struct MenuBarControlView: View {
 
     private func errorView(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.caption)
-                .foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
+            Label {
+                Text(message)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+            }
+            .font(.callout)
 
             if let folder = model.completedFolder {
                 Button("Show saved files") { NSWorkspace.shared.open(folder) }
@@ -632,23 +609,24 @@ struct MenuBarControlView: View {
     }
 }
 
-private struct MenuWindowReader: NSViewRepresentable {
-    let model: AppModel
+/// Reports the AppKit window that hosts a SwiftUI view.
+struct WindowReader: NSViewRepresentable {
+    let found: @MainActor (NSWindow) -> Void
 
     func makeNSView(context: Context) -> WindowView {
         let view = WindowView()
-        view.model = model
+        view.found = found
         return view
     }
 
     func updateNSView(_ view: WindowView, context: Context) {}
 
     final class WindowView: NSView {
-        weak var model: AppModel?
+        var found: (@MainActor (NSWindow) -> Void)?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            model?.menuWindow = window
+            if let window { found?(window) }
         }
     }
 }

@@ -48,6 +48,12 @@ struct BetterMeetingApp: App {
                 iconTimer = timer
             }
         }
+
+        Settings {
+            SettingsView()
+                .environmentObject(model)
+                .environmentObject(model.updates)
+        }
     }
 }
 

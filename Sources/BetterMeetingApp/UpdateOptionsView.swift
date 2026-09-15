@@ -53,8 +53,6 @@ struct UpdateOptionsView: View {
             }
             .font(.caption)
         }
-        .font(.callout)
-        .controlSize(.small)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

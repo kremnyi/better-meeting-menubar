@@ -7,8 +7,7 @@ struct CalendarOptionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Calendars").font(.headline)
-            Text("Display").font(.callout.weight(.medium))
+            Text("Menu").font(.headline)
             Toggle("Show upcoming meetings", isOn: Binding(
                 get: { calendar.enabled },
                 set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
@@ -21,6 +20,8 @@ struct CalendarOptionsView: View {
             .toggleStyle(.checkbox)
 
             Group {
+                Divider()
+                Text("Calendars").font(.headline)
                 if calendar.authorization == .fullAccess {
                     if calendar.isLoading && calendar.calendars.isEmpty && !calendar.hasLoaded {
                         VStack(alignment: .leading, spacing: 10) {
@@ -87,7 +88,11 @@ struct CalendarOptionsView: View {
                     }
                 }
                 if let error = calendar.errorMessage {
-                    Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    Label {
+                        Text(error).fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    }
                 }
             }
             .disabled(!calendar.enabled)
@@ -103,7 +108,7 @@ private struct CalendarReminderOptionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Meeting reminders").font(.callout.weight(.medium))
+            Text("Meeting reminders").font(.headline)
             Toggle("Notify me when meetings start", isOn: Binding(
                 get: { calendar.notifyAtStart },
                 set: { value in Task { await calendar.setNotifyAtStart(value) } }
@@ -154,6 +159,9 @@ struct UpcomingMeetingView: View {
     @ObservedObject var calendar: CalendarIntegration
     let configure: () -> Void
     let record: (CalendarEvent) -> Void
+
+    /// Once a meeting is under way or this close to starting, recording it is the likely next step.
+    static let prominentRecordLeadTime: TimeInterval = 5 * 60
 
     var body: some View {
         Group {
@@ -209,15 +217,29 @@ struct UpcomingMeetingView: View {
                                     .buttonStyle(.plain)
                                     .help("Open Calendar")
                                     .accessibilityLabel("Open Calendar for \(event.title)")
-                                    Button { record(event) } label: {
-                                        Image(systemName: "record.circle")
-                                            .font(.system(size: 16))
-                                            .frame(width: 24, height: 24)
-                                            .contentShape(Rectangle())
+                                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                                        if event.scheduledStart.timeIntervalSince(context.date) <= Self.prominentRecordLeadTime {
+                                            Button { record(event) } label: {
+                                                Label("Record", systemImage: "record.circle")
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .controlSize(.small)
+                                            .tint(.signalCoral)
+                                            .fixedSize()
+                                            .accessibilityLabel("Record this meeting: \(event.title)")
+                                            .help("Record this meeting")
+                                        } else {
+                                            Button { record(event) } label: {
+                                                Image(systemName: "record.circle")
+                                                    .font(.system(size: 16))
+                                                    .frame(width: 24, height: 24)
+                                                    .contentShape(Rectangle())
+                                            }
+                                            .buttonStyle(.borderless)
+                                            .accessibilityLabel("Record this meeting: \(event.title)")
+                                            .help("Record this meeting")
+                                        }
                                     }
-                                    .buttonStyle(.borderless)
-                                    .accessibilityLabel("Record this meeting: \(event.title)")
-                                    .help("Record this meeting")
                                 }
                                 if !layout.compact.isEmpty {
                                     Divider().padding(.vertical, 2)
@@ -253,7 +275,7 @@ struct UpcomingMeetingView: View {
                                 }
                             }
                         } else if !calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) }) {
-                            Text("Choose calendars in Options to see meetings.")
+                            Text("Choose calendars in Settings to see meetings.")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else {

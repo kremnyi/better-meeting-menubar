@@ -87,6 +87,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var audioWarning = false
     private(set) var recordingID: UUID?
     weak var menuWindow: NSWindow?
+    weak var settingsWindow: NSWindow?
+    @Published var settingsTab: SettingsTab = .general
     @Published private(set) var statusText = "Ready to record your display and audio."
     @Published private(set) var errorMessage: String?
     @Published private(set) var completedFolder: URL?
@@ -108,6 +110,20 @@ final class AppModel: ObservableObject {
     var transcriptionBatchWaiting: Int { max(0, transcriptionBatchTotal - transcriptionBatchIndex) }
     var isProcessing: Bool { processingPhase != nil }
     var isCapturing: Bool { state == .preparing || state == .recording }
+    /// Display, microphone, and quality apply when a recording starts, so only a running capture locks them.
+    var captureSettingsLocked: Bool { isCapturing }
+    /// Transcription settings are read when a recording stops, so they lock only while a transcription runs.
+    var transcriptionSettingsLocked: Bool { isProcessing }
+    /// The save folder and automatic export stay in use until the last job finishes.
+    var fileSettingsLocked: Bool { isCapturing || isProcessing }
+    var settingsLockNotice: String? {
+        switch (isCapturing, isProcessing) {
+        case (true, true): "Recording, transcription, and file settings unlock when recording and processing finish."
+        case (true, false): "Recording and file settings unlock when recording stops. Transcription changes apply to this meeting."
+        case (false, true): "Transcription and file settings unlock when processing finishes."
+        case (false, false): nil
+        }
+    }
     @Published private(set) var modelReady = false
     @Published private(set) var modelSetupStatus = "Preparing speech model…"
     @Published private(set) var modelSetupFraction: Double?
@@ -294,11 +310,19 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Access the user must grant in System Settings, as opposed to a prompt the next recording will show.
+    var captureAccessNeedsAttention: Bool {
+        if privacyPermission != nil { return true }
+        guard state != .recording else { return false }
+        return !CGPreflightScreenCaptureAccess()
+            || [.denied, .restricted].contains(AVCaptureDevice.authorizationStatus(for: .audio))
+    }
+
     var captureAccessSymbol: String {
         if state == .recording {
             return "stop.circle"
         }
-        return privacyPermission == nil ? "shield" : "exclamationmark.shield"
+        return captureAccessNeedsAttention ? "exclamationmark.shield" : "shield"
     }
 
     func primaryAction() {
@@ -660,8 +684,12 @@ final class AppModel: ObservableObject {
         searchHistory()
     }
 
-    var historyListHeight: CGFloat {
-        6 * 48
+    var hasMeetings: Bool { !completedMeetings.isEmpty || !unfinishedRecordings.isEmpty }
+
+    /// Six rows once any meeting exists, so searching never resizes the menu. Before the
+    /// first meeting the empty message keeps its natural height.
+    var historyListHeight: CGFloat? {
+        hasMeetings ? 6 * 48 : nil
     }
 
     private var meetingsByRecency: [MeetingHistoryItem] {

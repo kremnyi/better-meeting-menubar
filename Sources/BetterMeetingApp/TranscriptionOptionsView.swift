@@ -1,104 +1,60 @@
-import ServiceManagement
 import SwiftUI
 
+/// The menu's Options popover: the choices people change per meeting. Quality,
+/// engine, models, calendars, and updates live in the Settings window.
 struct CaptureOptionsView: View {
     @EnvironmentObject private var model: AppModel
-    @State var advancedPresented = false
-    @State var calendarsPresented = false
-    @State var appSettingsPresented = false
-    @State var launchAtLoginStatus = SMAppService.mainApp.status
-    @State var launchAtLoginError: String?
-    var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if calendarsPresented {
-                OptionsBackButton { calendarsPresented = false }
-                CalendarOptionsView(calendar: model.calendar)
-            } else if advancedPresented {
-                OptionsBackButton { advancedPresented = false }
-                AdvancedTranscriptionView(
-                    settings: $model.speechSettings, hints: $model.transcriptionHints,
-                    modelSelectionDisabled: model.modelPreparationTask != nil
-                )
-                .disabled(model.updates.isBusy())
-            } else if appSettingsPresented {
-                OptionsBackButton { appSettingsPresented = false }
-                appSettings
-            } else {
-                basicOptions
-                    .disabled(model.updates.isBusy())
-                    .tint(model.updates.isBusy() ? .secondary : .accentColor)
-                if model.updates.isBusy() {
-                    Text("Meeting settings are unavailable while recording or processing.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+                GridRow {
+                    Text("Recording").font(.headline).gridCellColumns(2)
                 }
+                CaptureDeviceRows()
+                Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
+                GridRow {
+                    Text("Transcription").font(.headline).gridCellColumns(2)
+                }
+                TranscriptionOptionsView(
+                    languages: $model.transcriptionLanguages, settings: $model.speechSettings,
+                    locked: model.transcriptionSettingsLocked
+                )
+                Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
+                GridRow {
+                    Text("Files").font(.headline).gridCellColumns(2)
+                }
+                FileSettingsRows()
+            }
+            SettingsLockNotice()
+            Divider()
+            HStack {
+                Spacer()
+                Button {
+                    dismiss()
+                    model.showSettings(.general, using: openSettings)
+                } label: {
+                    Label("Settings…", systemImage: "gearshape")
+                }
+                .help("Resolution, frame rate, transcription engine and models, calendars, launch at login, and updates")
             }
         }
         .font(.callout)
         .controlSize(.small)
         .padding(16)
         .frame(width: 360, alignment: .leading)
-        .onChange(of: model.speechSettings.model) { model.speechModelChanged() }
-        .onChange(of: model.speechSettings.engine) { model.speechModelChanged() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            launchAtLoginStatus = SMAppService.mainApp.status
-            launchAtLoginError = nil
-        }
     }
+}
 
-    private var appSettings: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("App settings").font(.headline)
-            Toggle("Launch at login", isOn: Binding(
-                get: { launchAtLoginStatus == .enabled },
-                set: setLaunchAtLogin
-            ))
-            if launchAtLoginStatus == .requiresApproval || launchAtLoginError != nil {
-                VStack(alignment: .leading, spacing: 4) {
-                    if launchAtLoginStatus == .requiresApproval {
-                        Text("Allow Better Meeting to open at login in System Settings.")
-                    } else if launchAtLoginStatus == .notFound {
-                        Text("Open Better Meeting from Applications and try again.")
-                    } else {
-                        Text("Couldn’t change launch at login. Try again or check Login Items.")
-                    }
-                    if launchAtLoginStatus != .notFound {
-                        Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
-                            .buttonStyle(.link)
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, 18)
-                .help(launchAtLoginError ?? "")
-            }
-            Divider()
-            Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
-                .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
-            Toggle("Include beta releases", isOn: $model.betaUpdates)
-                .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
-            UpdateOptionsView(updates: model.updates, version: version)
-        }
-        .toggleStyle(.checkbox)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+/// Display and microphone rows for a two-column Grid. They apply when a recording
+/// starts, so only a running capture locks them.
+struct CaptureDeviceRows: View {
+    @EnvironmentObject private var model: AppModel
 
-    private var basicOptions: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-            GridRow {
-                HStack {
-                    Text("Recording").font(.headline)
-                    Spacer()
-                    Button { calendarsPresented = true } label: {
-                        Label("Calendars…", systemImage: "calendar")
-                    }
-                    .help("Choose which calendars appear in Upcoming meetings")
-                }
-                .gridCellColumns(2)
-            }
+    var body: some View {
+        Group {
             GridRow {
                 Text("Display")
                 Picker("Display", selection: $model.selectedDisplayID) {
@@ -112,6 +68,7 @@ struct CaptureOptionsView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
+                .disabled(model.captureSettingsLocked)
                 .help("The entire selected display is recorded")
             }
             GridRow {
@@ -127,51 +84,19 @@ struct CaptureOptionsView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
+                .disabled(model.captureSettingsLocked)
                 .help("Recorded along with system audio")
             }
-            GridRow {
-                Text("Resolution")
-                Picker("Resolution", selection: $model.captureResolution) {
-                    ForEach(CaptureResolution.allCases, id: \.self) { resolution in
-                        Text(resolution.label).tag(resolution)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-                .help("Limits the video's longest edge without upscaling")
-            }
-            GridRow {
-                Text("Frame rate")
-                Picker("Frame rate", selection: $model.captureQuality) {
-                    ForEach(CaptureQuality.allCases, id: \.self) { quality in
-                        Text(quality.label).tag(quality)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-                .help("Smoother motion uses more storage")
-            }
-            Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
-            GridRow {
-                HStack {
-                    Text("Transcription").font(.headline)
-                    Spacer()
-                    Button { advancedPresented = true } label: {
-                        Label("Advanced…", systemImage: "waveform")
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Advanced transcription")
-                    .help("Engine, model, vocabulary, and decoding options")
-                }
-                .gridCellColumns(2)
-            }
-            TranscriptionOptionsView(
-                languages: $model.transcriptionLanguages, settings: $model.speechSettings
-            )
-            Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
-            GridRow {
-                Text("Files").font(.headline).gridCellColumns(2)
-            }
+        }
+    }
+}
+
+/// Save folder and automatic export rows for a two-column Grid.
+struct FileSettingsRows: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Group {
             GridRow {
                 Text("Save to")
                 destinationButton
@@ -179,6 +104,7 @@ struct CaptureOptionsView: View {
             GridRow {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle("Include screenshots and screen text", isOn: $model.exportAfterRecording)
+                        .disabled(model.fileSettingsLocked)
                         .help("After saving each transcript, export a bundle with screenshots and screen text into an artifacts folder.")
                     if model.exportAfterRecording {
                         Text("Saves extra files beside the transcript.")
@@ -188,38 +114,7 @@ struct CaptureOptionsView: View {
                 }
                 .gridCellColumns(2)
             }
-            Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
-            GridRow {
-                HStack {
-                    Text("App").font(.headline)
-                    Spacer()
-                    Button { appSettingsPresented = true } label: {
-                        Label("Settings…", systemImage: "gearshape")
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("App settings")
-                    .help("Launch at login, updates, and the installed version")
-                }
-                .gridCellColumns(2)
-            }
         }
-    }
-
-    private func setLaunchAtLogin(_ enabled: Bool) {
-        let service = SMAppService.mainApp
-        launchAtLoginError = nil
-        do {
-            if enabled && service.status == .requiresApproval {
-                SMAppService.openSystemSettingsLoginItems()
-            } else if enabled {
-                try service.register()
-            } else {
-                try service.unregister()
-            }
-        } catch {
-            launchAtLoginError = error.localizedDescription
-        }
-        launchAtLoginStatus = service.status
     }
 
     private var destinationButton: some View {
@@ -237,16 +132,30 @@ struct CaptureOptionsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
+        .disabled(model.fileSettingsLocked)
         .help(model.outputRoot.path)
         .accessibilityLabel("Save recordings to \(model.outputRoot.path)")
         .accessibilityHint("Choose a different folder")
     }
+}
 
+/// Explains which settings a running recording or transcription has locked.
+struct SettingsLockNotice: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        if let notice = model.settingsLockNotice {
+            Text(notice)
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 }
 
 struct TranscriptionOptionsView: View {
     @Binding var languages: [String]
     @Binding var settings: SpeechSettings
+    var locked = false
 
     private var languageNames: String {
         languages.compactMap { TranscriptionLanguage(rawValue: $0)?.label }.joined(separator: ", ")
@@ -270,7 +179,7 @@ struct TranscriptionOptionsView: View {
                 }
                 .lineLimit(1)
                 .frame(minWidth: 0, maxWidth: .infinity)
-                .disabled(!settings.usesWhisperOptions)
+                .disabled(locked || !settings.usesWhisperOptions)
                 .accessibilityLabel("Spoken languages")
                 .accessibilityValue(settings.usesWhisperOptions ? languageNames : "Whisper only")
                 .help(settings.usesWhisperOptions
@@ -283,6 +192,7 @@ struct TranscriptionOptionsView: View {
                     set: { settings.speakerLabels = $0 }
                 ))
                 .toggleStyle(.checkbox)
+                .disabled(locked)
                 .help("Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
                 .gridCellColumns(2)
             }
@@ -344,6 +254,9 @@ struct RetranscriptionView: View {
 struct AdvancedTranscriptionView: View {
     @Binding var settings: SpeechSettings
     @Binding var hints: String
+    /// Settings shows languages and speaker labels in the same grid; Re-transcribe keeps them on its first page.
+    var languages: Binding<[String]>?
+    var title: String? = "Advanced transcription"
     var modelSelectionDisabled = false
     @State var decodingExpanded = false
 
@@ -353,8 +266,14 @@ struct AdvancedTranscriptionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Advanced transcription").font(.headline)
+            if let title {
+                Text(title).font(.headline)
+            }
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+                if let languages {
+                    TranscriptionOptionsView(languages: languages, settings: $settings)
+                    Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
+                }
                 GridRow {
                     Text("Engine")
                     Picker("Engine", selection: engineBinding) {
@@ -398,9 +317,6 @@ struct AdvancedTranscriptionView: View {
                     }
                 }
             }
-            Divider()
-            Text("Models").font(.headline)
-            ModelStorageView()
             if settings.usesWhisperOptions {
                 DisclosureGroup("Decoding", isExpanded: $decodingExpanded) {
                     Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
@@ -442,7 +358,6 @@ struct AdvancedTranscriptionView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .controlSize(.small)
     }
 
     private func option(_ title: String, value: Binding<Float>, range: ClosedRange<Float>, help: String) -> some View {
@@ -462,7 +377,7 @@ struct AdvancedTranscriptionView: View {
 }
 
 private struct OptionsBackButton: View {
-    var title = "Options"
+    let title: String
     let action: () -> Void
 
     var body: some View {

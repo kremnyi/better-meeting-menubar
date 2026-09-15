@@ -415,12 +415,12 @@ final class MeetingCalendarTests: XCTestCase {
             await calendar.reminders.task?.value
             for scheme: ColorScheme in [.light, .dark] {
                 let panels: [(String, AnyView)] = [
-                    ("options", AnyView(CaptureOptionsView(calendarsPresented: true))),
+                    ("options", AnyView(CalendarOptionsView(calendar: model.calendar).settingsPane())),
                     ("menu", AnyView(MenuBarControlView()))
                 ]
                 for (name, content) in panels {
                     let view = hostingView(content, model: model, scheme: scheme)
-                    XCTAssertEqual(view.fittingSize.width, name == "menu" ? 304 : 360)
+                    XCTAssertEqual(view.fittingSize.width, name == "menu" ? 304 : SettingsView.paneWidth)
                     // Guards against runaway growth: the tallest stress state (2-line title plus a second today meeting) sits at 727, so 740 keeps a real budget while still catching an unbounded list.
                     XCTAssertLessThan(view.fittingSize.height, 740)
                     if let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"] {
