@@ -45,16 +45,34 @@ final class SpeechSettingsTests: XCTestCase {
         }
     }
 
-    func testSettingsWithoutEngineDecodeAsWhisper() throws {
+    func testSettingsWithoutEngineUseParakeetButSavedMeetingsKeepWhisper() throws {
         let legacy = """
         {"model":"openai_whisper-small","temperature":0,"fallbackCount":5,"fallbackIncrement":0.2,
          "noSpeechThreshold":0.6,"logProbThreshold":-1,"compressionRatioThreshold":2.4,"speakerLabels":true}
         """
         let settings = try JSONDecoder().decode(SpeechSettings.self, from: Data(legacy.utf8))
         XCTAssertNil(settings.engine)
-        XCTAssertEqual(settings.selectedEngine, .whisper)
-        XCTAssertTrue(settings.usesWhisperOptions)
+        XCTAssertEqual(settings.selectedEngine, .parakeet)
+        XCTAssertFalse(settings.usesWhisperOptions)
         XCTAssertEqual(settings.model, .small)
+        XCTAssertEqual(settings.withResolvedEngine.engine, .parakeet, "New meetings record the engine that ran")
+        let folder = makeTempRoot()
+        defer { removeTempRoot(folder) }
+        try MeetingArtifacts.writeMetadata(title: "Old", recordedAt: Date(), duration: 60, speechSettings: settings, to: folder)
+        XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder)?.engine, .whisper,
+                       "Meetings saved without an engine were transcribed by Whisper")
+    }
+
+    @MainActor
+    func testSavedLanguagesParakeetLacksKeepWhisper() throws {
+        let (defaults, suite, root) = try makeTempDefaults("SpeechSettingsLanguages")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        defaults.set(["ja", "en"], forKey: "transcriptionLanguages")
+        XCTAssertEqual(AppModel(defaults: defaults).speechSettings.engine, .whisper)
+        XCTAssertEqual(AppModel(defaults: defaults).speechSettings.engine, .whisper, "The choice is saved")
+        defaults.removeObject(forKey: "speechSettings")
+        defaults.set(["uk", "ru", "en"], forKey: "transcriptionLanguages")
+        XCTAssertEqual(AppModel(defaults: defaults).speechSettings.selectedEngine, .parakeet)
     }
 
     func testEngineSwitchKeepsCompletedWhisperPasses() async throws {
@@ -82,7 +100,7 @@ final class SpeechSettingsTests: XCTestCase {
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let model = AppModel(defaults: defaults)
         XCTAssertEqual(model.speechSettings.model, .turbo)
-        XCTAssertEqual(model.speechSettings.selectedEngine, .whisper)
+        XCTAssertEqual(model.speechSettings.selectedEngine, .parakeet)
         XCTAssertFalse(model.speechSettings.speakerLabels == true)
         model.speechSettings.speakerLabels = true
         model.speechSettings.engine = .parakeet

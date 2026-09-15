@@ -157,11 +157,14 @@ compression bitrate. These settings do not affect audio or transcription.
 
 ### Engine
 
-**Advanced transcription → Engine** chooses the transcription engine. **Whisper** is the
-default: it supports every language WhisperKit lists and runs one pass per
-selected language. **Parakeet v3** runs one fast pass with automatic language
-detection and punctuation for 25 European languages, including Ukrainian,
-Russian, and English; its model is about 470 MB and downloads once. The
+**Advanced transcription → Engine** chooses the transcription engine. **Parakeet v3** is
+the default: it runs one fast pass with automatic language detection and punctuation
+for 25 European languages, including Ukrainian, Russian, and English; its model is
+about 470 MB and downloads once. **Whisper** supports every language WhisperKit lists
+and runs one pass per selected language; choose it for other languages. Settings
+saved before Parakeet became the default switch to it unless their languages include
+one Parakeet doesn't support, and meetings already transcribed with Whisper keep
+Whisper when you retry or re-transcribe them. The
 language, model, vocabulary, and decoding rows apply to Whisper only. Changing
 engines only downloads the model if it is missing; it loads on the next
 transcription. Parakeet segments get a script-based uk/ru/en tag for the
@@ -370,7 +373,7 @@ Downloaded model files are kept when switching. The first load can take longer
 while Core ML prepares the model.
 
 Parakeet models live under `models/parakeet-tdt-0.6b-v3/` (about 470 MB) and are
-downloaded only when the Parakeet engine is selected. The FluidAudio runtime is
+downloaded while Parakeet is the selected engine, which it is by default. The FluidAudio runtime is
 Apache-2.0; the model weights are CC-BY-4.0, © NVIDIA Corporation. See
 [ThirdPartyNotices.md](ThirdPartyNotices.md).
 

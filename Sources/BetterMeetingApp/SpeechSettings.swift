@@ -65,7 +65,22 @@ struct SpeechSettings: Codable, Equatable, Sendable {
     // Optional so preferences and meeting metadata saved before the field existed still decode.
     var speakerLabels: Bool? = nil
 
-    var selectedEngine: TranscriptionEngine { engine ?? .whisper }
+    /// Parakeet unless another engine was chosen. Meetings saved without an engine were
+    /// transcribed by Whisper; `MeetingArtifacts.speechSettings(in:)` restores that.
+    var selectedEngine: TranscriptionEngine { engine ?? .parakeet }
+
+    /// These settings with the engine spelled out, so a saved meeting records which one ran.
+    var withResolvedEngine: SpeechSettings {
+        var settings = self
+        settings.engine = selectedEngine
+        return settings
+    }
+
+    /// Languages Parakeet v3 transcribes; the others need Whisper.
+    static let parakeetLanguages: Set<String> = [
+        "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hr", "hu", "it",
+        "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "uk",
+    ]
 
     var usesWhisperOptions: Bool { selectedEngine == .whisper }
 

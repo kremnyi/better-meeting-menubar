@@ -257,7 +257,7 @@ struct TranscriptionOptionsView: View {
         Group {
             GridRow {
                 Text("Languages")
-                Menu(settings.usesWhisperOptions ? languageNames : "Whisper only") {
+                Menu(settings.usesWhisperOptions ? languageNames : "Detected automatically") {
                     ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
                         Toggle(language.label, isOn: Binding(
                             get: { languages.contains(language.rawValue) },
@@ -273,10 +273,10 @@ struct TranscriptionOptionsView: View {
                 .frame(minWidth: 0, maxWidth: .infinity)
                 .disabled(locked || !settings.usesWhisperOptions)
                 .accessibilityLabel("Spoken languages")
-                .accessibilityValue(settings.usesWhisperOptions ? languageNames : "Whisper only")
+                .accessibilityValue(settings.usesWhisperOptions ? languageNames : "Detected automatically")
                 .help(settings.usesWhisperOptions
                     ? languageNames + ". One transcription pass per language; at least one is required."
-                    : "Whisper only. Parakeet detects each language automatically.")
+                    : "Parakeet detects each language automatically. To choose languages, switch to Whisper in Advanced transcription.")
             }
             GridRow {
                 Toggle("Add speaker labels", isOn: Binding(

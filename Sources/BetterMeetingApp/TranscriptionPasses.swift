@@ -101,7 +101,9 @@ enum TranscriptionPasses {
         return (languages.count > 1 ? merge(segments, noSpeechThreshold: settings.noSpeechThreshold, logProbThreshold: settings.logProbThreshold) : segments.sorted { $0.start < $1.start }).map(\.transcript)
     }
 
-    // Port of GivenFLY/better-meeting's asr.py _merge at e9b524d.
+    // Port of GivenFLY/better-meeting's asr.py _merge at e9b524d, except that a candidate must add at
+    // least half its length past the cursor. Upstream also took a segment another pass had already
+    // covered, which repeated sentences and placed lines out of order.
     // ponytail: upstream's quadratic scan; sweep the intervals if long meetings make merging slow.
     static func merge(_ passes: [ScoredSegment], noSpeechThreshold: Float = 0.6, logProbThreshold: Float = -1) -> [ScoredSegment] {
         let segments = passes.filter { !($0.nospeech > noSpeechThreshold && $0.score < logProbThreshold) }
@@ -109,7 +111,10 @@ enum TranscriptionPasses {
         guard var cursor = segments.first?.start else { return [] }
         var merged: [ScoredSegment] = []
         while true {
-            let candidates = segments.filter { $0.end > cursor + 0.2 && $0.start <= cursor + 2 }
+            let candidates = segments.filter {
+                $0.end > cursor + 0.2 && $0.start <= cursor + 2
+                    && $0.end - max($0.start, cursor) >= ($0.end - $0.start) / 2
+            }
             // Keep the first candidate on ties, matching Python's max().
             if let best = candidates.max(by: { $0.score < $1.score }) {
                 merged.append(best)

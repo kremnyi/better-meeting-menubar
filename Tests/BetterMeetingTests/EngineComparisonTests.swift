@@ -25,10 +25,15 @@ final class EngineComparisonTests: XCTestCase {
             }
         }
         let transcriber = LocalTranscriber(downloadBase: root)
+        // Optional comma-separated filters, for example ENGINES=parakeet-v3 and LANGUAGES=ru.
+        let environment = ProcessInfo.processInfo.environment
+        let engines = environment["BETTER_MEETING_ENGINE_CHECK_ENGINES"]?.split(separator: ",").map(String.init)
+        let languages = environment["BETTER_MEETING_ENGINE_CHECK_LANGUAGES"]?.split(separator: ",").map(String.init)
+            ?? TranscriptionLanguage.defaultCandidates
         let runs: [(name: String, settings: SpeechSettings)] = [
-            ("whisper-turbo", SpeechSettings()),
+            ("whisper-turbo", SpeechSettings(engine: .whisper)),
             ("parakeet-v3", SpeechSettings(engine: .parakeet)),
-        ]
+        ].filter { engines?.contains($0.name) ?? true }
         for run in runs {
             try await transcriber.prepare(settings: run.settings, progressHandler: { _ in })
             let probe = MemoryProbe()
@@ -42,7 +47,7 @@ final class EngineComparisonTests: XCTestCase {
             let segments: [TranscriptSegment]
             do {
                 segments = try await transcriber.transcribe(
-                    audioURL: audio, settings: run.settings, progressHandler: { _ in }
+                    audioURL: audio, languages: languages, settings: run.settings, progressHandler: { _ in }
                 )
             } catch {
                 sampler.cancel()

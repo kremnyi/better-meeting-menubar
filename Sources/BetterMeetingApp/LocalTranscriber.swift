@@ -323,9 +323,7 @@ actor LocalTranscriber {
                 progressHandler: progressHandler
             )
         case .parakeet:
-            return try await transcribeParakeet(
-                audioURL: audioURL, languages: languages, progressHandler: progressHandler
-            )
+            return try await transcribeParakeet(audioURL: audioURL, progressHandler: progressHandler)
         }
     }
 
@@ -387,12 +385,9 @@ actor LocalTranscriber {
 
     private func transcribeParakeet(
         audioURL: URL,
-        languages: [String],
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         let manager = try await prepareParakeet(progressHandler: progressHandler)
-        let pinned = languages.count == 1 ? languages[0] : nil
-        let language = pinned.flatMap { Language(rawValue: $0) }
         progressHandler(.engineTranscribing(nil))
         let progressTask = Task {
             do {
@@ -403,10 +398,12 @@ actor LocalTranscriber {
         }
         defer { progressTask.cancel() }
         var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
-        let result = try await manager.transcribe(audioURL, decoderState: &decoderState, language: language)
+        // Parakeet detects the language itself. The language list is Whisper's setting, and pinning
+        // one language garbled English product names in a Russian call.
+        let result = try await manager.transcribe(audioURL, decoderState: &decoderState, language: nil)
         try Task.checkCancellation()
         // ponytail: Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.
-        return ParakeetLanguage.tagging(Self.segments(from: result), pinned: pinned)
+        return ParakeetLanguage.tagging(Self.segments(from: result))
     }
 
     static func segments(from result: ASRResult) -> [TranscriptSegment] {

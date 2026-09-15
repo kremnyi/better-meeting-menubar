@@ -25,6 +25,19 @@ final class TranscriptionPassTests: XCTestCase {
         ]).first?.lang, "uk")
     }
 
+    func testMergeSkipsSentencesAnotherPassAlreadyCovered() {
+        // Two passes heard the same sentence with slightly different ends; the longer copy
+        // outscores the next sentence but adds only half a second.
+        let merged = TranscriptionPasses.merge([
+            segment(3, 9.5, "en", -0.2), segment(3, 10, "uk", -0.25), segment(10, 16, "ru", -0.3)
+        ])
+        XCTAssertEqual(merged.map(\.lang), ["en", "ru"])
+        // A segment that mostly continues past the cursor is still taken.
+        XCTAssertEqual(TranscriptionPasses.merge([
+            segment(0, 5, "en", -0.2), segment(4, 12, "uk", -0.3)
+        ]).map(\.lang), ["en", "uk"])
+    }
+
     func testInterruptedPassesResumeAndChangedInputsInvalidateCache() async throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }

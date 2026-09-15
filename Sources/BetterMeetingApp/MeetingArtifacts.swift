@@ -222,7 +222,10 @@ enum MeetingArtifacts {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let data = try? Data(contentsOf: folder.appendingPathComponent("metadata.json")) else { return nil }
-        return (try? decoder.decode(MeetingManifest.self, from: data))?.speechSettings
+        guard var settings = (try? decoder.decode(MeetingManifest.self, from: data))?.speechSettings else { return nil }
+        // Meetings saved before Parakeet became the default recorded no engine; Whisper transcribed them.
+        settings.engine = settings.engine ?? .whisper
+        return settings
     }
 
     // A folder without media holds nothing recoverable; drop it after a failed start.

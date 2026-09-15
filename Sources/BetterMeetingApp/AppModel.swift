@@ -202,6 +202,11 @@ final class AppModel: ObservableObject {
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
         if (try? speechSettings.validate()) == nil { speechSettings = SpeechSettings() }
+        // Parakeet is the default; keep Whisper when the saved languages include one Parakeet lacks.
+        if speechSettings.engine == nil, !transcriptionLanguages.allSatisfy(SpeechSettings.parakeetLanguages.contains) {
+            speechSettings.engine = .whisper
+            defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings")
+        }
         modelReady = Self.modelIsCached(speechSettings)
         updates.allowsBetaUpdates = betaUpdates
         recorder.onUnexpectedStop = { [weak self] error in
@@ -493,7 +498,7 @@ final class AppModel: ObservableObject {
             replacing: replacing,
             languages: languages ?? transcriptionLanguages,
             hints: hints ?? transcriptionHints,
-            settings: settings ?? MeetingArtifacts.speechSettings(in: item.folderURL) ?? speechSettings
+            settings: (settings ?? MeetingArtifacts.speechSettings(in: item.folderURL) ?? speechSettings).withResolvedEngine
         )
     }
 
@@ -893,7 +898,7 @@ final class AppModel: ObservableObject {
             replacing: nil,
             languages: transcriptionLanguages,
             hints: transcriptionHints,
-            settings: speechSettings,
+            settings: speechSettings.withResolvedEngine,
             folderTitle: recordingFolderTitle
         )
     }
