@@ -86,11 +86,16 @@ speakers — use disposable audio:
 BETTER_MEETING_ENGINE_CHECK=/path/to/meeting.wav swift test --filter testCompareEnginesOnRealAudio
 ```
 
-Both engines download their models into `.build/engine-check` on first use. The
+Both engines download their models into `.build/engine-check` on first use. To
+reuse models the app already downloaded, copy them there as APFS clones, for example
+`cp -Rc ~/Library/Application\ Support/BetterMeeting/models/parakeet-tdt-0.6b-v3 .build/engine-check/models/`.
+Narrow a run with `BETTER_MEETING_ENGINE_CHECK_ENGINES` (`whisper-turbo`,
+`parakeet-v3`) and `BETTER_MEETING_ENGINE_CHECK_LANGUAGES` (for example `ru`). The
 check prints elapsed time and peak memory per engine and writes
 `.build/engine-check/whisper-turbo.md` and `.build/engine-check/parakeet-v3.md`
-for transcript comparison. Parakeet stays opt-in in the app until that evidence
-supports a default change.
+for transcript comparison. Parakeet became the default after this check: on a
+30-minute Russian call it kept speech Whisper had dropped and finished in 27 seconds,
+and on a Ukrainian sample both engines were accurate.
 
 To update the README screenshot with fictional meetings:
 
@@ -141,6 +146,53 @@ The app-signing certificate and Sparkle key serve different purposes and both ar
 required to publish. Run Sparkle's `generate_keys --account com.kremnyi.bettermeeting`
 to inspect the public key; do not replace the existing key when setting up releases.
 
+### Release script
+
+`scripts/release.sh` runs the whole release, for stable and beta versions alike:
+
+```bash
+scripts/release.sh stable 0.4.0 --notes path/to/notes.md
+```
+
+```bash
+scripts/release.sh beta 0.4.1b1 --notes path/to/notes.md
+```
+
+Before it changes anything, the script checks that:
+
+- the version has the right form: `0.4.0` for stable, `0.4.1b1` for beta;
+- you are on an up-to-date `main` with no uncommitted tracked changes;
+- neither the tag nor the release already exists;
+- `gh` is signed in, and you are on an Apple silicon Mac;
+- the notes file mentions self-signing;
+- for a beta, the current stable ZIP is in `dist/`.
+
+It lists every problem at once. Add `--dry-run` to run only these checks and print the plan.
+
+Then it follows the steps below:
+
+1. Sets the version and the next `CFBundleVersion` in `App/Info.plist`.
+2. Runs `swift test` and `package-release.sh`.
+3. Checks the archive checksum and the feed items. For a stable release, it also updates and checks the cask.
+4. Commits, then asks `Publish v<version> to GitHub and push main? [y/N]`. Pass `--yes` to skip the question.
+5. Pushes the tag. For a stable release, it waits for CI on the tag first.
+6. Publishes the GitHub release, marked as a pre-release for betas, and checks the download.
+7. Pushes `main` and checks that the public feed lists the new version.
+8. For a stable release, runs `brew fetch` for the cask.
+9. Waits for CI to pass on `main`, and for a beta, on the tag.
+
+If a step fails, the script names the step and what state it left:
+
+- **Before the commit:** it prints the command that discards the version bump.
+- **After the commit but before publishing:** it prints the command that undoes the local commit.
+- **After the tag is pushed:** the release is public. Finish the remaining steps below by hand, and never replace a published archive.
+
+Write the release notes to a file first. Keep the Installing section about self-signing and first-launch approval from earlier releases.
+
+### Manual steps
+
+The script performs these steps; use them to finish a release it could not complete.
+
 1. Update `CFBundleShortVersionString` and increment `CFBundleVersion` in `App/Info.plist`.
 2. Run `swift test`, then `./scripts/package-release.sh`. This creates a
    self-signed ZIP and `.sha256` file in `dist/`, then signs the archive for
@@ -180,6 +232,9 @@ keeps the current stable item, so stable users only ever see stable releases.
 Stable 0.3.42 and later carry the toggle, so opted-in users receive beta cuts
 through Sparkle like any other update. Installations older than that can only
 reach a beta by installing its ZIP manually.
+
+Publish betas with `scripts/release.sh beta <version> --notes <file>` (see
+[Release script](#release-script)). It performs these steps:
 
 1. Set `CFBundleShortVersionString` to the upcoming version with a `b<number>`
    suffix (for example `0.3.42b1`) and increment `CFBundleVersion` past the
