@@ -55,11 +55,13 @@ struct CaptureOptionsView: View {
         .controlSize(.small)
         .padding(16)
         .frame(width: 360, alignment: .leading)
+        .onAppear { model.refreshInputs() }
         .onChange(of: model.speechSettings.model) { model.speechModelChanged() }
         .onChange(of: model.speechSettings.engine) { model.speechModelChanged() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchAtLoginStatus = SMAppService.mainApp.status
             launchAtLoginError = nil
+            model.refreshInputs()
         }
     }
 

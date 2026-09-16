@@ -193,7 +193,7 @@ struct MeetingHistorySection: View {
             .accessibilityLabel("More actions for \(item.title)")
             .help("Open, copy, rename, re-transcribe, export, or move to Trash")
         }
-        .frame(minHeight: 47)
+        .frame(minHeight: 42)
         .contentShape(Rectangle())
         .background(
             hoveredMeetingID == item.id ? Color.primary.opacity(0.06) : Color.clear,

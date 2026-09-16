@@ -559,7 +559,7 @@ final class RecoveryTests: XCTestCase {
             let row = NSHostingView(rootView: MeetingHistorySection(retranscribingMeeting: .constant(nil)).historyRow(item, isNew: saved, canEdit: true, status: status)
                 .environment(\.locale, Locale(identifier: "en_US"))
                 .frame(width: 264))
-            XCTAssertEqual(row.fittingSize.height, 47, "The status indicators must not wrap meeting details")
+            XCTAssertEqual(row.fittingSize.height, 42, "The status indicators must not wrap meeting details")
         }
     }
 

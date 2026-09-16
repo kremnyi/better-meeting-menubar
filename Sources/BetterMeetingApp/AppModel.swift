@@ -34,7 +34,7 @@ private extension LocalTranscriptionProgress {
 @MainActor
 final class AppModel: ObservableObject {
     @Published var meetingTitle = ""
-    @Published private(set) var state: AppState = .idle
+    @Published private(set) var state: AppState = .idle { didSet { refreshCaptureAccess() } }
     @Published private(set) var elapsed: TimeInterval = 0
     let meters = AudioMeters()
     @Published private(set) var audioWarning = false
@@ -210,6 +210,7 @@ final class AppModel: ObservableObject {
         modelReady = Self.modelIsCached(speechSettings)
         // Listed without sizes so the model rows are there in the first frame; refreshStoredModels fills the sizes in.
         storedModels = LocalTranscriber.storedModels(sizes: false)
+        grantedAccess = captureAccess()
         updates.allowsBetaUpdates = betaUpdates
         recorder.onUnexpectedStop = { [weak self] error in
             self?.captureStoppedExternally(with: error)
@@ -224,6 +225,16 @@ final class AppModel: ObservableObject {
     /// Screen Recording and microphone access. Previews replace it to show the granted state.
     var captureAccess: () -> (screen: Bool, microphone: AVAuthorizationStatus) = {
         (CGPreflightScreenCaptureAccess(), AVCaptureDevice.authorizationStatus(for: .audio))
+    } {
+        didSet { refreshCaptureAccess() }
+    }
+
+    /// The last read of `captureAccess`, so a menu redraw never asks the system again. Granting access
+    /// happens in System Settings or during a recording, and both reopen the menu or change `state`.
+    @Published private(set) var grantedAccess: (screen: Bool, microphone: AVAuthorizationStatus) = (false, .notDetermined)
+
+    func refreshCaptureAccess() {
+        grantedAccess = captureAccess()
     }
 
     var primaryButtonTitle: String {
@@ -261,7 +272,7 @@ final class AppModel: ObservableObject {
             return ("Stop here or from the macOS recording menu", true)
         }
 
-        let (screenReady, microphone) = captureAccess()
+        let (screenReady, microphone) = grantedAccess
         if screenReady && microphone == .authorized {
             return ("Screen, system audio, and mic ready", true)
         }
@@ -279,7 +290,7 @@ final class AppModel: ObservableObject {
 
     var captureAccessSettingsURL: URL? {
         guard state == .idle, !isProcessing else { return nil }
-        let access = captureAccess()
+        let access = grantedAccess
         if !access.screen {
             return PrivacyPermission.screenRecording.settingsURL
         }
@@ -300,7 +311,7 @@ final class AppModel: ObservableObject {
     var captureAccessNeedsAttention: Bool {
         if privacyPermission != nil { return true }
         guard state != .recording else { return false }
-        let access = captureAccess()
+        let access = grantedAccess
         return !access.screen || [.denied, .restricted].contains(access.microphone)
     }
 
@@ -678,7 +689,7 @@ final class AppModel: ObservableObject {
     /// Six rows once any meeting exists, so searching never resizes the menu. Before the
     /// first meeting the empty message keeps its natural height.
     var historyListHeight: CGFloat? {
-        hasMeetings ? 6 * 48 : nil
+        hasMeetings ? 6 * 43 : nil
     }
 
     private var meetingsByRecency: [MeetingHistoryItem] {
