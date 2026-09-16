@@ -15,6 +15,7 @@ struct BetterMeetingApp: App {
         _model = StateObject(wrappedValue: model)
         appDelegate.model = model
         model.calendar.startMonitoring()
+        model.meetingDetector.setEnabled(model.detectsMeetings)
         model.prepareSpeechModel()
     }
 
@@ -61,7 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         MeetingNotifications.center?.delegate = self
-        MeetingNotifications.center?.setNotificationCategories([CalendarReminder.category, MeetingNotifications.transcriptReady])
+        MeetingNotifications.center?.setNotificationCategories([
+            CalendarReminder.category, MeetingNotifications.transcriptReady, MicrophoneMeeting.category
+        ])
     }
 
     nonisolated func userNotificationCenter(
@@ -73,7 +76,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if notification.request.content.categoryIdentifier == MeetingNotifications.audioWarningCategory {
             return await shouldPresentAudioWarning(notification.request) ? [.banner, .list] : []
         }
+        if notification.request.content.categoryIdentifier == MicrophoneMeeting.categoryID {
+            return await shouldPresentMicrophoneMeeting() ? [.banner, .list, .sound] : []
+        }
         return [.banner, .list]
+    }
+
+    /// The call may have ended, or a recording may have started, between posting and presenting.
+    func shouldPresentMicrophoneMeeting() -> Bool {
+        model?.detectsMeetings == true && model?.state == .idle && model?.isProcessing == false
+    }
+
+    func startMicrophoneRecording(action: String, start: (() -> Void)? = nil) {
+        guard action == UNNotificationDefaultActionIdentifier || action == MicrophoneMeeting.startActionID else { return }
+        MeetingNotifications.remove(MicrophoneMeeting.requestID)
+        if action == MicrophoneMeeting.startActionID, let model, model.state == .idle {
+            if let start { start() } else { model.startRecording() }
+        }
+        showMenu()
     }
 
     func shouldPresentAudioWarning(_ request: UNNotificationRequest) -> Bool {
@@ -86,6 +106,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     ) async {
         if response.notification.request.content.categoryIdentifier == CalendarReminder.categoryID {
             await handleCalendarReminder(response.notification.request, action: response.actionIdentifier)
+            return
+        }
+        if response.notification.request.content.categoryIdentifier == MicrophoneMeeting.categoryID {
+            startMicrophoneRecording(action: response.actionIdentifier)
             return
         }
         openNotification(response.notification.request, action: response.actionIdentifier)

@@ -123,6 +123,17 @@ final class AppModel: ObservableObject {
     @Published var menuBarRecordingTime: Bool {
         didSet { defaults.set(menuBarRecordingTime, forKey: "menuBarRecordingTime") }
     }
+    @Published var detectsMeetings: Bool {
+        didSet {
+            defaults.set(detectsMeetings, forKey: "detectMeetings")
+            meetingDetector.setEnabled(detectsMeetings)
+        }
+    }
+    /// Built on first use, so a model without meeting detection never touches Core Audio.
+    lazy var meetingDetector = MeetingDetector(isBusy: { [weak self] in
+        guard let self else { return true }
+        return state != .idle || isProcessing
+    })
     @Published var betaUpdates: Bool {
         didSet {
             defaults.set(betaUpdates, forKey: "betaUpdates")
@@ -199,6 +210,7 @@ final class AppModel: ObservableObject {
         automaticUpdateChecks = defaults.bool(forKey: "checkUpdatesOnLaunch")
         betaUpdates = defaults.bool(forKey: "betaUpdates")
         menuBarRecordingTime = defaults.object(forKey: "menuBarRecordingTime") as? Bool ?? true
+        detectsMeetings = defaults.bool(forKey: "detectMeetings")
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
         if (try? speechSettings.validate()) == nil { speechSettings = SpeechSettings() }
@@ -806,7 +818,7 @@ final class AppModel: ObservableObject {
         startRecording(calendarEvent: event)
     }
 
-    private func startRecording(calendarEvent: CalendarEvent? = nil) {
+    func startRecording(calendarEvent: CalendarEvent? = nil) {
         guard state == .idle || state == .failed else { return }
         stopTimer()
         elapsed = 0
