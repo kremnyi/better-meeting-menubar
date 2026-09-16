@@ -208,6 +208,8 @@ final class AppModel: ObservableObject {
             defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings")
         }
         modelReady = Self.modelIsCached(speechSettings)
+        // Listed without sizes so the model rows are there in the first frame; refreshStoredModels fills the sizes in.
+        storedModels = LocalTranscriber.storedModels(sizes: false)
         updates.allowsBetaUpdates = betaUpdates
         recorder.onUnexpectedStop = { [weak self] error in
             self?.captureStoppedExternally(with: error)

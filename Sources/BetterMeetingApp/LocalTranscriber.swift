@@ -107,33 +107,34 @@ actor LocalTranscriber {
         downloadBase.appendingPathComponent("models/argmaxinc/speakerkit-coreml", isDirectory: true)
     }
 
-    static func storedModels(in downloadBase: URL = defaultDownloadBase) -> [StoredModelInfo] {
+    /// The models the app can store. `sizes: false` skips walking each folder, which keeps the call fast enough for the menu.
+    static func storedModels(in downloadBase: URL = defaultDownloadBase, sizes: Bool = true) -> [StoredModelInfo] {
         var models = SpeechModel.allCases.map { model in
             let url = downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
             return info(
                 title: "Whisper \(model.label)", kind: .whisper(model), url: url,
-                installed: hasModelFiles(in: url), downloadBytes: model.downloadBytes
+                installed: hasModelFiles(in: url), downloadBytes: model.downloadBytes, sizes: sizes
             )
         }
         let parakeet = parakeetDirectory(in: downloadBase)
         models.append(info(
             title: "Parakeet v3", kind: .parakeet, url: parakeet,
-            installed: cachedParakeetModels(in: downloadBase), downloadBytes: 470_000_000
+            installed: cachedParakeetModels(in: downloadBase), downloadBytes: 470_000_000, sizes: sizes
         ))
         let speakers = speakerKitDirectory(in: downloadBase)
         models.append(info(
             title: "Speaker labels", kind: .speakerLabels, url: speakers,
-            installed: folderHasContent(speakers), downloadBytes: 11_000_000
+            installed: folderHasContent(speakers), downloadBytes: 11_000_000, sizes: sizes
         ))
         return models
     }
 
     private static func info(
-        title: String, kind: StoredModelInfo.Kind, url: URL, installed: Bool, downloadBytes: Int64
+        title: String, kind: StoredModelInfo.Kind, url: URL, installed: Bool, downloadBytes: Int64, sizes: Bool
     ) -> StoredModelInfo {
         StoredModelInfo(
             title: title, kind: kind, url: url,
-            installed: installed, sizeBytes: installed ? sizeOnDisk(of: url) : 0, downloadBytes: downloadBytes
+            installed: installed, sizeBytes: installed && sizes ? sizeOnDisk(of: url) : 0, downloadBytes: downloadBytes
         )
     }
 

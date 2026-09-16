@@ -78,8 +78,8 @@ struct MeetingHistorySection: View {
                                 Text(Self.dayTitle(group.day))
                                     .font(.caption.weight(.medium))
                                     .foregroundStyle(.secondary)
-                                    .padding(.top, group.id == model.historyDays.first?.id ? 0 : 10)
-                                    .padding(.bottom, 2)
+                                    .padding(.top, group.id == model.historyDays.first?.id ? 0 : 5)
+                                    .padding(.bottom, 1)
                                     .accessibilityAddTraits(.isHeader)
                                 ForEach(group.items) { item in
                                     historyRow(

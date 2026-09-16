@@ -32,9 +32,7 @@ struct ModelStorageView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
-                Text(item.installed
-                    ? format(item.sizeBytes)
-                    : "Not downloaded · about \(format(item.downloadBytes))")
+                Text(size(item))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -66,6 +64,12 @@ struct ModelStorageView: View {
                 .disabled(busy)
                 .help("Downloads now so transcription does not wait later")
         }
+    }
+
+    /// A downloaded model reads "Downloaded" until the first refresh measures it.
+    private func size(_ item: StoredModelInfo) -> String {
+        guard item.installed else { return "Not downloaded · about \(format(item.downloadBytes))" }
+        return item.sizeBytes > 0 ? format(item.sizeBytes) : "Downloaded"
     }
 
     private func format(_ bytes: Int64) -> String {
