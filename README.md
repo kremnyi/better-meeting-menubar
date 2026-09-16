@@ -137,8 +137,8 @@ between recordings and calendar events are stored in the meeting folder; see
 
 ## Calls that are not on the calendar
 
-Enable **Offer to record calls on the microphone** in **Options → App & updates**
-for meetings nobody scheduled. When another app has been using the microphone for
+Enable **Detect meetings** in **Options → App & updates** for meetings nobody
+scheduled. When another app has been using the microphone for
 half a minute, the app sends a notification with **Start recording**; nothing is
 recorded until you click it. macOS reports only that some app is recording, never
 what it records, so this needs no extra permission and reads nothing from the other

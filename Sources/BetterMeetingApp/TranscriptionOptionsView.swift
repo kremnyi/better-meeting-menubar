@@ -93,7 +93,7 @@ struct CaptureOptionsView: View {
             }
             Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
                 .help("Shows the elapsed time beside the menu bar icon while recording")
-            Toggle("Offer to record calls on the microphone", isOn: $model.detectsMeetings)
+            Toggle("Detect meetings", isOn: $model.detectsMeetings)
                 .help("Notifies you when another app has used the microphone for half a minute, so you can record an unscheduled call. Nothing is recorded on its own.")
             Divider()
             Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
