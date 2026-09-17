@@ -1,0 +1,1139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Better Meeting</title>
+<meta name="description" content="An open-source macOS menu bar app that records meetings and transcribes them on your Mac. Lightweight, fully local, Swift-native.">
+<meta name="color-scheme" content="light dark">
+<meta property="og:title" content="Better Meeting">
+<meta property="og:description" content="Record meetings from the macOS menu bar and transcribe them locally. Open source, lightweight, Swift-native.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://kremnyi.github.io/better-meeting-menubar/">
+<meta property="og:image" content="https://kremnyi.github.io/better-meeting-menubar/assets/app-icon.png">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://kremnyi.github.io/better-meeting-menubar/">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/app-icon.png">
+<style>
+:root {
+  --bg: #f5f1e8;
+  --bg-alt: #ede7da;
+  --surface: #fbf9f4;
+  --surface-2: #f2ede3;
+  --ink: #131b2a;
+  --ink-2: #434d5e;
+  --ink-3: #5d6676;
+  --line: rgba(19, 27, 42, .12);
+  --line-strong: rgba(19, 27, 42, .22);
+  --coral: #e5473d;
+  --coral-ink: #b3322a;
+  --coral-soft: rgba(229, 71, 61, .1);
+  --amber: #a86a12;
+  --on-ink: #f5f1e8;
+  --shadow: 0 1px 2px rgba(19, 27, 42, .05), 0 14px 34px -16px rgba(19, 27, 42, .22);
+  --shadow-lg: 0 2px 6px rgba(19, 27, 42, .06), 0 50px 90px -30px rgba(19, 27, 42, .45);
+  --pop-bg: rgba(238, 237, 235, .88);
+  --pop-ink: #1d1d1f;
+  --pop-ink-2: #6e6e73;
+  --pop-field: #ffffff;
+  --pop-line: rgba(0, 0, 0, .09);
+  --serif: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 18px;
+  --gutter: clamp(16px, 4vw, 40px);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d131e;
+    --bg-alt: #111926;
+    --surface: #151e2d;
+    --surface-2: #1a2436;
+    --ink: #f0ebe1;
+    --ink-2: #b6bdc9;
+    --ink-3: #8f98a7;
+    --line: rgba(240, 235, 225, .1);
+    --line-strong: rgba(240, 235, 225, .2);
+    --coral: #ff5d52;
+    --coral-ink: #ff8b82;
+    --coral-soft: rgba(255, 93, 82, .12);
+    --amber: #f0b44c;
+    --on-ink: #0d131e;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 34px -16px rgba(0, 0, 0, .6);
+    --shadow-lg: 0 2px 6px rgba(0, 0, 0, .3), 0 50px 90px -30px rgba(0, 0, 0, .8);
+    --pop-bg: rgba(38, 38, 42, .86);
+    --pop-ink: #f5f5f7;
+    --pop-ink-2: #98989f;
+    --pop-field: rgba(255, 255, 255, .07);
+    --pop-line: rgba(255, 255, 255, .1);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0d131e;
+  --bg-alt: #111926;
+  --surface: #151e2d;
+  --surface-2: #1a2436;
+  --ink: #f0ebe1;
+  --ink-2: #b6bdc9;
+  --ink-3: #8f98a7;
+  --line: rgba(240, 235, 225, .1);
+  --line-strong: rgba(240, 235, 225, .2);
+  --coral: #ff5d52;
+  --coral-ink: #ff8b82;
+  --coral-soft: rgba(255, 93, 82, .12);
+  --amber: #f0b44c;
+  --on-ink: #0d131e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 34px -16px rgba(0, 0, 0, .6);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .3), 0 50px 90px -30px rgba(0, 0, 0, .8);
+  --pop-bg: rgba(38, 38, 42, .86);
+  --pop-ink: #f5f5f7;
+  --pop-ink-2: #98989f;
+  --pop-field: rgba(255, 255, 255, .07);
+  --pop-line: rgba(255, 255, 255, .1);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 72px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 17px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+img, svg { display: block; max-width: 100%; }
+a { color: inherit; }
+p { margin: 0; }
+h1, h2, h3 { margin: 0; font-weight: 500; text-wrap: balance; }
+p, li { text-wrap: pretty; }
+ul { margin: 0; padding: 0; list-style: none; }
+code, pre { font-family: var(--mono); }
+:focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; border-radius: 6px; }
+
+.skip { position: absolute; left: -999px; top: 8px; z-index: 100; background: var(--ink); color: var(--on-ink); padding: 8px 14px; border-radius: 8px; }
+.skip:focus { left: 8px; }
+
+.wrap { width: 100%; max-width: 1160px; margin: 0 auto; padding: 0 var(--gutter); }
+
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font: 500 12.5px/1 var(--mono);
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.nowrap { white-space: nowrap; }
+.rec-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--coral);
+  box-shadow: 0 0 0 4px var(--coral-soft);
+  flex: none;
+}
+
+.section { padding: clamp(72px, 11vw, 132px) 0; }
+.section-alt { background: var(--bg-alt); }
+.section-head { max-width: 680px; margin-bottom: clamp(36px, 5vw, 56px); }
+.section-head h2 {
+  margin-top: 16px;
+  font-family: var(--serif);
+  font-size: clamp(34px, 4.6vw, 52px);
+  line-height: 1.06;
+  letter-spacing: -.02em;
+}
+.section-head p { margin-top: 18px; color: var(--ink-2); font-size: 19px; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  height: 50px; padding: 0 22px;
+  border-radius: 999px;
+  font: 600 16px/1 var(--sans);
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: transform .15s ease, background-color .15s ease, border-color .15s ease;
+  white-space: nowrap;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--ink); color: var(--on-ink); }
+.btn-primary:hover { background: color-mix(in srgb, var(--ink) 88%, var(--coral)); }
+.btn-ghost { border-color: var(--line-strong); color: var(--ink); background: transparent; }
+.btn-ghost:hover { background: var(--surface); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+
+/* Nav */
+.nav {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  backdrop-filter: saturate(1.6) blur(18px);
+  border-bottom: 1px solid transparent;
+  transition: border-color .2s ease;
+}
+.nav.scrolled { border-bottom-color: var(--line); }
+.nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600; font-size: 16.5px; letter-spacing: -.01em; }
+.brand img { width: 30px; height: 30px; }
+.nav-links { display: flex; align-items: center; gap: 28px; font-size: 15px; }
+.nav-links a { text-decoration: none; color: var(--ink-2); }
+.nav-links a:hover { color: var(--ink); }
+.nav-links .btn { height: 38px; padding: 0 16px; font-size: 14.5px; color: var(--on-ink); }
+@media (max-width: 760px) { .nav-links .text-link { display: none; } }
+
+/* Hero */
+.hero { padding: clamp(36px, 7vw, 88px) 0 clamp(56px, 8vw, 104px); }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(40px, 6vw, 80px); align-items: center; }
+.hero h1 {
+  margin-top: 22px;
+  font-family: var(--serif);
+  font-size: clamp(46px, 7vw, 84px);
+  line-height: .98;
+  letter-spacing: -.035em;
+}
+.hero h1 em { font-style: italic; color: var(--coral-ink); }
+.lede { margin-top: 26px; max-width: 540px; font-size: clamp(18px, 1.8vw, 20.5px); line-height: 1.5; color: var(--ink-2); }
+.lede strong { color: var(--ink); font-weight: 600; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+.specs { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 26px; font-size: 14px; color: var(--ink-3); }
+.specs span { display: inline-flex; align-items: center; gap: 7px; }
+.specs svg { width: 15px; height: 15px; }
+@media (max-width: 920px) {
+  .hero-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Desktop scene */
+.scene {
+  position: relative;
+  height: 600px;
+  border-radius: 24px;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(55% 45% at 8% 100%, rgba(229, 71, 61, .55), transparent 70%),
+    radial-gradient(45% 40% at 100% 8%, rgba(110, 140, 200, .42), transparent 70%),
+    radial-gradient(70% 55% at 45% 55%, rgba(40, 56, 86, .9), transparent 80%),
+    linear-gradient(155deg, #1c2941 0%, #0b111c 100%);
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255, 255, 255, .06);
+}
+.menubar {
+  position: relative; z-index: 3;
+  height: 30px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 16px;
+  padding: 0 16px;
+  background: rgba(12, 17, 28, .38);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  color: rgba(255, 255, 255, .92);
+  font: 500 13px/1 var(--sans);
+}
+.menubar svg { height: 15px; width: auto; fill: currentColor; }
+.mb-app {
+  display: grid; place-items: center;
+  height: 22px; padding: 0 8px; border-radius: 5px;
+  background: rgba(255, 255, 255, .2);
+}
+.mb-app svg { width: 15px; height: 15px; }
+.mb-clock { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.call {
+  position: absolute; z-index: 1;
+  left: 22px; bottom: 24px;
+  width: 78%; height: 270px;
+  border-radius: 12px;
+  background: rgba(24, 30, 42, .92);
+  box-shadow: 0 0 0 .5px rgba(255, 255, 255, .12), 0 24px 60px rgba(0, 0, 0, .45);
+  overflow: hidden;
+}
+.call-bar { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; }
+.call-bar i { width: 11px; height: 11px; border-radius: 50%; background: #4a4f5a; }
+.call-bar i:nth-child(1) { background: #ff5f57; }
+.call-bar i:nth-child(2) { background: #febc2e; }
+.call-bar i:nth-child(3) { background: #28c840; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0 8px 8px; height: calc(100% - 30px); }
+.tile { position: relative; border-radius: 8px; display: grid; place-items: center; overflow: hidden; }
+.tile:nth-child(1) { background: linear-gradient(140deg, #34435f, #243049); }
+.tile:nth-child(2) { background: linear-gradient(140deg, #4a3a45, #2c2433); }
+.tile:nth-child(3) { background: linear-gradient(140deg, #2f4a4a, #1f3134); }
+.tile:nth-child(4) { background: linear-gradient(140deg, #4a4535, #2d2a22); }
+.avatar {
+  width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  font: 600 16px/1 var(--sans); color: rgba(255, 255, 255, .9);
+  background: rgba(255, 255, 255, .14);
+}
+.tile.speaking { box-shadow: inset 0 0 0 2px rgba(120, 220, 150, .75); }
+.tile b { position: absolute; left: 8px; bottom: 6px; font: 500 10.5px/1 var(--sans); color: rgba(255, 255, 255, .75); }
+
+.pop {
+  position: absolute; z-index: 2;
+  top: 36px; right: 26px;
+  width: 304px;
+  border-radius: 14px;
+  padding: 11px 12px 0;
+  background: var(--pop-bg);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8); backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .3), inset 0 0 0 .5px rgba(255, 255, 255, .18), 0 22px 60px rgba(0, 0, 0, .45);
+  color: var(--pop-ink);
+  font: 13px/1.25 var(--sans);
+  text-align: left;
+}
+.pop svg { stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.pop-status { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--pop-ink-2); font-size: 11.5px; }
+.pop-status svg { width: 12px; height: 12px; }
+.pop-field {
+  display: flex; align-items: center; gap: 6px;
+  height: 22px; margin-top: 11px; padding: 0 9px;
+  border-radius: 6px;
+  background: var(--pop-field);
+  box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .16), 0 .5px 1px rgba(0, 0, 0, .06);
+  color: color-mix(in srgb, var(--pop-ink-2) 75%, transparent);
+  font-size: 12.5px;
+}
+.pop-field svg { width: 12px; height: 12px; color: var(--pop-ink); stroke-width: 2; }
+.pop-record {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  height: 28px; margin-top: 11px;
+  border-radius: 7px;
+  background: linear-gradient(#e24a42, #c7271f);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .28), 0 .5px 1.5px rgba(0, 0, 0, .25);
+  color: #fff; font-weight: 600; font-size: 13.5px;
+}
+.pop-record svg { width: 14px; height: 14px; stroke-width: 1.8; }
+.pop-record svg circle:last-child { fill: #fff; stroke: none; }
+.pop-rule { height: 1px; margin: 12px 0 0; background: var(--pop-line); }
+.pop-head { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-weight: 600; font-size: 13.5px; }
+.pop-head svg { width: 17px; height: 17px; color: var(--pop-ink-2); stroke-width: 1.4; }
+.pop-day { margin: 16px 0 4px; color: var(--pop-ink-2); font-size: 11px; font-weight: 500; }
+.pop-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0 8px; }
+.pop-row + .pop-row { border-top: 1px solid var(--pop-line); }
+.pop-row strong { display: block; font-weight: 500; font-size: 13px; }
+.pop-row small { display: block; margin-top: 3px; color: var(--pop-ink-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pop-row svg { width: 17px; height: 17px; stroke-width: 1.3; }
+.pop-foot { display: flex; align-items: center; justify-content: space-between; height: 34px; margin: 14px -12px 0; padding: 0 12px; border-top: 1px solid var(--pop-line); }
+.pop-foot span { display: inline-flex; align-items: center; gap: 7px; }
+.pop-foot svg { width: 14px; height: 14px; stroke-width: 1.5; }
+.scene-caption { margin-top: 14px; text-align: center; font-size: 13px; color: var(--ink-3); }
+
+@media (max-width: 520px) {
+  .scene { height: 580px; border-radius: 20px; }
+  .call { display: none; }
+  .pop { right: 50%; transform: translateX(50%); width: min(304px, calc(100% - 24px)); top: 46px; }
+  .mb-hide { display: none; }
+}
+
+/* Pillars */
+.pillars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.pillar {
+  position: relative;
+  padding: 28px 24px 30px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.pillar-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: grid; place-items: center;
+  background: var(--ink); color: var(--on-ink);
+}
+.pillar-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.pillar h3 { margin-top: 26px; font-family: var(--serif); font-size: 27px; letter-spacing: -.015em; line-height: 1.1; }
+.pillar p { margin-top: 12px; color: var(--ink-2); font-size: 15.5px; }
+.pillar .fact { display: block; margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--line-strong); font: 500 12.5px/1.4 var(--mono); color: var(--ink-3); }
+@media (max-width: 1000px) { .pillars { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .pillars { grid-template-columns: minmax(0, 1fr); } }
+
+/* Steps */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; counter-reset: step; }
+.step { display: flex; flex-direction: column; }
+.step-visual {
+  height: 220px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 22px;
+  display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  overflow: hidden;
+}
+.step-num { margin-top: 26px; font: 500 12.5px/1 var(--mono); color: var(--coral-ink); letter-spacing: .08em; }
+.step h3 { margin-top: 10px; font-family: var(--serif); font-size: 28px; letter-spacing: -.015em; }
+.step p { margin-top: 10px; color: var(--ink-2); font-size: 16px; }
+@media (max-width: 900px) { .steps { grid-template-columns: minmax(0, 1fr); } .step-visual { height: auto; min-height: 190px; } }
+
+.meter-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-2); margin-bottom: 7px; }
+.meter-label span:last-child { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.meter { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.meter i {
+  display: block; height: 100%; width: 70%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #3fae6a 0 70%, #d9a52b 86%, var(--coral));
+  background-size: 180px 100%;
+  -webkit-mask: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px);
+  mask: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 8px);
+  transform-origin: left;
+}
+.rec-pill {
+  align-self: flex-start;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 10px; border-radius: 999px;
+  background: var(--coral-soft); color: var(--coral-ink);
+  font: 600 13px/1 var(--sans); font-variant-numeric: tabular-nums;
+}
+.rec-pill .rec-dot { box-shadow: none; width: 8px; height: 8px; }
+
+.tx { font: 12px/1.8 var(--mono); color: var(--ink); }
+.tx div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx .t { color: var(--ink-3); }
+.tx .l { color: var(--coral-ink); }
+.tx .s { color: var(--ink); font-weight: 600; }
+.progress { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+.progress .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.progress .bar i { display: block; height: 100%; width: 100%; border-radius: 3px; background: var(--ink); transform-origin: left; transform: scaleX(.64); }
+
+.search {
+  display: flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 12px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  font-size: 14.5px;
+}
+.search svg { width: 15px; height: 15px; fill: none; stroke: var(--ink-3); stroke-width: 2; stroke-linecap: round; }
+.caret { width: 1.5px; height: 17px; background: var(--coral); margin-left: -6px; }
+.result { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.result strong { display: block; font-weight: 600; font-size: 14.5px; }
+.result small { display: block; margin-top: 3px; color: var(--ink-3); font-size: 12.5px; }
+.result p { margin-top: 8px; font-size: 13px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+mark { background: color-mix(in srgb, var(--coral) 22%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+
+/* Files */
+.files-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(36px, 6vw, 72px); align-items: center; }
+.checks { margin-top: 30px; display: grid; gap: 16px; }
+.checks li { display: grid; grid-template-columns: 22px 1fr; gap: 12px; color: var(--ink-2); font-size: 16px; }
+.checks li strong { color: var(--ink); font-weight: 600; }
+.checks svg { width: 20px; height: 20px; margin-top: 2px; fill: none; stroke: var(--coral-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.checks code { font-size: .88em; padding: 1px 5px; border-radius: 5px; background: var(--surface-2); color: var(--ink); }
+@media (max-width: 920px) { .files-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.window {
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.window-bar {
+  display: flex; align-items: center; gap: 7px;
+  height: 40px; padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.window-bar i { width: 12px; height: 12px; border-radius: 50%; background: var(--line-strong); }
+.window-bar span { margin-left: 12px; font-size: 13px; font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.window-body { display: grid; grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr); }
+.tree { padding: 14px 10px; border-right: 1px solid var(--line); font-size: 13.5px; }
+.tree li { display: flex; align-items: center; gap: 9px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; min-width: 0; }
+.tree li span { overflow: hidden; text-overflow: ellipsis; }
+.tree li.sub { padding-left: 30px; }
+.tree li.active { background: color-mix(in srgb, var(--coral) 14%, transparent); }
+.tree li em { margin-left: auto; font-style: normal; font-size: 11.5px; color: var(--ink-3); padding-left: 8px; }
+.ficon { flex: none; width: 16px; height: 16px; }
+.doc {
+  padding: 20px 18px 24px;
+  font: 12px/1.7 var(--mono);
+  color: var(--ink-2);
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0;
+  background: var(--surface);
+}
+.doc .h { color: var(--ink); font-weight: 700; }
+.doc .t { color: var(--ink-3); }
+.doc .l { color: var(--coral-ink); }
+.doc .s { color: var(--ink); font-weight: 600; }
+@media (max-width: 640px) {
+  .window-body { grid-template-columns: minmax(0, 1fr); }
+  .tree { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* Engines */
+.engines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.engine {
+  display: flex; flex-direction: column;
+  padding: clamp(26px, 3.4vw, 38px);
+  border-radius: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.engine.featured { background: var(--ink); color: var(--on-ink); border-color: transparent; }
+.engine-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.badge { font: 600 11.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 7px 10px; border-radius: 999px; border: 1px solid currentColor; opacity: .8; white-space: nowrap; }
+.engine.featured .badge { background: var(--coral); border-color: var(--coral); color: #fff; opacity: 1; }
+.engine h3 { font-family: var(--serif); font-size: clamp(32px, 3.6vw, 42px); letter-spacing: -.02em; line-height: 1; }
+.engine > p { margin-top: 14px; font-size: 16.5px; opacity: .78; }
+.engine ul { margin-top: 24px; display: grid; gap: 0; }
+.engine li { display: grid; grid-template-columns: 116px 1fr; gap: 14px; padding: 12px 0; border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent); font-size: 15px; }
+.engine li b { font: 500 12px/1.9 var(--mono); letter-spacing: .04em; text-transform: uppercase; opacity: .6; font-weight: 500; }
+.engine .via { margin-top: auto; padding-top: 22px; font-size: 13px; opacity: .62; }
+.speaker {
+  margin-top: 20px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 26px;
+  padding: 22px 26px;
+  border-radius: 22px;
+  border: 1px dashed var(--line-strong);
+}
+.speaker h3 { font-family: var(--serif); font-size: 24px; letter-spacing: -.01em; }
+.speaker p { flex: 1 1 360px; color: var(--ink-2); font-size: 15.5px; }
+.chips { display: flex; gap: 6px; }
+.chip { font: 600 12px/1 var(--sans); padding: 7px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); white-space: nowrap; }
+.chip:nth-child(1) { background: color-mix(in srgb, #3b82c4 18%, transparent); }
+.chip:nth-child(2) { background: color-mix(in srgb, var(--coral) 18%, transparent); }
+@media (max-width: 860px) { .engines { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 420px) { .engine li { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* Features */
+.features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.feature { padding: 30px 28px 34px 0; border-bottom: 1px solid var(--line); }
+.feature:not(:nth-child(3n + 1)) { padding-left: 28px; border-left: 1px solid var(--line); }
+.feature svg { width: 26px; height: 26px; fill: none; stroke: var(--coral-ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.feature h3 { margin-top: 18px; font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
+.feature p { margin-top: 8px; color: var(--ink-2); font-size: 15.5px; }
+@media (max-width: 900px) {
+  .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .feature:not(:nth-child(3n + 1)) { padding-left: 0; border-left: 0; }
+  .feature:nth-child(even) { padding-left: 24px; border-left: 1px solid var(--line); }
+}
+@media (max-width: 580px) {
+  .features { grid-template-columns: minmax(0, 1fr); }
+  .feature:nth-child(even) { padding-left: 0; border-left: 0; }
+  .feature { padding-right: 0; }
+}
+
+/* Privacy ledger */
+.ledger { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); border-radius: 24px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); }
+.ledger-col { padding: clamp(26px, 4vw, 44px); }
+.ledger-col + .ledger-col { border-left: 1px solid var(--line); background: var(--surface-2); }
+.ledger h3 { display: flex; align-items: center; gap: 12px; font-family: var(--serif); font-size: 28px; letter-spacing: -.015em; }
+.ledger h3 svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.ledger ul { margin-top: 22px; }
+.ledger li { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); font-size: 16px; }
+.ledger li span:last-child { font: 500 12.5px/1.4 var(--mono); color: var(--ink-3); text-align: right; }
+.ledger .note { margin-top: 24px; font-size: 15px; color: var(--ink-2); }
+.ledger .note strong { color: var(--ink); }
+@media (max-width: 820px) {
+  .ledger { grid-template-columns: minmax(0, 1fr); }
+  .ledger-col + .ledger-col { border-left: 0; border-top: 1px solid var(--line); }
+}
+
+/* Install */
+.install { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: 20px; align-items: stretch; }
+.panel { padding: clamp(24px, 3.4vw, 36px); border-radius: 22px; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; }
+.panel h3 { font-family: var(--serif); font-size: 28px; letter-spacing: -.015em; }
+.panel > p { margin-top: 8px; color: var(--ink-2); font-size: 15.5px; }
+.term { margin-top: 22px; border-radius: 14px; background: #0f1623; color: #e8e3d9; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
+.term-bar { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 8px 0 14px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.term-bar .dots { display: flex; gap: 7px; }
+.term-bar .dots i { width: 11px; height: 11px; border-radius: 50%; background: rgba(255, 255, 255, .18); }
+.copy {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 11px;
+  border-radius: 7px; border: 0;
+  background: rgba(255, 255, 255, .1); color: #e8e3d9;
+  font: 500 12.5px/1 var(--sans);
+  cursor: pointer;
+}
+.copy:hover { background: rgba(255, 255, 255, .16); }
+.copy svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; }
+.term pre { margin: 0; padding: 18px 20px 20px; overflow-x: auto; font-size: 13px; line-height: 1.8; }
+.term .p { color: #ff8b82; user-select: none; -webkit-user-select: none; }
+.term .c { color: #8a93a2; }
+.panel .btn { margin-top: 22px; align-self: flex-start; }
+.req { margin-top: 22px; display: grid; gap: 10px; }
+.req li { display: flex; gap: 10px; align-items: center; font-size: 15px; color: var(--ink-2); }
+.req svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--ink-3); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.gate { margin-top: auto; padding-top: 22px; }
+.gate p { padding: 14px 16px; border-radius: 12px; background: var(--surface-2); font-size: 14px; color: var(--ink-2); }
+.gate strong { color: var(--ink); font-weight: 600; }
+.gate code { font-size: .9em; color: var(--ink); }
+@media (max-width: 900px) { .install { grid-template-columns: minmax(0, 1fr); } }
+
+.limits { margin-top: 20px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-radius: 22px; border: 1px solid var(--line); }
+.limits div { padding: 22px 24px; font-size: 14.5px; color: var(--ink-2); }
+.limits div + div { border-left: 1px solid var(--line); }
+.limits strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 15px; font-weight: 600; }
+@media (max-width: 900px) {
+  .limits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .limits div:nth-child(3) { border-left: 0; }
+  .limits div:nth-child(n + 3) { border-top: 1px solid var(--line); }
+}
+@media (max-width: 520px) {
+  .limits { grid-template-columns: minmax(0, 1fr); }
+  .limits div + div { border-left: 0; border-top: 1px solid var(--line); }
+}
+
+/* Closing + footer */
+.closing { text-align: center; }
+.closing img { width: 112px; height: 112px; margin: 0 auto; filter: drop-shadow(0 18px 30px rgba(13, 19, 30, .3)); }
+.closing h2 { margin: 26px auto 0; max-width: 760px; font-family: var(--serif); font-size: clamp(36px, 5.4vw, 64px); line-height: 1.02; letter-spacing: -.03em; }
+.closing p { margin: 18px auto 0; max-width: 520px; color: var(--ink-2); font-size: 18px; }
+.closing .cta { justify-content: center; }
+
+footer { border-top: 1px solid var(--line); padding: 40px 0 48px; font-size: 14px; color: var(--ink-3); }
+.foot { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; }
+.foot p + p { margin-top: 10px; }
+.foot a { color: var(--ink-2); text-underline-offset: 3px; }
+.foot a:hover { color: var(--ink); }
+.foot-links { display: flex; flex-wrap: wrap; gap: 10px 22px; justify-content: flex-end; align-content: flex-start; }
+@media (max-width: 720px) { .foot { grid-template-columns: minmax(0, 1fr); } .foot-links { justify-content: flex-start; } }
+
+/* Motion */
+@media (prefers-reduced-motion: no-preference) {
+  .rec-dot.pulse { animation: pulse 2s ease-in-out infinite; }
+  .meter i { animation: level 1.3s ease-in-out infinite alternate; }
+  .meter.system i { animation-duration: 1.7s; animation-delay: -.6s; }
+  .progress .bar i { animation: fill 6s cubic-bezier(.4, 0, .2, 1) infinite; }
+  .caret { animation: blink 1.1s steps(1) infinite; }
+  .tile.speaking { animation: speak 4s ease-in-out infinite; }
+  .motion .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s cubic-bezier(.2, .7, .2, 1); }
+  .motion .reveal.in { opacity: 1; transform: none; }
+}
+@keyframes pulse { 50% { box-shadow: 0 0 0 7px transparent; opacity: .75; } }
+@keyframes level { 0% { transform: scaleX(.35); } 40% { transform: scaleX(.9); } 70% { transform: scaleX(.55); } 100% { transform: scaleX(1.25); } }
+@keyframes fill { 0% { transform: scaleX(.08); } 85%, 100% { transform: scaleX(1); } }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes speak { 0%, 45% { box-shadow: inset 0 0 0 2px rgba(120, 220, 150, .75); } 55%, 100% { box-shadow: inset 0 0 0 2px transparent; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="glyph" viewBox="0 0 512 512">
+      <rect x="43" y="163" width="70" height="185" rx="35"/>
+      <rect x="156" y="43" width="70" height="425" rx="35"/>
+      <rect x="270" y="121" width="70" height="270" rx="35"/>
+      <circle cx="440" cy="432" r="48"/>
+    </symbol>
+    <symbol id="github" viewBox="0 0 16 16">
+      <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+    </symbol>
+    <symbol id="file" viewBox="0 0 16 16">
+      <path d="M4 1.5h5.2L12.5 4.8V14a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z" fill="var(--surface)" stroke="var(--ink-3)"/>
+      <path d="M9 1.7V5h3.3" fill="none" stroke="var(--ink-3)"/>
+    </symbol>
+    <symbol id="folder" viewBox="0 0 16 16">
+      <path d="M1.5 4a1 1 0 0 1 1-1h3.6l1.4 1.5h6a1 1 0 0 1 1 1V12.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1Z" fill="#6aa4dc" stroke="#4d88c2" stroke-width=".8"/>
+    </symbol>
+  </defs>
+</svg>
+
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Better Meeting home">
+      <img src="assets/app-icon.png" alt="" width="30" height="30">
+      Better Meeting
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a class="text-link" href="#how">How it works</a>
+      <a class="text-link" href="#files">Files</a>
+      <a class="text-link" href="#privacy">Privacy</a>
+      <a class="text-link" href="https://github.com/kremnyi/better-meeting-menubar">GitHub</a>
+      <a class="btn btn-primary" href="#install">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <!-- Hero -->
+  <section class="hero" id="top">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow"><span class="rec-dot pulse" aria-hidden="true"></span><span>Open source · Fully local · <span class="nowrap">Swift-native</span></span></span>
+        <h1>Record the meeting. Transcribe it <em>on your Mac.</em></h1>
+        <p class="lede">
+          Better Meeting is a lightweight menu bar app that records your screen, system audio, and
+          microphone, then transcribes everything on-device.
+          <strong>No account. No upload. No cloud processing.</strong>
+        </p>
+        <div class="cta">
+          <a class="btn btn-primary" href="https://github.com/kremnyi/better-meeting-menubar/releases/latest">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            Download for macOS
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/kremnyi/better-meeting-menubar">
+            <svg aria-hidden="true"><use href="#github"/></svg>
+            View source
+          </a>
+        </div>
+        <div class="specs">
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2.5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>Apple silicon</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>macOS 15 or later</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6l-8-3Z"/></svg>Apache-2.0</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="scene" role="img" aria-label="A macOS desktop with a video call in progress and the Better Meeting menu open below its menu bar icon, showing a Start recording button and a list of recorded meetings.">
+          <div class="menubar" aria-hidden="true">
+            <span class="mb-app"><svg><use href="#glyph"/></svg></span>
+            <svg class="mb-hide" viewBox="0 0 20 15"><path d="M10 13.6 7.6 11.2a3.4 3.4 0 0 1 4.8 0L10 13.6Zm-4.2-4.2L4.1 7.7a8.3 8.3 0 0 1 11.8 0l-1.7 1.7a5.9 5.9 0 0 0-8.4 0ZM2.3 5.9.6 4.2a13.3 13.3 0 0 1 18.8 0l-1.7 1.7a10.9 10.9 0 0 0-15.4 0Z"/></svg>
+            <svg viewBox="0 0 28 13"><rect x=".75" y=".75" width="23.5" height="11.5" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".55"/><rect x="2.5" y="2.5" width="16" height="8" rx="1.8"/><path d="M25.8 4.5v4c.8-.3 1.3-1.1 1.3-2s-.5-1.7-1.3-2Z" opacity=".55"/></svg>
+            <span class="mb-clock" id="clock">Thu 17 Sep&nbsp;&nbsp;10:42</span>
+          </div>
+
+          <div class="call" aria-hidden="true">
+            <div class="call-bar"><i></i><i></i><i></i></div>
+            <div class="tiles">
+              <div class="tile speaking"><span class="avatar">AK</span><b>Anna</b></div>
+              <div class="tile"><span class="avatar">MR</span><b>Marko</b></div>
+              <div class="tile"><span class="avatar">OL</span><b>Olena</b></div>
+              <div class="tile"><span class="avatar">You</span><b>You</b></div>
+            </div>
+          </div>
+
+          <div class="pop" aria-hidden="true">
+            <div class="pop-status">
+              <svg viewBox="0 0 16 16"><path d="M8 1.8 3 3.7v3.9c0 3 2.1 5.5 5 6.4 2.9-.9 5-3.4 5-6.4V3.7L8 1.8Z"/></svg>
+              Screen, system audio, and mic ready
+            </div>
+            <div class="pop-field">Meeting name (optional)</div>
+            <div class="pop-record">
+              <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><circle cx="8" cy="8" r="2.8"/></svg>
+              Start recording
+            </div>
+            <div class="pop-rule"></div>
+            <div class="pop-head">
+              Recorded meetings
+              <svg viewBox="0 0 20 20"><path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h3.6l1.6 1.8h6.8a1.5 1.5 0 0 1 1.5 1.5v7.2a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5Z"/><path d="M2.5 8h15"/></svg>
+            </div>
+            <div class="pop-field" style="margin-top:12px">
+              <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6"/><path d="m10.4 10.4 3.6 3.6"/></svg>
+              Search meetings
+            </div>
+            <div class="pop-day">Friday, Sep 4</div>
+            <div class="pop-row"><div><strong>Product sync</strong><small>16:00 · 12 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+            <div class="pop-row"><div><strong>Release planning</strong><small>15:00 · 15 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+            <div class="pop-row"><div><strong>Design review</strong><small>14:00 · 18 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+            <div class="pop-day">Thursday, Sep 3</div>
+            <div class="pop-row"><div><strong>Customer interview</strong><small>16:00 · 21 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+            <div class="pop-foot">
+              <span><svg viewBox="0 0 16 16"><path d="M2 4.5h12M2 8h12M2 11.5h12"/><circle cx="5" cy="4.5" r="1.4" fill="var(--pop-bg)"/><circle cx="10.5" cy="8" r="1.4" fill="var(--pop-bg)"/><circle cx="6.5" cy="11.5" r="1.4" fill="var(--pop-bg)"/></svg>Options</span>
+              <span>Quit</span>
+            </div>
+          </div>
+        </div>
+        <p class="scene-caption">The Better Meeting menu, shown with sample meetings.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pillars -->
+  <section class="section section-alt" id="why">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Why Better Meeting</span>
+        <h2>Small, private, and made for the Mac.</h2>
+      </div>
+      <div class="pillars">
+        <article class="pillar reveal">
+          <div class="pillar-icon"><svg viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/></svg></div>
+          <h3>Open source</h3>
+          <p>Read every line, build it yourself with Xcode, or fork it. Based on the original Better Meeting project.</p>
+          <span class="fact">Apache License 2.0</span>
+        </article>
+        <article class="pillar reveal">
+          <div class="pillar-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="4" rx="1.2"/><rect x="11" y="10" width="9" height="10.5" rx="2"/><path d="M15.5 7.5V10"/></svg></div>
+          <h3>Lightweight</h3>
+          <p>Lives in the menu bar, with no Dock icon and no main window. The speech model downloads once, when it's first needed.</p>
+          <span class="fact">~14 MB app download</span>
+        </article>
+        <article class="pillar reveal">
+          <div class="pillar-icon"><svg viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.4"/></svg></div>
+          <h3>Fully local</h3>
+          <p>Recording, transcription, screen text, and meeting titles are all processed on your Mac, and it works offline once set up.</p>
+          <span class="fact">No account · No upload</span>
+        </article>
+        <article class="pillar reveal">
+          <div class="pillar-icon"><svg viewBox="0 0 24 24"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6l1-8Z"/></svg></div>
+          <h3>Swift-native</h3>
+          <p>Built with SwiftUI, ScreenCaptureKit, Core ML, Vision, and NaturalLanguage. No Electron, no bundled browser.</p>
+          <span class="fact">Apple silicon · macOS 15+</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">How it works</span>
+        <h2>From the menu bar to a searchable transcript.</h2>
+        <p>No setup ceremony. Pick a display and microphone once, and every meeting after that is one click.</p>
+      </div>
+      <div class="steps">
+        <article class="step reveal">
+          <div class="step-visual" aria-hidden="true">
+            <span class="rec-pill"><span class="rec-dot"></span>Recording · 12:04</span>
+            <div>
+              <div class="meter-label"><span>Microphone</span><span>MacBook Pro Mic</span></div>
+              <div class="meter"><i></i></div>
+            </div>
+            <div>
+              <div class="meter-label"><span>System audio</span><span>Display 1</span></div>
+              <div class="meter system"><i></i></div>
+            </div>
+          </div>
+          <span class="step-num">01</span>
+          <h3>Record</h3>
+          <p>Click <strong>Start recording</strong>. Better Meeting captures one display, system audio, and your microphone, with a live level meter for each source and a warning if both stay silent.</p>
+        </article>
+        <article class="step reveal">
+          <div class="step-visual" aria-hidden="true">
+            <div class="progress"><span>Transcribing</span><div class="bar"><i></i></div></div>
+            <div class="tx">
+              <div><span class="t">[00:00:04]</span> <span class="l">[en]</span> Shall we start?</div>
+              <div><span class="t">[00:00:11]</span> <span class="l">[en]</span> The beta is out.</div>
+              <div><span class="t">[00:00:19]</span> <span class="l">[uk]</span> Добре, переходимо далі.</div>
+              <div><span class="t">[00:00:26]</span> <span class="l">[en]</span> Updates look good.</div>
+            </div>
+          </div>
+          <span class="step-num">02</span>
+          <h3>Transcribe</h3>
+          <p>When you stop, the audio is transcribed on-device with Parakeet or Whisper, with optional speaker labels. You can start the next recording while it works.</p>
+        </article>
+        <article class="step reveal">
+          <div class="step-visual" aria-hidden="true">
+            <div class="search">
+              <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6"/><path d="m10.4 10.4 3.6 3.6"/></svg>
+              <span>pricing</span><span class="caret"></span>
+            </div>
+            <div class="result">
+              <strong>Anna — Pricing Review</strong>
+              <small>Wednesday · 11:00 · 32 min</small>
+              <p>…so the new <mark>pricing</mark> applies from October…</p>
+            </div>
+          </div>
+          <span class="step-num">03</span>
+          <h3>Revisit</h3>
+          <p>Meetings are listed by day. Search matches titles and everything that was said. Click a meeting to open its transcript.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Files -->
+  <section class="section section-alt" id="files">
+    <div class="wrap files-grid">
+      <div class="reveal">
+        <div class="section-head" style="margin-bottom:0">
+          <span class="eyebrow">Plain files, no lock-in</span>
+          <h2>Every meeting is a folder you own.</h2>
+          <p>Video, audio, a Markdown transcript, and JSON with timings, languages, and speakers, saved to <code style="font-size:.85em">~/Documents/Better Meetings</code>.</p>
+        </div>
+        <ul class="checks">
+          <li><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><strong>Open formats.</strong> Edit the transcript in any editor, and search still finds your changes.</span></li>
+          <li><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><strong>Export bundles.</strong> Adds up to 30 screenshots, on-screen text read with Apple's Vision framework, and a combined timeline.</span></li>
+          <li><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><span><strong>Bring your own assistant.</strong> Each bundle includes a <code>PROMPT.md</code>. There's no LLM inside Better Meeting, and nothing is sent anywhere.</span></li>
+        </ul>
+      </div>
+
+      <div class="window reveal" role="img" aria-label="A meeting folder containing recording.mp4, audio.m4a, transcript.md, transcript.json, cached passes, metadata.json, and an artifacts folder, next to the contents of transcript.md.">
+        <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>2026-09-04 14.30.00 — Product sync</span></div>
+        <div class="window-body" aria-hidden="true">
+          <ul class="tree">
+            <li><svg class="ficon"><use href="#file"/></svg><span>recording.mp4</span><em>Video</em></li>
+            <li><svg class="ficon"><use href="#file"/></svg><span>audio.m4a</span><em>Audio</em></li>
+            <li class="active"><svg class="ficon"><use href="#file"/></svg><span>transcript.md</span><em>Markdown</em></li>
+            <li><svg class="ficon"><use href="#file"/></svg><span>transcript.json</span><em>JSON</em></li>
+            <li><svg class="ficon"><use href="#file"/></svg><span>pass_en.json</span><em>Cache</em></li>
+            <li><svg class="ficon"><use href="#file"/></svg><span>pass_uk.json</span><em>Cache</em></li>
+            <li><svg class="ficon"><use href="#file"/></svg><span>metadata.json</span><em>JSON</em></li>
+            <li><svg class="ficon"><use href="#folder"/></svg><span>artifacts</span><em>Export</em></li>
+            <li class="sub"><svg class="ficon"><use href="#file"/></svg><span>timeline.md</span></li>
+            <li class="sub"><svg class="ficon"><use href="#folder"/></svg><span>screens</span></li>
+            <li class="sub"><svg class="ficon"><use href="#file"/></svg><span>PROMPT.md</span></li>
+          </ul>
+<pre class="doc"><span class="h"># Product sync</span>
+
+- Recorded: September 4, 2026 at 14:30
+- Duration: 00:12:08
+- Recording: [recording.mp4](recording.mp4)
+
+<span class="h">## Transcript</span>
+
+<span class="t">[00:00:04]</span> <span class="l">[en]</span> <span class="s">Speaker 1:</span> Let's start
+with the release checklist.
+<span class="t">[00:00:11]</span> <span class="l">[en]</span> <span class="s">Speaker 2:</span> The beta
+went out yesterday.
+<span class="t">[00:00:19]</span> <span class="l">[uk]</span> <span class="s">Speaker 1:</span> Добре,
+тоді переходимо до оновлень.
+<span class="t">[00:00:26]</span> <span class="l">[en]</span> <span class="s">Speaker 3:</span> Updates
+are ready for review.</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Engines -->
+  <section class="section" id="engines">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Transcription</span>
+        <h2>Two on-device engines. Pick the one that fits.</h2>
+        <p>Both run with Core ML on Apple silicon. Models download once from Hugging Face and then work offline.</p>
+      </div>
+      <div class="engines">
+        <article class="engine featured reveal">
+          <div class="engine-top"><h3>Parakeet v3</h3><span class="badge">Default</span></div>
+          <p>One fast pass with automatic language detection and punctuation.</p>
+          <ul>
+            <li><b>Languages</b><span>25 European languages, including Ukrainian, Russian, and English</span></li>
+            <li><b>Passes</b><span>One pass over the whole recording</span></li>
+            <li><b>Model</b><span>About 470 MB, downloaded once</span></li>
+          </ul>
+          <p class="via">Runs through FluidAudio · Model weights CC-BY-4.0, © NVIDIA</p>
+        </article>
+        <article class="engine reveal">
+          <div class="engine-top"><h3>Whisper</h3><span class="badge">Most languages</span></div>
+          <p>For every other language, and for meetings that switch between them.</p>
+          <ul>
+            <li><b>Languages</b><span>Every language WhisperKit lists</span></li>
+            <li><b>Passes</b><span>One per selected language, merged by confidence, with a silence filter</span></li>
+            <li><b>Models</b><span>Small, Large v3 Turbo (about 1.6 GB), or Large v3, plus vocabulary hints and tunable decoding</span></li>
+          </ul>
+          <p class="via">Runs through WhisperKit by Argmax</p>
+        </article>
+      </div>
+      <div class="speaker reveal">
+        <h3>Speaker labels</h3>
+        <div class="chips" aria-hidden="true"><span class="chip">Speaker 1</span><span class="chip">Speaker 2</span></div>
+        <p>Optional. SpeakerKit tells voices apart on your Mac and labels each transcript segment. It adds about 11 MB of models and some processing time.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section section-alt" id="features">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">In the details</span>
+        <h2>Built so a recording is never lost.</h2>
+      </div>
+      <div class="features reveal">
+        <div class="feature">
+          <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.6" fill="currentColor" stroke="none"/></svg>
+          <h3>Calendar-aware</h3>
+          <p>Shows today's meetings from Calendar, with a button that records and names the next one. Reads events and never edits them. Off by default.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+          <h3>Detect meetings</h3>
+          <p>Once another app has used the microphone for half a minute, you get a notification offering to record. Nothing is recorded until you click.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 24 24"><path d="M12 4 2.8 19.5h18.4L12 4Z"/><path d="M12 10v4.2"/><circle cx="12" cy="17" r=".8" fill="currentColor"/></svg>
+          <h3>Silence warning</h3>
+          <p>If no audio arrives from either source within 30 seconds, an amber warning appears while there's still time to fix the input.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.7M20 4v4.7h-4.7M20 12a8 8 0 0 1-13.7 5.6L4 15.3M4 20v-4.7h4.7"/></svg>
+          <h3>Resumable</h3>
+          <p>Finished transcription passes are cached. If processing fails or you quit, pick up from the saved recording, even after a restart.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 24 24"><path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5V7M12 4v16M8.5 20h7"/></svg>
+          <h3>Automatic titles</h3>
+          <p>Unnamed meetings get a title like “Anna — Pricing Review”, found on-device with Apple's NaturalLanguage framework.</p>
+        </div>
+        <div class="feature">
+          <svg viewBox="0 0 24 24"><path d="M12 3.5v11m0 0L8 10.5m4 4 4-4"/><path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></svg>
+          <h3>Verified updates</h3>
+          <p>Sparkle checks GitHub and verifies each update before installing it. Automatic downloads and the beta channel are both opt-in.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy -->
+  <section class="section" id="privacy">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Privacy</span>
+        <h2>What stays on your Mac, and what doesn't.</h2>
+        <p>Your meetings never leave the Mac unless you move them. The network is used for exactly two things.</p>
+      </div>
+      <div class="ledger reveal">
+        <div class="ledger-col">
+          <h3><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>On your Mac</h3>
+          <ul>
+            <li><span>Screen, system audio, and microphone recordings</span><span>Local</span></li>
+            <li><span>Transcripts and speaker labels</span><span>Local</span></li>
+            <li><span>Screenshots and on-screen text</span><span>Local</span></li>
+            <li><span>Meeting titles and search</span><span>Local</span></li>
+            <li><span>Calendar event details</span><span>Local</span></li>
+          </ul>
+        </div>
+        <div class="ledger-col">
+          <h3><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.3 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.3-3.5-8.5s1.1-6.1 3.5-8.5Z"/></svg>Over the network</h3>
+          <ul>
+            <li><span>Update checks</span><span>GitHub</span></li>
+            <li><span>Speech models, once per model</span><span>Hugging Face</span></li>
+          </ul>
+          <p class="note"><strong>That's the full list.</strong> Better Meeting has no analytics or telemetry and doesn't use an account.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section class="section section-alt" id="install">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow">Install</span>
+        <h2>Ready in a minute.</h2>
+        <p>Install with Homebrew or download the app from GitHub Releases. Xcode isn't required.</p>
+      </div>
+      <div class="install">
+        <div class="panel reveal">
+          <h3>Homebrew</h3>
+          <p>The cask downloads the release from GitHub and verifies its SHA-256 checksum.</p>
+          <div class="term">
+            <div class="term-bar">
+              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <button class="copy" type="button" data-copy="brew-cmd">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"/></svg>
+                <span>Copy</span>
+              </button>
+            </div>
+<pre><span class="p">$ </span><span id="brew-cmd">brew tap --custom-remote kremnyi/better-meeting https://github.com/kremnyi/better-meeting-menubar
+brew install --cask kremnyi/better-meeting/better-meeting
+open -a "Better Meeting"</span></pre>
+          </div>
+          <div class="gate">
+            <p><strong>Staying current.</strong> The app can update itself from <strong>Options → App &amp; updates</strong>. With Homebrew, quit the app and run <code><span class="nowrap">brew upgrade --cask</span> <span class="nowrap">kremnyi/</span><wbr><span class="nowrap">better-meeting/</span><wbr><span class="nowrap">better-meeting</span></code>.</p>
+          </div>
+        </div>
+        <div class="panel reveal">
+          <h3>Download</h3>
+          <p>Unzip it and move Better Meeting to Applications.</p>
+          <a class="btn btn-primary" href="https://github.com/kremnyi/better-meeting-menubar/releases/latest">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            Latest release
+          </a>
+          <ul class="req">
+            <li><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2.5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>Apple silicon Mac</li>
+            <li><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>macOS 15 Sequoia or later</li>
+            <li><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg>~470 MB–2 GB for speech models</li>
+          </ul>
+          <div class="gate">
+            <p>Releases are self-signed and not notarized by Apple. If macOS blocks the first launch, open <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>. Managed Macs may not allow this.</p>
+          </div>
+        </div>
+      </div>
+      <div class="limits reveal">
+        <div><strong>One display at a time</strong>Captures a whole display. Window-only and audio-only modes aren't available.</div>
+        <div><strong>No built-in AI</strong>No summaries or chat. Export a bundle and use the assistant you trust.</div>
+        <div><strong>After the call</strong>Transcripts are made after recording stops. There are no live captions.</div>
+        <div><strong>One job at a time</strong>Transcriptions queue up, and recording stays available while they run.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Closing -->
+  <section class="section closing">
+    <div class="wrap reveal">
+      <img src="assets/app-icon.png" alt="" width="112" height="112">
+      <h2>Your meetings, on your Mac.</h2>
+      <p>Free and open source. Read the code, file an issue, or send a pull request.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/kremnyi/better-meeting-menubar/releases/latest">Download for macOS</a>
+        <a class="btn btn-ghost" href="https://github.com/kremnyi/better-meeting-menubar">
+          <svg aria-hidden="true"><use href="#github"/></svg>
+          Star on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>
+      <p>Made by <a href="https://kremnyi.com">Bohdan Kremnyi</a>. Better Meeting is licensed under the <a href="https://github.com/kremnyi/better-meeting-menubar/blob/main/LICENSE">Apache License 2.0</a>. The macOS app is based on <a href="https://github.com/GivenFLY/better-meeting">GivenFLY/better-meeting</a> by Oleksii Moshura.</p>
+      <p>Uses <a href="https://github.com/argmaxinc/argmax-oss-swift">WhisperKit and SpeakerKit</a> by Argmax, <a href="https://github.com/FluidInference/FluidAudio">FluidAudio</a>, and <a href="https://github.com/sparkle-project/Sparkle">Sparkle</a>. <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3">Parakeet TDT 0.6B v3</a> weights © NVIDIA Corporation, CC-BY-4.0.</p>
+    </div>
+    <nav class="foot-links" aria-label="Footer">
+      <a href="https://github.com/kremnyi/better-meeting-menubar">Source</a>
+      <a href="https://github.com/kremnyi/better-meeting-menubar/releases">Releases</a>
+      <a href="https://github.com/kremnyi/better-meeting-menubar/issues">Issues</a>
+      <a href="https://github.com/kremnyi/better-meeting-menubar/blob/main/NOTICE">Notice</a>
+      <a href="https://github.com/kremnyi/better-meeting-menubar/blob/main/ThirdPartyNotices.md">Third-party notices</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const root = document.documentElement;
+
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  const clock = document.getElementById('clock');
+  const tick = () => {
+    const now = new Date();
+    const part = (options) => now.toLocaleString('en-US', options);
+    const day = `${part({ weekday: 'short' })} ${now.getDate()} ${part({ month: 'short' })}`;
+    const time = part({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    clock.textContent = `${day}  ${time}`;
+  };
+  tick();
+  setInterval(tick, 15000);
+
+  for (const button of document.querySelectorAll('[data-copy]')) {
+    const label = button.querySelector('span');
+    button.addEventListener('click', async () => {
+      const text = document.getElementById(button.dataset.copy).textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        label.textContent = 'Copied';
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById(button.dataset.copy));
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        label.textContent = 'Press ⌘C';
+      }
+      setTimeout(() => { label.textContent = 'Copy'; }, 1800);
+    });
+  }
+
+  const motion = window.matchMedia('(prefers-reduced-motion: no-preference)').matches;
+  if (motion && 'IntersectionObserver' in window) {
+    root.classList.add('motion');
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          observer.unobserve(entry.target);
+        }
+      }
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    document.querySelectorAll('.reveal').forEach((el, i) => {
+      el.style.transitionDelay = `${Math.min(i % 4, 3) * 70}ms`;
+      observer.observe(el);
+    });
+  }
+})();
+</script>
+</body>
+</html>
