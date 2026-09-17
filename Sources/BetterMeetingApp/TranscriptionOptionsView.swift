@@ -14,6 +14,7 @@ struct CaptureOptionsView: View {
     @State var advancedPresented = false
     @State var meetingsPresented = false
     @State var appSettingsPresented = false
+    @State var aboutPresented = false
     @State var launchAtLoginStatus = Self.knownLaunchAtLoginStatus
     @State var launchAtLoginError: String?
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -30,6 +31,9 @@ struct CaptureOptionsView: View {
                     modelSelectionDisabled: model.modelPreparationTask != nil
                 )
                 .disabled(model.transcriptionSettingsLocked)
+            } else if appSettingsPresented && aboutPresented {
+                OptionsPageHeader(title: "About", backTo: "App & updates") { aboutPresented = false }
+                AboutView(version: version)
             } else if appSettingsPresented {
                 OptionsPageHeader(title: "App & updates") { appSettingsPresented = false }
                 appSettings
@@ -106,7 +110,12 @@ struct CaptureOptionsView: View {
             Toggle("Include beta releases", isOn: $model.betaUpdates)
                 .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
             UpdateOptionsView(updates: model.updates, version: version)
-            AppCreditsView()
+            Divider()
+            OptionsNavigationRow(title: "About Better Meeting", systemImage: "info.circle",
+                                 help: "Version, author, links, and license") {
+                aboutPresented = true
+            }
+            .padding(.horizontal, -6)
         }
         .toggleStyle(.checkbox)
         .frame(maxWidth: .infinity, alignment: .leading)

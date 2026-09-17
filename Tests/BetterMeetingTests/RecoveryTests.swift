@@ -395,6 +395,11 @@ final class RecoveryTests: XCTestCase {
         defaults.set(root.appendingPathComponent("Better Meetings"), forKey: "outputFolder")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
+        // About shows the app icon, which the test runner doesn't have.
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        if let icon = NSImage(contentsOf: repository.appendingPathComponent("Assets/AppIconMaster.png")) {
+            NSApp.applicationIconImage = icon
+        }
         let model = AppModel(defaults: defaults)
         await model.refreshStoredModels()
         let meeting = MeetingHistoryItem(
@@ -408,6 +413,8 @@ final class RecoveryTests: XCTestCase {
             ("options-checking", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .checking),
             ("options-ready", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .ready("0.3.24")),
             ("options-app", AnyView(CaptureOptionsView(appSettingsPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("options-about", AnyView(CaptureOptionsView(appSettingsPresented: true, aboutPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("options-about-dark", AnyView(CaptureOptionsView(appSettingsPresented: true, aboutPresented: true, version: "0.3.23")), 360, .unchecked),
             ("options-login-enabled", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .enabled, version: "0.3.23")), 360, .unchecked),
             ("options-login-approval", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .requiresApproval, version: "0.3.23")), 360, .unchecked),
             ("options-login-error", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23")), 360, .unchecked),
@@ -473,6 +480,9 @@ final class RecoveryTests: XCTestCase {
             }
             if name == "advanced" {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 600, "Models stays visible; Decoding must stay collapsed")
+            }
+            if name.hasPrefix("options-about") {
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 420, "About must fit the menu without scrolling")
             }
             if name == "options-app" {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 300, "App settings must stay compact")
