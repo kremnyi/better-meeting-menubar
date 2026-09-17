@@ -12,7 +12,7 @@ struct CaptureOptionsView: View {
 
     @EnvironmentObject private var model: AppModel
     @State var advancedPresented = false
-    @State var calendarsPresented = false
+    @State var meetingsPresented = false
     @State var appSettingsPresented = false
     @State var launchAtLoginStatus = Self.knownLaunchAtLoginStatus
     @State var launchAtLoginError: String?
@@ -20,9 +20,9 @@ struct CaptureOptionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if calendarsPresented {
-                OptionsPageHeader(title: "Calendars") { calendarsPresented = false }
-                CalendarOptionsView(calendar: model.calendar)
+            if meetingsPresented {
+                OptionsPageHeader(title: "Meetings") { meetingsPresented = false }
+                MeetingOptionsView(calendar: model.calendar, detectsMeetings: $model.detectsMeetings)
             } else if advancedPresented {
                 OptionsPageHeader(title: "Advanced transcription") { advancedPresented = false }
                 AdvancedTranscriptionView(
@@ -42,9 +42,9 @@ struct CaptureOptionsView: View {
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
-                    OptionsNavigationRow(title: "Calendars", systemImage: "calendar",
-                                         help: "Choose which calendars appear in Upcoming meetings") {
-                        calendarsPresented = true
+                    OptionsNavigationRow(title: "Meetings", systemImage: "calendar.badge.clock",
+                                         help: "Calendars, and when to suggest a recording") {
+                        meetingsPresented = true
                     }
                     OptionsNavigationRow(title: "Advanced transcription", systemImage: "waveform",
                                          help: "Engine, model, vocabulary, decoding, and downloaded models") {
@@ -100,8 +100,6 @@ struct CaptureOptionsView: View {
             }
             Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
                 .help("Shows the elapsed time beside the menu bar icon while recording")
-            Toggle("Detect meetings", isOn: $model.detectsMeetings)
-                .help("Notifies you when another app has used the microphone for half a minute, so you can record an unscheduled call. Nothing is recorded on its own.")
             Divider()
             Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
                 .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")

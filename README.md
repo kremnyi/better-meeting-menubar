@@ -122,12 +122,12 @@ Better Meeting to open at login.
 ## Calendar integration
 
 The menu can show your meetings from the macOS Calendar app. Enable
-**Options → Calendars** and choose which calendars to read. The menu lists
+**Use calendar** in **Options → Meetings** and choose which calendars to read. The menu lists
 today's remaining meetings, with a **Record this meeting** button on the first
 one that starts a recording named after the event. It becomes a labeled
 **Record** button once the meeting is under way or starts within five minutes.
-Once today is done the menu names the first meeting of tomorrow. With **Notify at start** enabled, the app also
-sends a notification when the event starts.
+Once today is done the menu names the first meeting of tomorrow. With **When a calendar meeting starts** enabled
+under **Suggest recording**, the app also sends a notification when the event starts.
 
 The integration is off by default, reads events only, and never edits them.
 macOS requires full calendar access for reading; the app offers to request it
@@ -137,8 +137,8 @@ between recordings and calendar events are stored in the meeting folder; see
 
 ## Calls that are not on the calendar
 
-Enable **Detect meetings** in **Options → App & updates** for meetings nobody
-scheduled. When another app has been using the microphone for
+Enable **Detect meetings** under **Suggest recording** in **Options → Meetings**
+for meetings nobody scheduled. It works with the calendar turned off. When another app has been using the microphone for
 half a minute, the app sends a notification with **Start recording**; nothing is
 recorded until you click it. macOS reports only that some app is recording, never
 what it records, so this needs no extra permission and reads nothing from the other

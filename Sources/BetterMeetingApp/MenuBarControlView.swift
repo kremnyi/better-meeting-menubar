@@ -5,7 +5,7 @@ struct MenuBarControlView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updates: AppUpdater
     @State var captureOptionsPresented = false
-    @State private var calendarOptionsPresented = false
+    @State private var meetingOptionsPresented = false
     @State private var appSettingsPresented = false
     @State private var retranscribingMeeting: MeetingHistoryItem?
     @State private var copiedTranscript = false
@@ -30,13 +30,13 @@ struct MenuBarControlView: View {
                 .accessibilityLabel("Options")
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
                     CaptureOptionsView(
-                        calendarsPresented: calendarOptionsPresented,
+                        meetingsPresented: meetingOptionsPresented,
                         appSettingsPresented: appSettingsPresented
                     )
                 }
                 .onChange(of: captureOptionsPresented) { _, presented in
                     if !presented {
-                        calendarOptionsPresented = false
+                        meetingOptionsPresented = false
                         appSettingsPresented = false
                     }
                 }
@@ -154,7 +154,7 @@ struct MenuBarControlView: View {
             Divider()
 
             UpcomingMeetingView(calendar: model.calendar) {
-                calendarOptionsPresented = true
+                meetingOptionsPresented = true
                 captureOptionsPresented = true
             } record: { event in
                 model.startCalendarRecording(event)

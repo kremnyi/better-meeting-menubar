@@ -2,90 +2,33 @@ import AppKit
 import EventKit
 import SwiftUI
 
-struct CalendarOptionsView: View {
+/// Options → Meetings: where meetings come from, and when the app offers to record one.
+struct MeetingOptionsView: View {
     @ObservedObject var calendar: CalendarIntegration
+    @Binding var detectsMeetings: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("In the menu").font(.callout.weight(.medium))
-            Toggle("Show upcoming meetings", isOn: Binding(
-                get: { calendar.enabled },
-                set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
-            ))
-            .toggleStyle(.checkbox)
-            Toggle("Show next meeting in the menu bar", isOn: Binding(
-                get: { calendar.menuBarPreview },
-                set: { calendar.setMenuBarPreview($0) }
-            ))
-            .toggleStyle(.checkbox)
+            Text("Calendar").font(.callout.weight(.medium))
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Use calendar", isOn: Binding(
+                    get: { calendar.enabled },
+                    set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
+                ))
+                Text("Lists upcoming meetings in the menu.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.leading, 18)
+            }
 
             Group {
-                Divider()
-                Text("Calendars to show").font(.callout.weight(.medium))
                 if calendar.authorization == .fullAccess {
-                    if calendar.isLoading && calendar.calendars.isEmpty && !calendar.hasLoaded {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(0..<3, id: \.self) { _ in
-                                Toggle(isOn: .constant(false)) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Calendar")
-                                        Text("Account").font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    .fixedSize(horizontal: false, vertical: true)
-                                }
-                                .toggleStyle(.checkbox)
-                            }
-                        }
-                        .redacted(reason: .placeholder)
-                        .disabled(true)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Loading calendars")
-                    } else if calendar.calendars.isEmpty {
-                        Text("No calendars available. Check that your account is enabled in macOS Calendar.")
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 10) {
-                                ForEach(calendar.calendars) { choice in
-                                    Toggle(isOn: Binding(
-                                        get: { calendar.selectedIDs.contains(choice.id) },
-                                        set: { calendar.select(choice.id, enabled: $0); Task { await calendar.refresh() } }
-                                    )) {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(choice.title)
-                                                .lineLimit(1)
-                                                .help(choice.title)
-                                            Text(choice.account).font(.caption).foregroundStyle(.secondary)
-                                        }
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    }
-                                    .toggleStyle(.checkbox)
-                                    .accessibilityLabel("\(choice.title), \(choice.account)")
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(height: min(220, CGFloat(calendar.calendars.count) * 46))
-                    }
-                    Divider()
-                    CalendarReminderOptionsView(calendar: calendar, reminders: calendar.reminders)
+                    Toggle("Show next meeting in the menu bar", isOn: Binding(
+                        get: { calendar.menuBarPreview },
+                        set: { calendar.setMenuBarPreview($0) }
+                    ))
+                    calendarChoices
                 } else {
-                    Text(calendar.authorization == .restricted
-                         ? "Calendar access is restricted by your Mac’s settings or administrator."
-                         : "macOS requires full calendar access to read events. Better Meeting never edits them.")
-                        .fixedSize(horizontal: false, vertical: true)
-                    if calendar.authorization == .notDetermined || calendar.authorization == .writeOnly {
-                        Button(calendar.requestingAccess ? "Requesting access…" : "Allow calendar access") {
-                            Task { await calendar.requestAccess() }
-                        }
-                        .disabled(calendar.requestingAccess)
-                    } else {
-                        Button("Open Calendar Privacy Settings…") {
-                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                    }
+                    accessRequest
                 }
                 if let error = calendar.errorMessage {
                     Label {
@@ -97,8 +40,87 @@ struct CalendarOptionsView: View {
             }
             .disabled(!calendar.enabled)
             .opacity(calendar.enabled ? 1 : 0.5)
+
+            Divider()
+            Text("Suggest recording").font(.callout.weight(.medium))
+            CalendarReminderOptionsView(calendar: calendar, reminders: calendar.reminders)
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Detect meetings", isOn: $detectsMeetings)
+                    .help("Notifies you when another app has used the microphone for half a minute. Nothing is recorded on its own.")
+                Text("For calls that aren’t on your calendar.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.leading, 18)
+            }
         }
+        .toggleStyle(.checkbox)
         .task { await calendar.refresh() }
+    }
+
+    @ViewBuilder
+    private var calendarChoices: some View {
+        Text("Calendars to show").font(.caption).foregroundStyle(.secondary)
+        if calendar.isLoading && calendar.calendars.isEmpty && !calendar.hasLoaded {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Toggle(isOn: .constant(false)) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Calendar")
+                            Text("Account").font(.caption).foregroundStyle(.secondary)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .redacted(reason: .placeholder)
+            .disabled(true)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Loading calendars")
+        } else if calendar.calendars.isEmpty {
+            Text("No calendars available. Check that your account is enabled in macOS Calendar.")
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(calendar.calendars) { choice in
+                        Toggle(isOn: Binding(
+                            get: { calendar.selectedIDs.contains(choice.id) },
+                            set: { calendar.select(choice.id, enabled: $0); Task { await calendar.refresh() } }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(choice.title)
+                                    .lineLimit(1)
+                                    .help(choice.title)
+                                Text(choice.account).font(.caption).foregroundStyle(.secondary)
+                            }
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .accessibilityLabel("\(choice.title), \(choice.account)")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(height: min(220, CGFloat(calendar.calendars.count) * 46))
+        }
+    }
+
+    @ViewBuilder
+    private var accessRequest: some View {
+        Text(calendar.authorization == .restricted
+             ? "Calendar access is restricted by your Mac’s settings or administrator."
+             : "macOS requires full calendar access to read events. Better Meeting never edits them.")
+            .fixedSize(horizontal: false, vertical: true)
+        if calendar.authorization == .notDetermined || calendar.authorization == .writeOnly {
+            Button(calendar.requestingAccess ? "Requesting access…" : "Allow calendar access") {
+                Task { await calendar.requestAccess() }
+            }
+            .disabled(calendar.requestingAccess)
+        } else {
+            Button("Open Calendar Privacy Settings…") {
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        }
     }
 }
 
@@ -106,16 +128,29 @@ private struct CalendarReminderOptionsView: View {
     @ObservedObject var calendar: CalendarIntegration
     @ObservedObject var reminders: CalendarReminders
 
+    /// Why the reminder can't fire right now; it stays visible so both ways to suggest a recording read together.
+    private var unavailableReason: String? {
+        if !calendar.enabled { return "Turn on Use calendar first." }
+        if calendar.authorization != .fullAccess { return "Allow calendar access first." }
+        return nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Meeting reminders").font(.callout.weight(.medium))
-            Toggle("Notify me when meetings start", isOn: Binding(
-                get: { calendar.notifyAtStart },
-                set: { value in Task { await calendar.setNotifyAtStart(value) } }
-            ))
-            .toggleStyle(.checkbox)
-            .disabled(reminders.requestingAccess)
-            if calendar.notifyAtStart {
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("When a calendar meeting starts", isOn: Binding(
+                    get: { calendar.notifyAtStart },
+                    set: { value in Task { await calendar.setNotifyAtStart(value) } }
+                ))
+                .disabled(reminders.requestingAccess || unavailableReason != nil)
+                .help("Sends a notification with Start recording when a meeting from your selected calendars begins.")
+                if let unavailableReason {
+                    Text(unavailableReason)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.leading, 18)
+                }
+            }
+            if calendar.notifyAtStart, unavailableReason == nil {
                 TimelineView(.periodic(from: .now, by: 60)) { context in
                     let scheduled = reminders.scheduledEvents.filter { $0.scheduledStart > context.date }
                     if let next = scheduled.first {
@@ -139,7 +174,7 @@ private struct CalendarReminderOptionsView: View {
                     }
                 }
             }
-            if calendar.notifyAtStart, let message = reminders.message {
+            if calendar.notifyAtStart, unavailableReason == nil, let message = reminders.message {
                 Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Button("Notification Settings…") {
@@ -174,8 +209,8 @@ struct UpcomingMeetingView: View {
                             Image(systemName: "calendar").frame(width: 24, height: 20)
                         }
                             .buttonStyle(.borderless)
-                            .accessibilityLabel("Calendar options")
-                            .help("Choose calendars")
+                            .accessibilityLabel("Meeting options")
+                            .help("Calendars and meeting suggestions")
                     }
                     if calendar.authorization != .fullAccess {
                         Button("Calendar access needed…", action: configure)
@@ -275,7 +310,7 @@ struct UpcomingMeetingView: View {
                                 }
                             }
                         } else if !calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) }) {
-                            Text("Choose calendars in Options to see meetings.")
+                            Text("Choose calendars in Options → Meetings to see them here.")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         } else {

@@ -29,7 +29,7 @@ The search box matches attendee and organizer names and emails, including partia
 
 ## EventKit MVP
 
-Options → Calendars enables the integration and explicitly selects calendars already synced with macOS. It defaults off with an empty selection. Calendar permission is requested only from the Allow calendar access button. macOS requires full event access to read calendars; the app has no EventKit save/delete operations. No Google credentials or backend are involved.
+Options → Meetings → Use calendar enables the integration and explicitly selects calendars already synced with macOS. It defaults off with an empty selection. Calendar permission is requested only from the Allow calendar access button. macOS requires full event access to read calendars; the app has no EventKit save/delete operations. No Google credentials or backend are involved.
 
 The selected calendars are read for ongoing events and events starting in the next 24 hours. The view refreshes on appearance; while enabled, the integration also refreshes every minute, when EventKit announces changes, on app activation, and after wake. All-day, ended, cancelled, and current-user-declined events are excluded. Sync freshness depends on macOS Calendar; the app does not force a Google server sync. No events are automatically selected for recording.
 
@@ -43,9 +43,9 @@ There is deliberately no historical matching, manual linking, automatic recordin
 
 ## Meeting-start notifications
 
-Options → Calendars → Notify me when meetings start is separately opt-in and defaults off. Enabling it requests macOS alert/sound permission; denied or disabled alerts show a settings link and retry action. Focus, notification settings, and sleep can silence or delay delivery.
+Options → Meetings → Suggest recording → When a calendar meeting starts is separately opt-in and defaults off. Enabling it requests macOS alert/sound permission; denied or disabled alerts show a settings link and retry action. Focus, notification settings, and sleep can silence or delay delivery.
 
-Calendar options group the control under Meeting reminders and omit routine explanatory hints. The summary shows the number of future alerts confirmed in the notification center and the next event. Failed scheduling never counts as success; partial failures retain the confirmed count with an error and retry action. Empty, loading, and permission states remain explicit. Relative timing updates every minute while visible.
+The Meetings page groups the control under Suggest recording, beside Detect meetings, and omits routine explanatory hints. While the calendar is off or unreadable, the control stays visible but disabled and names what is missing. The summary shows the number of future alerts confirmed in the notification center and the next event. Failed scheduling never counts as success; partial failures retain the confirmed count with an error and retry action. Empty, loading, and permission states remain explicit. Relative timing updates every minute while visible.
 
 When enabled, the app refreshes selected calendars on launch, every minute even with the menu closed, on wake, on activation, and on EventKit changes. It schedules one nonrepeating native notification per upcoming occurrence within the existing 24-hour window, using its absolute start time. Refreshes preserve unchanged requests rather than moving their delivery time. Rescheduling, cancellation, deselection, and revoked permission remove obsolete calendar alerts; turning reminders off removes queued and delivered calendar alerts without touching transcription or audio-warning notifications. Scheduling operations are serialized so a late add cannot survive a subsequent disable.
 
