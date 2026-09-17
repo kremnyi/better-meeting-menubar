@@ -4,7 +4,7 @@
 
 Read only the documentation relevant to the requested work:
 - `README.md` for user-facing behavior and setup.
-- `CONTRIBUTING.md` for build, test, packaging, or release work; use only the relevant sections.
+- `CONTRIBUTING.md` for build, test, packaging, release, or website (`site/`) work; use only the relevant sections.
 - `docs/calendar-data.md` for calendar integration, event metadata, and reminders.
 - `.impeccable/critique/` contains historical review findings, not standing instructions or a current backlog. Consult these only when relevant and verify findings against current code.
 

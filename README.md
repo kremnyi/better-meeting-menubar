@@ -1,13 +1,13 @@
 # Better Meeting
 
 Record a display, system audio, and microphone from the macOS menu bar. After
-recording stops, Whisper transcribes the audio locally. Each meeting gets a
-folder with the video, audio, and transcript; clicking the finished meeting in
-the menu opens its transcript.
+recording stops, the app transcribes the audio locally with Parakeet or Whisper.
+Each meeting gets a folder with the video, audio, and transcript; clicking the
+finished meeting in the menu opens its transcript.
 
-Requires Apple Silicon and macOS 15+. Downloads approximately 1.6 GB of speech
-model files during initial setup. Transcription runs locally and works offline
-afterward.
+Requires Apple Silicon and macOS 15+. The default Parakeet engine downloads about
+470 MB of speech model files during initial setup; Whisper's default model is
+about 1.6 GB. Transcription runs locally and works offline afterward.
 
 Project website: [kremnyi.github.io/better-meeting-menubar](https://kremnyi.github.io/better-meeting-menubar/)
 
@@ -150,12 +150,12 @@ The option is off by default.
 ## Recording settings
 
 Options groups settings under **Recording**, **Transcription**, and **Files**.
-Rows below them open the **Calendars**, **Advanced transcription**, and **App &
+Rows below them open the **Meetings**, **Advanced transcription**, and **App &
 updates** pages; the arrow beside each page title returns to Options. Settings stay
 available after an error. Display, microphone, and video quality lock only while
 recording. Transcription settings, including **Advanced transcription**, lock only
 while a transcription runs; changes made during a recording apply when it stops.
-The save folder and automatic export lock during either. Calendars and App &
+The save folder and automatic export lock during either. Meetings and App &
 updates never lock, so a prepared update can install as soon as the meeting finishes.
 The **Video** menu under Recording sets **Resolution** and **Frame rate**, which default
 to 1440 px and 10 fps. Resolution
@@ -261,7 +261,8 @@ and **Show in Finder** below the confirmation.
 
 ### Re-transcribe a meeting
 
-**Re-transcribe…** lets you choose languages and vocabulary for a saved meeting.
+**Re-transcribe…** lets you choose languages and speaker labels for a saved meeting,
+and **Advanced…** there sets its engine, model, vocabulary, and decoding.
 It reuses matching passes and keeps the current transcript available until the
 replacement is ready. A successful run replaces the transcript, including manual
 edits, while preserving the meeting name. Cancellation or failure keeps the old files.
@@ -279,18 +280,21 @@ queue runs, the app asks whether to wait until it finishes.
 
 ### Retry or cancel transcription
 
-If transcription fails, use **Retry transcription** or **Finish saved recording**
-to resume from saved audio or video, including after a restart. When quitting during work, choose
-**Finish and quit** or **Wait and quit** to let saving finish. Force Quit or power
-loss can leave an unfinished video that cannot be recovered.
+If transcription fails, use **Retry transcription** to resume from the saved audio
+or video. After a restart, unfinished recordings appear with **Transcribe** in the
+menu; see [Transcribe all unfinished recordings](#transcribe-all-unfinished-recordings).
+When quitting during work, choose **Finish and quit** or **Wait and quit** to let
+saving finish. Force Quit or power loss can leave an unfinished video that cannot
+be recovered.
 
 **Cancel** next to the progress bar stops processing and keeps the recording and completed
-language passes. Use **Finish saved recording** to resume later, even after a restart.
+language passes. Use **Transcribe** in the menu to resume later, even after a restart.
 
-Each completed language pass is saved as `pass_uk.json`, `pass_ru.json`, or
+With Whisper, each completed language pass is saved as `pass_uk.json`, `pass_ru.json`, or
 `pass_en.json` in the meeting folder. Retry reuses matching passes and reruns any
 missing or damaged ones. Changing the audio, model, or decoding options invalidates
-the affected cache. Finished transcripts are not regenerated automatically.
+the affected cache. Parakeet runs one pass without a cache, so a cancelled or failed
+Parakeet run starts over. Finished transcripts are not regenerated automatically.
 
 ## Meeting files and titles
 
@@ -309,8 +313,10 @@ the affected cache. Finished transcripts are not regenerated automatically.
 `transcript.md` has timestamps and a link to the video. `transcript.json` stores
 segment times, text, language tags, and optional speaker IDs. `metadata.json` stores the title,
 recording date, duration, file names, and transcription status.
-`pass_<language>.json` files are per-language transcription caches reused when the same
-recording is transcribed again; they are safe to delete. Re-transcription keeps the
+`pass_<language>.json` files are Whisper's per-language transcription caches, reused when the
+same recording is transcribed again; they are safe to delete. Meetings with speaker labels
+also keep `speaker_turns.json`, and meetings started from a calendar event keep
+`calendar.json`; see [docs/calendar-data.md](docs/calendar-data.md). Re-transcription keeps the
 earlier transcript files in a hidden staging folder until the replacement is saved; if
 restoring them fails, the error message names the folder that still holds them. A failed
 rename restores the earlier files in place.
@@ -411,7 +417,7 @@ installed with Homebrew. Saved meetings are always kept.
 ## Build from source
 
 Source builds require Xcode 16 or newer. See [CONTRIBUTING.md](CONTRIBUTING.md)
-for building, testing, signing, and publishing releases.
+for building, testing, signing, publishing releases, and updating the website.
 
 ## Limits
 
@@ -427,7 +433,10 @@ for building, testing, signing, and publishing releases.
 
 This macOS app is based on [GivenFLY/better-meeting](https://github.com/GivenFLY/better-meeting),
 which processes existing recordings. The original implementation remains in
-that repository and this fork's Git history.
+that repository and this fork's Git history. The macOS app is made by
+[Bohdan Kremnyi](https://kremnyi.com); **Options → App & updates → About Better
+Meeting** shows the installed version, links to the project and its author, and
+this attribution.
 
 Licensed under [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution
 and [ThirdPartyNotices.md](ThirdPartyNotices.md) for dependency licenses.

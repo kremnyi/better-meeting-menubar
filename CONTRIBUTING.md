@@ -126,6 +126,26 @@ recording permissions.
 - Reuse passing results for unchanged code and environment; rerun affected checks
   after a fix. The release checks below remain required.
 
+## Website
+
+The landing page at <https://kremnyi.github.io/better-meeting-menubar/> is the
+single static page `site/index.html`, with its images in `site/assets/`. It loads
+no web fonts, scripts, or analytics from other hosts; keep it that way. Keep its
+claims in line with `README.md` and `PRODUCT.md`, and when the Homebrew commands
+change, update them in both the README and the page. The page shows no version
+numbers, so releases don't need to touch it.
+
+Preview it from the repository root, then open <http://localhost:4173>:
+
+```bash
+python3 -m http.server 4173 --directory site
+```
+
+Check light and dark mode and a 375 px wide window. Pushing a change under
+`site/` to `main` runs the **Publish website** workflow
+(`.github/workflows/pages.yml`), which deploys the folder to GitHub Pages; it can
+also be started from the Actions tab.
+
 ## Publish a release
 
 This repository is also the `kremnyi/better-meeting` Homebrew tap.
