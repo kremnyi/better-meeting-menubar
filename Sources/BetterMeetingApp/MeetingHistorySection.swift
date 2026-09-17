@@ -99,7 +99,7 @@ struct MeetingHistorySection: View {
             }
             .font(.callout)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: model.historyListHeight, alignment: .top)
+            .frame(height: model.hasMeetings ? 6 * 43 : nil, alignment: .top)
         }
     }
 
