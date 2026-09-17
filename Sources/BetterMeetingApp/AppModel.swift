@@ -166,8 +166,6 @@ final class AppModel: ObservableObject {
     private let transcriber = LocalTranscriber()
     private let library = MeetingLibrary()
     private(set) var modelUnloadTask: Task<Void, Never>?
-    /// How long a loaded speech model stays in memory after the last job. Loading it again takes a few seconds.
-    var modelIdleUnloadDelay: Duration = .seconds(300)
     private var activeFolder: URL?
     private var recordedAt: Date?
     private var titleWasProvided = true
@@ -731,12 +729,6 @@ final class AppModel: ObservableObject {
 
     var hasMeetings: Bool { !completedMeetings.isEmpty || !unfinishedRecordings.isEmpty }
 
-    /// Six rows once any meeting exists, so searching never resizes the menu. Before the
-    /// first meeting the empty message keeps its natural height.
-    var historyListHeight: CGFloat? {
-        hasMeetings ? 6 * 43 : nil
-    }
-
     private var meetingsByRecency: [MeetingHistoryItem] {
         (completedMeetings + unfinishedRecordings).sorted { $0.recordedAt > $1.recordedAt }
     }
@@ -1013,9 +1005,9 @@ final class AppModel: ObservableObject {
     /// Frees the speech model after a quiet period. A recording in progress keeps it for its own transcription.
     private func scheduleModelUnload() {
         modelUnloadTask?.cancel()
-        let delay = modelIdleUnloadDelay
         modelUnloadTask = Task { [weak self, transcriber] in
-            try? await Task.sleep(for: delay)
+            // A loaded speech model stays in memory for five quiet minutes; loading it again takes a few seconds.
+            try? await Task.sleep(for: .seconds(300))
             guard !Task.isCancelled, let self, !self.isProcessing, !self.isCapturing else { return }
             await transcriber.unloadIfIdle()
         }

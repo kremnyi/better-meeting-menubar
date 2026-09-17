@@ -47,15 +47,10 @@ final class EngineComparisonTests: XCTestCase {
                 }
             }
             let started = Date()
-            let segments: [TranscriptSegment]
-            do {
-                segments = try await transcriber.transcribe(
-                    audioURL: audio, languages: languages, settings: run.settings, progressHandler: { _ in }
-                )
-            } catch {
-                sampler.cancel()
-                throw error
-            }
+            defer { sampler.cancel() }
+            let segments = try await transcriber.transcribe(
+                audioURL: audio, languages: languages, settings: run.settings, progressHandler: { _ in }
+            )
             let elapsed = Date().timeIntervalSince(started)
             sampler.cancel()
             let peakMB = await probe.peakMB
