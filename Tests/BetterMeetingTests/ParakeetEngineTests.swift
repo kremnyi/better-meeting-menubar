@@ -45,13 +45,12 @@ final class ParakeetEngineTests: XCTestCase {
         XCTAssertNil(ParakeetLanguage.tag("Hallo zusammen"))
     }
 
-    func testParakeetTaggingKeepsPinnedLanguage() throws {
+    func testParakeetTaggingUsesEachSegmentsText() throws {
         let segments = [
             TranscriptSegment(start: 0, end: 1, text: "Що це таке", language: nil),
             TranscriptSegment(start: 1, end: 2, text: "We should ship this today", language: nil),
         ]
         XCTAssertEqual(ParakeetLanguage.tagging(segments).map(\.language), ["uk", "en"])
-        XCTAssertEqual(ParakeetLanguage.tagging(segments, pinned: "ru").map(\.language), ["ru", "ru"])
     }
 
     func testSegmentsFallBackToWholeTextWithoutTimings() throws {

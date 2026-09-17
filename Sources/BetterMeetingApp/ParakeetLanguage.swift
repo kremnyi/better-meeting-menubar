@@ -18,11 +18,11 @@ enum ParakeetLanguage {
         return "en"
     }
 
-    static func tagging(_ segments: [TranscriptSegment], pinned: String? = nil) -> [TranscriptSegment] {
+    static func tagging(_ segments: [TranscriptSegment]) -> [TranscriptSegment] {
         segments.map { segment in
             TranscriptSegment(
                 start: segment.start, end: segment.end, text: segment.text,
-                language: pinned ?? tag(segment.text)
+                language: tag(segment.text)
             )
         }
     }

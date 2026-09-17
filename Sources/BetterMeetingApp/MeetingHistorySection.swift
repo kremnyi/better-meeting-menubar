@@ -224,7 +224,7 @@ struct MeetingHistorySection: View {
         }
         Divider()
         Button("Copy Transcript") {
-            do { try model.copyTranscript(item) }
+            do { try AppModel.copyTranscript(in: item.folderURL) }
             catch { NSAlert(error: error).runModal() }
         }
         Button("Rename…") { model.renameMeeting(item) }

@@ -29,9 +29,7 @@
   --coral: #e5473d;
   --coral-ink: #b3322a;
   --coral-soft: rgba(229, 71, 61, .1);
-  --amber: #a86a12;
   --on-ink: #f5f1e8;
-  --shadow: 0 1px 2px rgba(19, 27, 42, .05), 0 14px 34px -16px rgba(19, 27, 42, .22);
   --shadow-lg: 0 2px 6px rgba(19, 27, 42, .06), 0 50px 90px -30px rgba(19, 27, 42, .45);
   --pop-bg: rgba(238, 237, 235, .88);
   --pop-ink: #1d1d1f;
@@ -47,7 +45,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root {
     --bg: #0d131e;
     --bg-alt: #111926;
     --surface: #151e2d;
@@ -60,9 +58,7 @@
     --coral: #ff5d52;
     --coral-ink: #ff8b82;
     --coral-soft: rgba(255, 93, 82, .12);
-    --amber: #f0b44c;
     --on-ink: #0d131e;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 34px -16px rgba(0, 0, 0, .6);
     --shadow-lg: 0 2px 6px rgba(0, 0, 0, .3), 0 50px 90px -30px rgba(0, 0, 0, .8);
     --pop-bg: rgba(38, 38, 42, .86);
     --pop-ink: #f5f5f7;
@@ -71,31 +67,6 @@
     --pop-line: rgba(255, 255, 255, .1);
     color-scheme: dark;
   }
-}
-
-:root[data-theme="dark"] {
-  --bg: #0d131e;
-  --bg-alt: #111926;
-  --surface: #151e2d;
-  --surface-2: #1a2436;
-  --ink: #f0ebe1;
-  --ink-2: #b6bdc9;
-  --ink-3: #8f98a7;
-  --line: rgba(240, 235, 225, .1);
-  --line-strong: rgba(240, 235, 225, .2);
-  --coral: #ff5d52;
-  --coral-ink: #ff8b82;
-  --coral-soft: rgba(255, 93, 82, .12);
-  --amber: #f0b44c;
-  --on-ink: #0d131e;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 34px -16px rgba(0, 0, 0, .6);
-  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .3), 0 50px 90px -30px rgba(0, 0, 0, .8);
-  --pop-bg: rgba(38, 38, 42, .86);
-  --pop-ink: #f5f5f7;
-  --pop-ink-2: #98989f;
-  --pop-field: rgba(255, 255, 255, .07);
-  --pop-line: rgba(255, 255, 255, .1);
-  color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -389,7 +360,6 @@ code, pre { font-family: var(--mono); }
 .tx div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tx .t { color: var(--ink-3); }
 .tx .l { color: var(--coral-ink); }
-.tx .s { color: var(--ink); font-weight: 600; }
 .progress { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
 .progress .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .progress .bar i { display: block; height: 100%; width: 100%; border-radius: 3px; background: var(--ink); transform-origin: left; transform: scaleX(.64); }

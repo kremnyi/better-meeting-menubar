@@ -165,19 +165,8 @@ actor LocalTranscriber {
         await unloadLoadedModels()
         try Task.checkCancellation()
         progressHandler(.preparingModel)
-        let modelFolder: URL
-        if let cached = Self.cachedModelFolder(in: downloadBase, model: model) {
-            modelFolder = cached
-        } else {
-            modelFolder = try await WhisperKit.download(
-                variant: model.rawValue,
-                downloadBase: downloadBase,
-                progressCallback: { progress in
-                    let fraction = progress.fractionCompleted
-                    guard fraction.isFinite else { return }
-                    progressHandler(.downloadingModel(min(max(fraction, 0), 1)))
-                }
-            )
+        let modelFolder = try await download(model: model) {
+            progressHandler(.downloadingModel($0))
         }
 
         progressHandler(.loadingModel)
@@ -227,9 +216,10 @@ actor LocalTranscriber {
         try? FileManager.default.removeItem(at: url)
     }
 
-    func download(model: SpeechModel, progress: @escaping @Sendable (Double) -> Void) async throws {
-        guard Self.cachedModelFolder(in: downloadBase, model: model) == nil else { return }
-        _ = try await WhisperKit.download(
+    @discardableResult
+    func download(model: SpeechModel, progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
+        if let cached = Self.cachedModelFolder(in: downloadBase, model: model) { return cached }
+        return try await WhisperKit.download(
             variant: model.rawValue,
             downloadBase: downloadBase,
             progressCallback: { update in
