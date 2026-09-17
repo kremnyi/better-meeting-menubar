@@ -45,7 +45,7 @@ struct MeetingOptionsView: View {
             Text("Suggest recording").font(.callout.weight(.medium))
             CalendarReminderOptionsView(calendar: calendar, reminders: calendar.reminders)
             VStack(alignment: .leading, spacing: 4) {
-                Toggle("Detect meetings", isOn: $detectsMeetings)
+                Toggle("Detect meetings automatically", isOn: $detectsMeetings)
                     .help("Notifies you when another app has used the microphone for half a minute. Nothing is recorded on its own.")
                 Text("For calls that aren’t on your calendar.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -79,27 +79,30 @@ struct MeetingOptionsView: View {
             Text("No calendars available. Check that your account is enabled in macOS Calendar.")
                 .fixedSize(horizontal: false, vertical: true)
         } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(calendar.calendars) { choice in
-                        Toggle(isOn: Binding(
-                            get: { calendar.selectedIDs.contains(choice.id) },
-                            set: { calendar.select(choice.id, enabled: $0); Task { await calendar.refresh() } }
-                        )) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(choice.title)
-                                    .lineLimit(1)
-                                    .help(choice.title)
-                                Text(choice.account).font(.caption).foregroundStyle(.secondary)
-                            }
-                            .fixedSize(horizontal: false, vertical: true)
+            let rows = VStack(alignment: .leading, spacing: 10) {
+                ForEach(calendar.calendars) { choice in
+                    Toggle(isOn: Binding(
+                        get: { calendar.selectedIDs.contains(choice.id) },
+                        set: { calendar.select(choice.id, enabled: $0); Task { await calendar.refresh() } }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(choice.title)
+                                .lineLimit(1)
+                                .help(choice.title)
+                            Text(choice.account).font(.caption).foregroundStyle(.secondary)
                         }
-                        .accessibilityLabel("\(choice.title), \(choice.account)")
+                        .fixedSize(horizontal: false, vertical: true)
                     }
+                    .accessibilityLabel("\(choice.title), \(choice.account)")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(height: min(220, CGFloat(calendar.calendars.count) * 46))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // A short list takes the height of its rows; a long one scrolls, and the cut-off row shows there is more.
+            if calendar.calendars.count <= 5 {
+                rows
+            } else {
+                ScrollView { rows }.frame(height: 220)
+            }
         }
     }
 

@@ -395,13 +395,16 @@ final class MeetingCalendarTests: XCTestCase {
         model.calendar = calendar
         model.prepareSpeechModel { _ in }
         try await model.modelPreparationTask?.value
-        for state in ["off", "permission", "denied", "empty", "connected", "notify-on", "notify-denied", "notify-empty", "notify-partial", "long-title"] {
+        for state in ["off", "permission", "denied", "empty", "connected", "many-calendars", "notify-on", "notify-denied", "notify-empty", "notify-partial", "long-title"] {
             calendar.setEnabled(state != "off")
+            // Past five calendars the list scrolls in a fixed area instead of growing the page.
+            reader.calendars = [CalendarChoice(id: "fixture-calendar", title: "Work", account: "Example account")]
+                + (state == "many-calendars" ? (1...7).map { CalendarChoice(id: "extra-\($0)", title: "Team \($0)", account: "Example account") } : [])
             calendar.select("fixture-calendar", enabled: false)
             reader.events = []
             notificationCenter.rejectedIDs = []
             reader.authorizationStatus = state == "denied" ? .denied : state == "permission" ? .notDetermined : .fullAccess
-            if state == "connected" || state.hasPrefix("notify-") || state == "long-title" {
+            if state == "connected" || state == "many-calendars" || state.hasPrefix("notify-") || state == "long-title" {
                 calendar.select("fixture-calendar", enabled: true)
                 if state != "notify-empty" {
                     let title = state == "long-title" ? "Portfolio contract and investment discussion with Alexandra and the international product team" : "Portfolio review with Alex"
@@ -477,6 +480,7 @@ private final class CalendarReaderFixture: CalendarReading {
     var loads = 0
     var selectedIDs: Set<String> = []
     var events: [CalendarEvent] = []
+    var calendars = [CalendarChoice(id: "fixture-calendar", title: "Work", account: "Example account")]
     var beforeReturn: (() async -> Void)?
 
     func requestAccess() async throws -> Bool {
@@ -490,7 +494,7 @@ private final class CalendarReaderFixture: CalendarReading {
         self.selectedIDs = selectedIDs
         await beforeReturn?()
         return CalendarSnapshot(
-            calendars: [CalendarChoice(id: "fixture-calendar", title: "Work", account: "Example account")],
+            calendars: calendars,
             events: events.filter { selectedIDs.contains($0.providerCalendarId) }
         )
     }
