@@ -550,8 +550,7 @@ mark { background: color-mix(in srgb, var(--coral) 22%, transparent); color: inh
 .copy svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; }
 .term pre { margin: 0; padding: 18px 20px 20px; overflow-x: auto; font-size: 13px; line-height: 1.8; }
 .term .p { color: #ff8b82; user-select: none; -webkit-user-select: none; }
-.term .c { color: #8a93a2; }
-.panel .btn { margin-top: 22px; align-self: flex-start; }
+.term .c { color: #8a93a2; font-style: italic; }
 .req { margin-top: 22px; display: grid; gap: 10px; }
 .req li { display: flex; gap: 10px; align-items: center; font-size: 15px; color: var(--ink-2); }
 .req svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--ink-3); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -661,9 +660,9 @@ footer { border-top: 1px solid var(--line); padding: 40px 0 48px; font-size: 14p
           <strong>No account. No upload. No cloud processing.</strong>
         </p>
         <div class="cta">
-          <a class="btn btn-primary" href="https://github.com/kremnyi/better-meeting-menubar/releases/latest">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
-            Download for macOS
+          <a class="btn btn-primary" href="#install">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="m7.5 9.5 3 2.5-3 2.5M12.5 15h4"/></svg>
+            Install with Homebrew
           </a>
           <a class="btn btn-ghost" href="https://github.com/kremnyi/better-meeting-menubar">
             <svg aria-hidden="true"><use href="#github"/></svg>
@@ -996,13 +995,13 @@ are ready for review.</pre>
     <div class="wrap">
       <div class="section-head reveal">
         <span class="eyebrow">Install</span>
-        <h2>Ready in a minute.</h2>
-        <p>Install with Homebrew or download the app from GitHub Releases. Xcode isn't required.</p>
+        <h2>Ready in a minute, with Homebrew.</h2>
+        <p>Paste the commands below into Terminal. The cask downloads the release from GitHub and verifies its SHA-256 checksum. Xcode isn't required.</p>
       </div>
       <div class="install">
         <div class="panel reveal">
-          <h3>Homebrew</h3>
-          <p>The cask downloads the release from GitHub and verifies its SHA-256 checksum.</p>
+          <h3>Install</h3>
+          <p>Add the Better Meeting tap, install the cask, and open the app. Its icon appears in the menu bar.</p>
           <div class="term">
             <div class="term-bar">
               <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -1011,28 +1010,27 @@ are ready for review.</pre>
                 <span>Copy</span>
               </button>
             </div>
-<pre><span class="p">$ </span><span id="brew-cmd">brew tap --custom-remote kremnyi/better-meeting https://github.com/kremnyi/better-meeting-menubar
-brew install --cask kremnyi/better-meeting/better-meeting
-open -a "Better Meeting"</span></pre>
+<pre id="brew-cmd"><span class="c"># Add the tap and install the app</span>
+<span class="p">$ </span>brew tap --custom-remote kremnyi/better-meeting https://github.com/kremnyi/better-meeting-menubar
+<span class="p">$ </span>brew install --cask kremnyi/better-meeting/better-meeting
+
+<span class="c"># Open it from Applications</span>
+<span class="p">$ </span>open -a "Better Meeting"</pre>
           </div>
           <div class="gate">
             <p><strong>Staying current.</strong> The app can update itself from <strong>Options → App &amp; updates</strong>. With Homebrew, quit the app and run <code><span class="nowrap">brew upgrade --cask</span> <span class="nowrap">kremnyi/</span><wbr><span class="nowrap">better-meeting/</span><wbr><span class="nowrap">better-meeting</span></code>.</p>
           </div>
         </div>
         <div class="panel reveal">
-          <h3>Download</h3>
-          <p>Unzip it and move Better Meeting to Applications.</p>
-          <a class="btn btn-primary" href="https://github.com/kremnyi/better-meeting-menubar/releases/latest">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
-            Latest release
-          </a>
+          <h3>Before you install</h3>
+          <p>You'll need <a href="https://brew.sh">Homebrew</a> and:</p>
           <ul class="req">
             <li><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2.5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>Apple silicon Mac</li>
             <li><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>macOS 15 Sequoia or later</li>
             <li><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg>~470 MB–2 GB for speech models</li>
           </ul>
           <div class="gate">
-            <p>Releases are self-signed and not notarized by Apple. If macOS blocks the first launch, open <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>. Managed Macs may not allow this.</p>
+            <p>The app is self-signed and not notarized by Apple. If macOS blocks the first launch, open <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>. Managed Macs may not allow this.</p>
           </div>
         </div>
       </div>
@@ -1052,7 +1050,10 @@ open -a "Better Meeting"</span></pre>
       <h2>Your meetings, on your Mac.</h2>
       <p>Free and open source. Read the code, file an issue, or send a pull request.</p>
       <div class="cta">
-        <a class="btn btn-primary" href="https://github.com/kremnyi/better-meeting-menubar/releases/latest">Download for macOS</a>
+        <a class="btn btn-primary" href="#install">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="m7.5 9.5 3 2.5-3 2.5M12.5 15h4"/></svg>
+          Install with Homebrew
+        </a>
         <a class="btn btn-ghost" href="https://github.com/kremnyi/better-meeting-menubar">
           <svg aria-hidden="true"><use href="#github"/></svg>
           Star on GitHub
@@ -1101,13 +1102,16 @@ open -a "Better Meeting"</span></pre>
   for (const button of document.querySelectorAll('[data-copy]')) {
     const label = button.querySelector('span');
     button.addEventListener('click', async () => {
-      const text = document.getElementById(button.dataset.copy).textContent;
+      const source = document.getElementById(button.dataset.copy);
+      const commands = source.cloneNode(true);
+      commands.querySelectorAll('.p, .c').forEach((node) => node.remove());
+      const text = commands.textContent.split('\n').map((line) => line.trim()).filter(Boolean).join('\n');
       try {
         await navigator.clipboard.writeText(text);
         label.textContent = 'Copied';
       } catch {
         const range = document.createRange();
-        range.selectNodeContents(document.getElementById(button.dataset.copy));
+        range.selectNodeContents(source);
         const selection = window.getSelection();
         selection.removeAllRanges();
         selection.addRange(range);
