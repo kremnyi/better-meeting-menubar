@@ -9,6 +9,8 @@ Requires Apple Silicon and macOS 15+. Downloads approximately 1.6 GB of speech
 model files during initial setup. Transcription runs locally and works offline
 afterward.
 
+Project website: [kremnyi.github.io/better-meeting-menubar](https://kremnyi.github.io/better-meeting-menubar/)
+
 <img src="docs/menu-bar.png" alt="Better Meeting menu with a search field and meeting rows grouped by day, each with an action button" width="304">
 
 The app's menu, shown with fictional meetings.

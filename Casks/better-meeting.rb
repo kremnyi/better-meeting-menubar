@@ -5,7 +5,7 @@ cask "better-meeting" do
   url "https://github.com/kremnyi/better-meeting-menubar/releases/download/v#{version}/Better-Meeting-#{version}-arm64.zip"
   name "Better Meeting"
   desc "Record meetings from the menu bar and transcribe them locally"
-  homepage "https://github.com/kremnyi/better-meeting-menubar"
+  homepage "https://kremnyi.github.io/better-meeting-menubar/"
 
   auto_updates true
 
