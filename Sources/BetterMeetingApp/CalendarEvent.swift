@@ -8,12 +8,6 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
         let email: String?
         let responseStatus: String
 
-        init(name: String?, email: String?, responseStatus: String) {
-            self.name = name
-            self.email = email
-            self.responseStatus = responseStatus
-        }
-
         init(_ person: EKParticipant) {
             name = person.name
             email = person.url.scheme?.lowercased() == "mailto"

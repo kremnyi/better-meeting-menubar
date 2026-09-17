@@ -221,10 +221,10 @@ final class MeetingActionTests: XCTestCase {
         let markdownURL = folder.appendingPathComponent("transcript.md")
         let text = "# My notes\n\nAn edited transcript.\n"
         try text.write(to: markdownURL, atomically: true, encoding: .utf8)
-        try model.copyTranscript(item, to: pasteboard)
+        try AppModel.copyTranscript(in: item.folderURL, to: pasteboard)
         XCTAssertEqual(pasteboard.string(forType: .string), text)
         try FileManager.default.removeItem(at: markdownURL)
-        XCTAssertThrowsError(try model.copyTranscript(item, to: pasteboard))
+        XCTAssertThrowsError(try AppModel.copyTranscript(in: item.folderURL, to: pasteboard))
         XCTAssertEqual(pasteboard.string(forType: .string), text)
     }
 

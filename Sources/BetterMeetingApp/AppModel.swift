@@ -763,10 +763,6 @@ final class AppModel: ObservableObject {
         searchingHistory = false
     }
 
-    func copyTranscript(_ meeting: MeetingHistoryItem, to pasteboard: NSPasteboard = .general) throws {
-        try Self.copyTranscript(in: meeting.folderURL, to: pasteboard)
-    }
-
     static func copyTranscript(in folder: URL, to pasteboard: NSPasteboard = .general) throws {
         let text = try String(contentsOf: folder.appendingPathComponent("transcript.md"), encoding: .utf8)
         pasteboard.clearContents()
