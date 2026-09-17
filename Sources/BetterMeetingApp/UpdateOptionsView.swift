@@ -58,3 +58,34 @@ struct UpdateOptionsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
+
+/// Who made the app, and the attribution the Apache License asks derivative works to keep in their credits.
+struct AppCreditsView: View {
+    static let links: [(title: String, label: String, url: URL)] = [
+        ("GitHub", "Better Meeting on GitHub", URL(string: "https://github.com/kremnyi/better-meeting-menubar")!),
+        ("Website", "Bohdan Kremnyi’s website", URL(string: "https://kremnyi.com")!),
+        ("X", "Bohdan Kremnyi on X", URL(string: "https://x.com/kremnyi")!),
+        ("LinkedIn", "Bohdan Kremnyi on LinkedIn", URL(string: "https://www.linkedin.com/in/kremnyi/")!),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text("Made by Bohdan Kremnyi")
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                ForEach(Self.links, id: \.title) { link in
+                    Link(link.title, destination: link.url)
+                        .help(link.url.absoluteString)
+                        .accessibilityLabel(link.label)
+                }
+            }
+            Text("Based on [better-meeting](https://github.com/GivenFLY/better-meeting) © 2026 Oleksii Moshura (GivenFLY). Licensed under [Apache 2.0](https://github.com/kremnyi/better-meeting-menubar/blob/main/LICENSE).")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

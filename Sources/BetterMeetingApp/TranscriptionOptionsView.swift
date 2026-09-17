@@ -106,6 +106,7 @@ struct CaptureOptionsView: View {
             Toggle("Include beta releases", isOn: $model.betaUpdates)
                 .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
             UpdateOptionsView(updates: model.updates, version: version)
+            AppCreditsView()
         }
         .toggleStyle(.checkbox)
         .frame(maxWidth: .infinity, alignment: .leading)
