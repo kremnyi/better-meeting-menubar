@@ -91,7 +91,9 @@ final class AppModel: ObservableObject {
     private(set) var modelDownloadTask: Task<Void, Never>?
     @Published private(set) var cancellingTranscription = false
     @Published private(set) var displays: [(id: CGDirectDisplayID, name: String)] = []
-    @Published private(set) var microphones: [AVCaptureDevice] = []
+    @Published private(set) var microphones: [(id: String, name: String)] = []
+    private var inputWatches: [AnyCancellable] = []
+    private var microphoneDiscovery: Task<Void, Never>?
     @Published var selectedDisplayID: CGDirectDisplayID {
         didSet { defaults.set(Int(selectedDisplayID), forKey: "displayID") }
     }
@@ -346,16 +348,47 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshInputs() {
+    /// Lists displays and microphones once, then again only when one connects or disconnects,
+    /// so opening Options never waits for device discovery.
+    func watchInputs() {
+        guard inputWatches.isEmpty else { return }
+        let center = NotificationCenter.default
+        inputWatches = [
+            Publishers.Merge(
+                center.publisher(for: AVCaptureDevice.wasConnectedNotification),
+                center.publisher(for: AVCaptureDevice.wasDisconnectedNotification)
+            )
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refreshMicrophones() },
+            center.publisher(for: NSApplication.didChangeScreenParametersNotification)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.refreshDisplays() },
+        ]
+        refreshDisplays()
+        refreshMicrophones()
+    }
+
+    private func refreshDisplays() {
         displays = NSScreen.screens.compactMap { screen in
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
                 return nil
             }
             return (number.uint32Value, screen.localizedName)
         }
-        microphones = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified
-        ).devices
+    }
+
+    /// Discovery can take seconds when it looks for Continuity or virtual microphones, so it runs off the main thread.
+    private func refreshMicrophones() {
+        microphoneDiscovery?.cancel()
+        microphoneDiscovery = Task {
+            let found = await Task.detached(priority: .utility) {
+                AVCaptureDevice.DiscoverySession(
+                    deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified
+                ).devices.map { (id: $0.uniqueID, name: $0.localizedName) }
+            }.value
+            guard !Task.isCancelled else { return }
+            microphones = found
+        }
     }
 
     // ponytail: download-only; each engine loads on first transcription so picking one never compiles in the background.

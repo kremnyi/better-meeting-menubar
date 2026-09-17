@@ -2,11 +2,19 @@ import ServiceManagement
 import SwiftUI
 
 struct CaptureOptionsView: View {
+    /// The login item status as last read. SwiftUI rebuilds this view on every menu redraw and each read
+    /// is a round trip to the login items service, so it is read when the menu opens and after changes.
+    private(set) static var knownLaunchAtLoginStatus = SMAppService.mainApp.status
+
+    static func refreshLaunchAtLoginStatus() {
+        knownLaunchAtLoginStatus = SMAppService.mainApp.status
+    }
+
     @EnvironmentObject private var model: AppModel
     @State var advancedPresented = false
     @State var calendarsPresented = false
     @State var appSettingsPresented = false
-    @State var launchAtLoginStatus = SMAppService.mainApp.status
+    @State var launchAtLoginStatus = Self.knownLaunchAtLoginStatus
     @State var launchAtLoginError: String?
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
@@ -55,13 +63,12 @@ struct CaptureOptionsView: View {
         .controlSize(.small)
         .padding(16)
         .frame(width: 360, alignment: .leading)
-        .onAppear { model.refreshInputs() }
         .onChange(of: model.speechSettings.model) { model.speechModelChanged() }
         .onChange(of: model.speechSettings.engine) { model.speechModelChanged() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            launchAtLoginStatus = SMAppService.mainApp.status
+            Self.refreshLaunchAtLoginStatus()
+            launchAtLoginStatus = Self.knownLaunchAtLoginStatus
             launchAtLoginError = nil
-            model.refreshInputs()
         }
     }
 
@@ -135,10 +142,10 @@ struct CaptureOptionsView: View {
                 Text("Microphone")
                 Picker("Microphone", selection: $model.selectedMicrophoneID) {
                     Text("System default").tag("")
-                    ForEach(model.microphones, id: \.uniqueID) { microphone in
-                        Text(microphone.localizedName).tag(microphone.uniqueID)
+                    ForEach(model.microphones, id: \.id) { microphone in
+                        Text(microphone.name).tag(microphone.id)
                     }
-                    if !model.selectedMicrophoneID.isEmpty && !model.microphones.contains(where: { $0.uniqueID == model.selectedMicrophoneID }) {
+                    if !model.selectedMicrophoneID.isEmpty && !model.microphones.contains(where: { $0.id == model.selectedMicrophoneID }) {
                         Text("Unavailable microphone").tag(model.selectedMicrophoneID)
                     }
                 }
@@ -222,7 +229,8 @@ struct CaptureOptionsView: View {
         } catch {
             launchAtLoginError = error.localizedDescription
         }
-        launchAtLoginStatus = service.status
+        Self.refreshLaunchAtLoginStatus()
+        launchAtLoginStatus = Self.knownLaunchAtLoginStatus
     }
 
     private var destinationButton: some View {

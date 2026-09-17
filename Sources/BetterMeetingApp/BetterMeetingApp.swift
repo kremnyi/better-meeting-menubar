@@ -16,6 +16,7 @@ struct BetterMeetingApp: App {
         appDelegate.model = model
         model.calendar.startMonitoring()
         model.meetingDetector.setEnabled(model.detectsMeetings)
+        model.watchInputs()
         model.prepareSpeechModel()
     }
 
