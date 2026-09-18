@@ -22,6 +22,7 @@ struct MenuBarControlView: View {
                     captureOptionsPresented.toggle()
                 } label: {
                     Label("Options", systemImage: "slider.horizontal.3")
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .font(.callout)
