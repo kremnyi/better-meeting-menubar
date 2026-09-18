@@ -37,6 +37,12 @@ struct MeetingHistorySection: View {
             HStack(spacing: 6) {
                 Text("Recorded meetings")
                     .font(.callout.weight(.medium))
+                if model.historyTotalBytes > 0 {
+                    Text(ByteCountFormatter.string(fromByteCount: model.historyTotalBytes, countStyle: .file))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("Disk space used by recorded meetings")
+                }
                 Spacer()
                 if model.searchingHistory {
                     ProgressView()

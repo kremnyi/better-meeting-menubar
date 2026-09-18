@@ -59,6 +59,7 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var searchingHistory = false
     @Published private(set) var unfinishedRecordings: [MeetingHistoryItem] = []
+    @Published private(set) var historyTotalBytes: Int64 = 0
     @Published private(set) var transcriptionBatchTotal = 0
     @Published private(set) var transcriptionBatchIndex = 0
     var isTranscribingBatch: Bool { transcriptionBatchTotal > 0 }
@@ -724,6 +725,7 @@ final class AppModel: ObservableObject {
         guard !Task.isCancelled else { return }
         completedMeetings = meetings.filter { !$0.needsTranscription }
         unfinishedRecordings = meetings.filter(\.needsTranscription)
+        historyTotalBytes = meetings.reduce(0) { $0 + $1.totalBytes }
         searchHistory()
     }
 

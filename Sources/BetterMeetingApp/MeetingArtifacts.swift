@@ -29,6 +29,8 @@ struct MeetingHistoryItem: Identifiable, Equatable, Sendable {
     let folderURL: URL
     let needsTranscription: Bool
     let titleWasProvided: Bool
+    /// Allocated bytes in the folder, read on scan for the menu's storage readout.
+    var totalBytes: Int64 = 0
 
     var id: URL { folderURL }
 }
@@ -270,7 +272,8 @@ enum MeetingArtifacts {
             duration: manifest?.duration ?? 0,
             folderURL: folder,
             needsTranscription: !complete,
-            titleWasProvided: manifest?.titleWasProvided ?? true
+            titleWasProvided: manifest?.titleWasProvided ?? true,
+            totalBytes: LocalTranscriber.sizeOnDisk(of: folder)
         )
     }
 
