@@ -61,6 +61,8 @@ struct MenuBarStatusIcon: View {
     let state: AppState
     var processing = false
     var processingFrame = 0
+    /// Idle work waits: permissions to grant or recordings to transcribe.
+    var attention = false
 
     var body: some View {
         Group {
@@ -68,6 +70,9 @@ struct MenuBarStatusIcon: View {
                 Image(nsImage: BrandAssets.processingMenuBarFrames[processingFrame])
             } else if state == .failed {
                 Image(systemName: "exclamationmark.triangle.fill")
+            } else if attention, state == .idle {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
             } else {
                 Image(
                     nsImage: state == .recording
@@ -83,6 +88,7 @@ struct MenuBarStatusIcon: View {
 
     private var accessibilityLabel: String {
         if processing, state == .idle { return "Better Meeting, processing recording" }
+        if attention, state == .idle { return "Better Meeting, needs attention" }
         return switch state {
         case .idle: "Better Meeting"
         case .preparing: "Better Meeting, preparing to record"
@@ -97,6 +103,8 @@ struct MenuBarStatusLabel: View {
     let state: AppState
     // Plain values rather than the model, so progress updates don't redraw the menu bar item.
     var processing = false
+    /// Permissions to grant or recordings to transcribe; beats the calendar preview.
+    var attention = false
     /// The elapsed time to show while recording, or nil to show the icon alone.
     var recordingTime: String?
     var processingFrame = 0
@@ -117,6 +125,8 @@ struct MenuBarStatusLabel: View {
             .font(.system(size: 13))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Better Meeting, recording, \(elapsed)")
+        } else if attention {
+            MenuBarStatusIcon(state: state, processing: processing, processingFrame: processingFrame, attention: true)
         } else if let event = previewEvent {
             let now = Date()
             let relative = event.relativeStart(at: now, compact: true)
@@ -130,7 +140,7 @@ struct MenuBarStatusLabel: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Better Meeting, next meeting \(event.title), \(relative)")
         } else {
-            MenuBarStatusIcon(state: state, processing: processing, processingFrame: processingFrame)
+            MenuBarStatusIcon(state: state, processing: processing, processingFrame: processingFrame, attention: attention)
         }
     }
 

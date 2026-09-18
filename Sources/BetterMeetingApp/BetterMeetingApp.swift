@@ -28,6 +28,7 @@ struct BetterMeetingApp: App {
         } label: {
             MenuBarStatusLabel(
                 calendar: model.calendar, state: model.state, processing: model.isProcessing,
+                attention: model.captureAccessNeedsAttention || !model.unfinishedRecordings.isEmpty,
                 recordingTime: model.menuBarRecordingTime ? model.elapsedText : nil,
                 processingFrame: processingFrame
             )
