@@ -68,11 +68,7 @@ struct ModelStorageView: View {
 
     /// A downloaded model reads "Downloaded" until the first refresh measures it.
     private func size(_ item: StoredModelInfo) -> String {
-        guard item.installed else { return "Not downloaded · about \(format(item.downloadBytes))" }
-        return item.sizeBytes > 0 ? format(item.sizeBytes) : "Downloaded"
-    }
-
-    private func format(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        guard item.installed else { return "Not downloaded · about \(ByteCountFormatter.string(fromByteCount: item.downloadBytes, countStyle: .file))" }
+        return item.sizeBytes > 0 ? ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file) : "Downloaded"
     }
 }
