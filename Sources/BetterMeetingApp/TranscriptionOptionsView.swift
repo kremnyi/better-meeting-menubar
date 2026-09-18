@@ -11,10 +11,14 @@ struct CaptureOptionsView: View {
     }
 
     /// The menu calls this on every open; the status read can block for seconds, so it lands after.
-    static func refreshLaunchAtLoginStatusInBackground() {
+    /// Pass the toggle's binding where the caller also shows the value.
+    static func refreshLaunchAtLoginStatusInBackground(updating state: Binding<SMAppService.Status>? = nil) {
         Task.detached(priority: .utility) {
             let status = SMAppService.mainApp.status
-            await MainActor.run { knownLaunchAtLoginStatus = status }
+            await MainActor.run {
+                knownLaunchAtLoginStatus = status
+                state?.wrappedValue = status
+            }
         }
     }
 
@@ -78,8 +82,7 @@ struct CaptureOptionsView: View {
         .onChange(of: model.speechSettings.model) { model.speechModelChanged() }
         .onChange(of: model.speechSettings.engine) { model.speechModelChanged() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Self.refreshLaunchAtLoginStatus()
-            launchAtLoginStatus = Self.knownLaunchAtLoginStatus
+            Self.refreshLaunchAtLoginStatusInBackground(updating: $launchAtLoginStatus)
             launchAtLoginError = nil
         }
     }
