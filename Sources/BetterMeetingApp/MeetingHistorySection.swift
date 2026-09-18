@@ -109,8 +109,13 @@ struct MeetingHistorySection: View {
         }
     }
 
-    static func dayTitle(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        if calendar.isDate(day, inSameDayAs: now) { return "Today" }
+    static func rowHelp(_ item: MeetingHistoryItem) -> String {
+        let action = item.needsTranscription ? "Open meeting folder" : "Open transcript"
+        guard item.totalBytes > 0 else { return action }
+        return action + " · " + ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file)
+    }
+
+    static func dayTitle(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> String {        if calendar.isDate(day, inSameDayAs: now) { return "Today" }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
            calendar.isDate(day, inSameDayAs: yesterday) {
             return "Yesterday"
@@ -178,7 +183,7 @@ struct MeetingHistorySection: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(item.needsTranscription ? "Open meeting folder" : "Open transcript")
+            .help(Self.rowHelp(item))
             .accessibilityLabel(item.needsTranscription
                 ? "Open \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard)), in Finder"
                 : "Open transcript of \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard))")
