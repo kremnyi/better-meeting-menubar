@@ -1,6 +1,6 @@
 cask "better-meeting" do
-  version "0.4.0"
-  sha256 "be2f9b2860cfb1871d20040bd9d095e5ee30b1b9c506fdc39f0ad21c1f49eded"
+  version "0.4.1"
+  sha256 "07180ad687b7207d05698ff12fb7956ef5293eb19f8bb15e71093e8c5cecb5a9"
 
   url "https://github.com/kremnyi/better-meeting-menubar/releases/download/v#{version}/Better-Meeting-#{version}-arm64.zip"
   name "Better Meeting"
