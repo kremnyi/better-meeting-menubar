@@ -10,6 +10,14 @@ struct CaptureOptionsView: View {
         knownLaunchAtLoginStatus = SMAppService.mainApp.status
     }
 
+    /// The menu calls this on every open; the status read can block for seconds, so it lands after.
+    static func refreshLaunchAtLoginStatusInBackground() {
+        Task.detached(priority: .utility) {
+            let status = SMAppService.mainApp.status
+            await MainActor.run { knownLaunchAtLoginStatus = status }
+        }
+    }
+
     @EnvironmentObject private var model: AppModel
     @State var advancedPresented = false
     @State var meetingsPresented = false

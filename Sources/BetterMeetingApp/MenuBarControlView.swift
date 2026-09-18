@@ -68,7 +68,7 @@ struct MenuBarControlView: View {
         .onAppear {
             model.refreshHistory()
             model.refreshCaptureAccess()
-            CaptureOptionsView.refreshLaunchAtLoginStatus()
+            CaptureOptionsView.refreshLaunchAtLoginStatusInBackground()
         }
         .onChange(of: model.completionMessage) { copiedTranscript = false }
         .onDisappear {
