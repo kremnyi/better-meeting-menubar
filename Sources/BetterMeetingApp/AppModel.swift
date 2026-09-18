@@ -744,6 +744,9 @@ final class AppModel: ObservableObject {
         let meetings = meetingsByRecency
         searchingHistory = true
         historySearchTask = Task.detached(priority: .userInitiated) { [weak self, library] in
+            // Coalesce keystrokes and refreshes; the task is cancelled and re-armed on each call.
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
             let matches = library.search(meetings, query: query)
             await self?.showSearchResults(matches)
         }

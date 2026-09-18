@@ -323,6 +323,7 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(model.historyQuery, "Product")
         model.cancelTranscription()
         await processing.value
+        await model.historyRefreshTask?.value
         await model.historySearchTask?.value
         XCTAssertEqual(model.state, .idle)
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Product sync"])
