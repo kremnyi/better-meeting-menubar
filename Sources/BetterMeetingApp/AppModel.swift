@@ -487,8 +487,8 @@ final class AppModel: ObservableObject {
 
     private func updateModelSetupProgress(_ progress: LocalTranscriptionProgress) {
         guard modelPreparationTask != nil, let step = progress.modelStep else { return }
-        modelSetupStatus = step.phase.statusText
-        modelSetupFraction = step.fraction
+        if modelSetupStatus != step.phase.statusText { modelSetupStatus = step.phase.statusText }
+        if Self.shownPercent(step.fraction) != Self.shownPercent(modelSetupFraction) { modelSetupFraction = step.fraction }
         if isProcessing,
            [.preparingModel, .downloadingModel, .loadingModel].contains(processingPhase) {
             updateTranscriptionProgress(progress)
@@ -1051,7 +1051,7 @@ final class AppModel: ObservableObject {
                 try await AudioExtractor.extract(from: recordingURL, to: audioURL) { [weak self] fraction in
                     Task { @MainActor [weak self] in
                         guard self?.processingPhase == .preparingAudio else { return }
-                        self?.processingFraction = fraction
+                        self?.setProcessingFraction(fraction)
                     }
                 }
             }
@@ -1100,8 +1100,9 @@ final class AppModel: ObservableObject {
                         Task { @MainActor [weak self] in
                             guard let self, self.processingPhase == .labelingSpeakers,
                                   !self.cancellingTranscription, fraction.isFinite else { return }
-                            self.processingFraction = min(max(fraction, 0), 1)
-                            self.processingStatusText = "Identifying speakers on this Mac…"
+                            self.setProcessingFraction(min(max(fraction, 0), 1))
+                            let statusText = "Identifying speakers on this Mac…"
+                            if self.processingStatusText != statusText { self.processingStatusText = statusText }
                         }
                     }
                 }
@@ -1261,6 +1262,16 @@ final class AppModel: ObservableObject {
     private func setProcessingPhase(_ phase: ProcessingPhase, fraction: Double? = nil) {
         processingPhase = phase
         processingStatusText = phase.statusText
+        setProcessingFraction(fraction)
+    }
+
+    /// Progress sources fire far more often than the integer-percent UI shows.
+    private static func shownPercent(_ fraction: Double?) -> Int? {
+        fraction.map { Int(($0 * 100).rounded()) }
+    }
+
+    private func setProcessingFraction(_ fraction: Double?) {
+        guard Self.shownPercent(fraction) != Self.shownPercent(processingFraction) else { return }
         processingFraction = fraction
     }
 

@@ -32,11 +32,11 @@ final class EventKitCalendarReader: CalendarReading {
     func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot {
         guard authorizationStatus == .fullAccess else { return CalendarSnapshot(calendars: [], events: []) }
         let store = store
-        if now.timeIntervalSince(lastRefreshSources) >= 60 {
-            lastRefreshSources = now
-            store.refreshSourcesIfNecessary()
-        }
+        // Decided here so the detached load below touches no mutable state.
+        let refreshSources = now.timeIntervalSince(lastRefreshSources) >= 60
+        if refreshSources { lastRefreshSources = now }
         return await Task.detached(priority: .userInitiated) {
+            if refreshSources { store.refreshSourcesIfNecessary() }
             let calendars = store.calendars(for: .event)
             let choices = calendars.map {
                 CalendarChoice(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title)
