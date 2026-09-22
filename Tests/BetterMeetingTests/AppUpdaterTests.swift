@@ -44,9 +44,11 @@ final class AppUpdaterTests: XCTestCase {
         let windows = NSApp.windows.count
         updates.updater(updater, willDownloadUpdate: item, with: NSMutableURLRequest(url: AppUpdater.releaseURL))
         XCTAssertEqual(updates.status, .downloading)
+        XCTAssertEqual(updates.actionTitle, "Download Update")
         XCTAssertFalse(updates.canPerformAction)
         updates.updater(updater, willExtractUpdate: item)
         XCTAssertEqual(updates.status, .preparing)
+        XCTAssertEqual(updates.actionTitle, "Download Update")
         var installations = 0
         XCTAssertTrue(updates.updater(updater, willInstallUpdateOnQuit: item) { installations += 1 })
         XCTAssertEqual(updates.status, .ready(item.displayVersionString))

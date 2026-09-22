@@ -65,7 +65,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     var actionTitle: String {
         if informationURL != nil { return "View details" }
         switch status {
-        case .available: return "Download Update"
+        case .available, .downloading, .preparing: return "Download Update"
         case .downloaded: return "Install Update"
         case .ready: return "Restart to Update"
         case .failed: return "Try Again"
