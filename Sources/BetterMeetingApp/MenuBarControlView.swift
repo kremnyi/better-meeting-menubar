@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarControlView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updates: AppUpdater
+    @Environment(\.colorScheme) private var colorScheme
     @State var captureOptionsPresented = false
     @State private var meetingOptionsPresented = false
     @State private var appSettingsPresented = false
@@ -242,9 +243,7 @@ struct MenuBarControlView: View {
 
     private var recordingContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(model.elapsedText)
-                .font(.system(size: 32, weight: .medium).monospacedDigit())
-                .contentTransition(.numericText())
+            RecordingElapsed(clock: model.recordingClock)
 
             TextField("Meeting name (optional)", text: $model.meetingTitle)
                 .textFieldStyle(.roundedBorder)
@@ -262,7 +261,8 @@ struct MenuBarControlView: View {
                     Label {
                         Text("No audio detected yet").fontWeight(.medium)
                     } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
                     }
                     Text("Check your microphone and meeting audio.")
                         .font(.caption)
@@ -431,7 +431,9 @@ struct MenuBarControlView: View {
         return VStack(spacing: 6) {
             Label(notice.text, systemImage: model.captureAccessSymbol)
                 .font(notice.isSecondary ? .caption : .callout)
-                .foregroundStyle(model.captureAccessNeedsAttention ? Color.orange : notice.isSecondary ? .secondary : .primary)
+                .foregroundStyle(model.captureAccessNeedsAttention
+                    ? (colorScheme == .dark ? Color.orange : Color.attentionOrange)
+                    : notice.isSecondary ? .secondary : .primary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
@@ -464,6 +466,16 @@ struct MenuBarControlView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Observes the clock alone, so 1 Hz ticks redraw only this text.
+private struct RecordingElapsed: View {
+    @ObservedObject var clock: RecordingClock
+
+    var body: some View {
+        Text(Timecode.compact(clock.elapsed))
+            .font(.system(size: 32, weight: .medium).monospacedDigit())
     }
 }
 

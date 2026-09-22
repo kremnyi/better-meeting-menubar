@@ -209,7 +209,7 @@ struct UpcomingMeetingView: View {
                         Text("Upcoming meetings").font(.callout.weight(.medium))
                         Spacer()
                         Button(action: configure) {
-                            Image(systemName: "calendar").frame(width: 24, height: 20)
+                            Image(systemName: "calendar").frame(width: 28, height: 24)
                         }
                             .buttonStyle(.borderless)
                             .accessibilityLabel("Meeting options")
@@ -270,7 +270,7 @@ struct UpcomingMeetingView: View {
                                             Button { record(event) } label: {
                                                 Image(systemName: "record.circle")
                                                     .font(.system(size: 16))
-                                                    .frame(width: 24, height: 24)
+                                                    .frame(width: 28, height: 28)
                                                     .contentShape(Rectangle())
                                             }
                                             .buttonStyle(.borderless)

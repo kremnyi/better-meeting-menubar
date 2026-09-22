@@ -26,9 +26,10 @@ struct BetterMeetingApp: App {
                 .environmentObject(model.updates)
         } label: {
             MenuBarStatusLabel(
-                calendar: model.calendar, spinner: spinner, state: model.state, processing: model.isProcessing,
+                calendar: model.calendar, spinner: spinner, clock: model.recordingClock,
+                state: model.state, processing: model.isProcessing,
                 attention: model.captureAccessNeedsAttention || !model.unfinishedRecordings.isEmpty,
-                recordingTime: model.menuBarRecordingTime ? model.elapsedText : nil
+                showRecordingTime: model.menuBarRecordingTime
             )
         }
         .menuBarExtraStyle(.window)

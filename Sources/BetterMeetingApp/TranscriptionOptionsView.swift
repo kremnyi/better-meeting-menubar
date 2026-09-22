@@ -157,6 +157,7 @@ struct CaptureOptionsView: View {
                 .frame(maxWidth: .infinity)
                 .disabled(model.captureSettingsLocked)
                 .help("The entire selected display is recorded")
+                .accessibilityLabel("Display")
             }
             GridRow {
                 Text("Microphone")
@@ -173,6 +174,7 @@ struct CaptureOptionsView: View {
                 .frame(maxWidth: .infinity)
                 .disabled(model.captureSettingsLocked)
                 .help("Recorded along with system audio")
+                .accessibilityLabel("Microphone")
             }
             GridRow {
                 Text("Video")
@@ -400,6 +402,7 @@ struct AdvancedTranscriptionView: View {
                     .labelsHidden()
                     .frame(maxWidth: .infinity)
                     .disabled(modelSelectionDisabled)
+                    .accessibilityLabel("Engine")
                 }
                 GridRow {
                     Text("")
@@ -418,6 +421,7 @@ struct AdvancedTranscriptionView: View {
                         .labelsHidden()
                         .frame(maxWidth: .infinity)
                         .disabled(modelSelectionDisabled)
+                        .accessibilityLabel("Whisper model")
                     }
                     GridRow {
                         Text("")
@@ -507,7 +511,7 @@ private struct OptionsPageHeader: View {
             Button(action: back) {
                 Image(systemName: "chevron.left")
                     .font(.callout.weight(.semibold))
-                    .frame(width: 20, height: 20)
+                    .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

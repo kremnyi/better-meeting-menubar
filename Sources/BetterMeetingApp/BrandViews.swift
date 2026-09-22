@@ -72,7 +72,7 @@ struct MenuBarStatusIcon: View {
                 Image(systemName: "exclamationmark.triangle.fill")
             } else if attention, state == .idle {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
             } else {
                 Image(
                     nsImage: state == .recording
@@ -126,14 +126,15 @@ final class MenuBarSpinner: ObservableObject {
 struct MenuBarStatusLabel: View {
     @ObservedObject var calendar: CalendarIntegration
     @ObservedObject var spinner: MenuBarSpinner
+    @ObservedObject var clock: RecordingClock
     @Environment(\.colorScheme) private var colorScheme
     let state: AppState
     // Plain values rather than the model, so progress updates don't redraw the menu bar item.
     var processing = false
     /// Permissions to grant or recordings to transcribe; beats the calendar preview.
     var attention = false
-    /// The elapsed time to show while recording, or nil to show the icon alone.
-    var recordingTime: String?
+    /// Whether to show elapsed time beside the icon while recording.
+    var showRecordingTime = false
 
     // Menu bar space is scarce and macOS 26 sizes MenuBarExtra from the label's
     // unbounded ideal width, so the preview shows only actionable meetings
@@ -142,7 +143,8 @@ struct MenuBarStatusLabel: View {
     static let previewLeadTime: TimeInterval = 60 * 60
 
     var body: some View {
-        if state == .recording, let elapsed = recordingTime {
+        if state == .recording, showRecordingTime {
+            let elapsed = Timecode.compact(clock.elapsed)
             HStack(spacing: 5) {
                 MenuBarStatusIcon(state: state)
                 Text(elapsed)
@@ -197,4 +199,6 @@ extension Color {
     static let signalCoral = Color(red: 0.85, green: 0.16, blue: 0.13)
     /// The original bright coral; AA on the dark menu bar (5.66:1) but not on light chrome.
     static let signalCoralBright = Color(red: 0.96, green: 0.25, blue: 0.22)
+    /// Attention icons: ≥3:1 non-text contrast on light backgrounds; system orange on dark (7.6:1).
+    static let attentionOrange = Color(red: 0.85, green: 0.45, blue: 0.0)
 }

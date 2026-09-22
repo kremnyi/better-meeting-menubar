@@ -50,7 +50,7 @@ struct MeetingHistorySection: View {
                         .accessibilityLabel("Searching meetings")
                 }
                 Button(action: model.openMeetingsFolder) {
-                    Image(systemName: "folder").frame(width: 24, height: 20)
+                    Image(systemName: "folder").frame(width: 28, height: 24)
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Open meetings folder")

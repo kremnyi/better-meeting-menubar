@@ -31,11 +31,22 @@ private extension LocalTranscriptionProgress {
     }
 }
 
+/// Recording elapsed time, isolated so 1 Hz ticks redraw only the views that show it
+/// (the same pattern as AudioMeters and MenuBarSpinner).
+@MainActor
+final class RecordingClock: ObservableObject {
+    @Published var elapsed: TimeInterval = 0
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published var meetingTitle = ""
     @Published private(set) var state: AppState = .idle { didSet { refreshCaptureAccess() } }
-    @Published private(set) var elapsed: TimeInterval = 0
+    let recordingClock = RecordingClock()
+    var elapsed: TimeInterval {
+        get { recordingClock.elapsed }
+        set { recordingClock.elapsed = newValue }
+    }
     let meters = AudioMeters()
     @Published private(set) var audioWarning = false
     private(set) var recordingID: UUID?
@@ -237,10 +248,6 @@ final class AppModel: ObservableObject {
             self?.captureStoppedExternally(with: error)
         }
         refreshHistory()
-    }
-
-    var elapsedText: String {
-        Timecode.compact(elapsed)
     }
 
     /// Screen Recording and microphone access. Previews replace it to show the granted state.

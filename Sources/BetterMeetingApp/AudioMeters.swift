@@ -15,6 +15,7 @@ final class AudioMeters: ObservableObject {
 
 struct AudioMetersView: View {
     @ObservedObject var meters: AudioMeters
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 6) {
@@ -33,7 +34,9 @@ struct AudioMetersView: View {
                 .overlay(alignment: .leading) {
                     GeometryReader { proxy in
                         Capsule()
-                            .fill(Color.green)
+                            .fill(colorScheme == .dark
+                                ? Color.green
+                                : Color(red: 0.13, green: 0.60, blue: 0.22))
                             .frame(width: proxy.size.width * min(max(level, 0), 1))
                     }
                 }
