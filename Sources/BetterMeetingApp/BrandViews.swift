@@ -98,8 +98,35 @@ struct MenuBarStatusIcon: View {
     }
 }
 
+/// Frames for the menu-bar processing spinner. The timer lives here so 10 Hz
+/// updates redraw the label that observes this object, not the whole App scene.
+@MainActor
+final class MenuBarSpinner: ObservableObject {
+    @Published private(set) var frame = 0
+    private var timer: Timer?
+
+    func setAnimating(_ animate: Bool) {
+        timer?.invalidate()
+        timer = nil
+        frame = 0
+        guard animate else { return }
+        let count = BrandAssets.processingMenuBarFrames.count
+        // Added to the main run loop, so the callback already runs on the main actor.
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.frame = (self.frame + 1) % count
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+}
+
 struct MenuBarStatusLabel: View {
     @ObservedObject var calendar: CalendarIntegration
+    @ObservedObject var spinner: MenuBarSpinner
+    @Environment(\.colorScheme) private var colorScheme
     let state: AppState
     // Plain values rather than the model, so progress updates don't redraw the menu bar item.
     var processing = false
@@ -107,7 +134,6 @@ struct MenuBarStatusLabel: View {
     var attention = false
     /// The elapsed time to show while recording, or nil to show the icon alone.
     var recordingTime: String?
-    var processingFrame = 0
 
     // Menu bar space is scarce and macOS 26 sizes MenuBarExtra from the label's
     // unbounded ideal width, so the preview shows only actionable meetings
@@ -126,7 +152,7 @@ struct MenuBarStatusLabel: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Better Meeting, recording, \(elapsed)")
         } else if attention {
-            MenuBarStatusIcon(state: state, processing: processing, processingFrame: processingFrame, attention: true)
+            MenuBarStatusIcon(state: state, processing: processing, processingFrame: spinner.frame, attention: true)
         } else if let event = previewEvent {
             let now = Date()
             let relative = event.relativeStart(at: now, compact: true)
@@ -134,13 +160,15 @@ struct MenuBarStatusLabel: View {
                 Image(nsImage: BrandAssets.menuBarIcon)
                     .frame(width: 18, height: 18)
                 Text(relative)
-                    .foregroundStyle(event.scheduledStart <= now ? Color.signalCoral : Color.primary)
+                    .foregroundStyle(event.scheduledStart <= now
+                        ? (colorScheme == .dark ? Color.signalCoralBright : Color.signalCoral)
+                        : Color.primary)
             }
             .font(.system(size: 13))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Better Meeting, next meeting \(event.title), \(relative)")
         } else {
-            MenuBarStatusIcon(state: state, processing: processing, processingFrame: processingFrame, attention: attention)
+            MenuBarStatusIcon(state: state, processing: processing, processingFrame: spinner.frame, attention: attention)
         }
     }
 
@@ -165,5 +193,8 @@ struct MenuBarStatusLabel: View {
 }
 
 extension Color {
-    static let signalCoral = Color(red: 0.96, green: 0.25, blue: 0.22)
+    /// WCAG AA (≥4.5:1) with white button labels and on light backgrounds.
+    static let signalCoral = Color(red: 0.85, green: 0.16, blue: 0.13)
+    /// The original bright coral; AA on the dark menu bar (5.66:1) but not on light chrome.
+    static let signalCoralBright = Color(red: 0.96, green: 0.25, blue: 0.22)
 }

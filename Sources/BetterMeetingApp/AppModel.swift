@@ -42,7 +42,15 @@ final class AppModel: ObservableObject {
     weak var menuWindow: NSWindow?
     @Published private(set) var statusText = "Ready to record your display and audio."
     @Published private(set) var errorMessage: String?
-    @Published private(set) var completedFolder: URL?
+    @Published private(set) var completedFolder: URL? {
+        didSet {
+            // Checked once when the folder is set; the menu reads the flag on every redraw.
+            hasCompletedTranscript = completedFolder.map {
+                FileManager.default.fileExists(atPath: $0.appendingPathComponent("transcript.md").path)
+            } ?? false
+        }
+    }
+    private(set) var hasCompletedTranscript = false
     @Published private(set) var outputRoot: URL
     @Published private(set) var privacyPermission: PrivacyPermission?
     @Published private(set) var processingFraction: Double?

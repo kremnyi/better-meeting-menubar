@@ -5,8 +5,7 @@ import UserNotifications
 struct BetterMeetingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var processingFrame = 0
-    @State private var iconTimer: Timer?
+    @StateObject private var spinner = MenuBarSpinner()
     @StateObject private var model: AppModel
 
     init() {
@@ -27,10 +26,9 @@ struct BetterMeetingApp: App {
                 .environmentObject(model.updates)
         } label: {
             MenuBarStatusLabel(
-                calendar: model.calendar, state: model.state, processing: model.isProcessing,
+                calendar: model.calendar, spinner: spinner, state: model.state, processing: model.isProcessing,
                 attention: model.captureAccessNeedsAttention || !model.unfinishedRecordings.isEmpty,
-                recordingTime: model.menuBarRecordingTime ? model.elapsedText : nil,
-                processingFrame: processingFrame
+                recordingTime: model.menuBarRecordingTime ? model.elapsedText : nil
             )
         }
         .menuBarExtraStyle(.window)
@@ -44,16 +42,7 @@ struct BetterMeetingApp: App {
             model.updates.resumePendingInstallation()
         }
         .onChange(of: model.isProcessing && model.state == .idle && !reduceMotion, initial: true) { _, animate in
-            iconTimer?.invalidate()
-            iconTimer = nil
-            processingFrame = 0
-            if animate {
-                let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
-                    processingFrame = (processingFrame + 1) % BrandAssets.processingMenuBarFrames.count
-                }
-                RunLoop.main.add(timer, forMode: .common)
-                iconTimer = timer
-            }
+            spinner.setAnimating(animate)
         }
     }
 }

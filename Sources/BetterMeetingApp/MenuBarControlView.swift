@@ -56,6 +56,7 @@ struct MenuBarControlView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
+        // Fixed so long titles wrap instead of stretching the menu; layout tests pin this width.
         .frame(width: 304)
         .background(MenuWindowReader(model: model).frame(width: 0, height: 0).accessibilityHidden(true))
         .sheet(item: $retranscribingMeeting) { meeting in
@@ -187,7 +188,7 @@ struct MenuBarControlView: View {
 
     @ViewBuilder
     private func completionActions(_ folder: URL) -> some View {
-        if FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path) {
+        if model.hasCompletedTranscript {
             Button("Open Transcript") { AppModel.openTranscript(in: folder) }
             Button(copiedTranscript ? "Copied" : "Copy Transcript") {
                 do {

@@ -78,6 +78,7 @@ struct CaptureOptionsView: View {
         .font(.callout)
         .controlSize(.small)
         .padding(16)
+        // Fixed so long strings wrap instead of stretching the panel; layout tests pin this width.
         .frame(width: 360, alignment: .leading)
         .onChange(of: model.speechSettings.model) { model.speechModelChanged() }
         .onChange(of: model.speechSettings.engine) { model.speechModelChanged() }

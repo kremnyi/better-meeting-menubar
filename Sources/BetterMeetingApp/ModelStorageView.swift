@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ModelStorageView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pendingDelete: StoredModelInfo?
 
     private var busy: Bool {
@@ -48,7 +49,8 @@ struct ModelStorageView: View {
                 pendingDelete = nil
                 Task { await model.deleteStoredModel(item) }
             }
-            .foregroundStyle(.red)
+            // System red fails AA on white in light mode; darken there, keep it in dark mode.
+            .foregroundStyle(colorScheme == .dark ? Color.red : Color(red: 0.70, green: 0.13, blue: 0.12))
         } else if let fraction = model.modelDownloads[item.id] {
             ProgressView(value: fraction)
                 .progressViewStyle(.linear)

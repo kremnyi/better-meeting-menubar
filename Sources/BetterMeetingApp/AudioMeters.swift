@@ -24,7 +24,8 @@ struct AudioMetersView: View {
     }
 
     private func meter(_ label: String, level: Double) -> some View {
-        HStack(spacing: 8) {
+        let percent = Int((level * 100).rounded())
+        return HStack(spacing: 8) {
             Text(label).font(.caption).frame(width: 78, alignment: .leading)
             // Empty when silent; a progress bar's rounded start looked like a slider knob.
             Capsule()
@@ -39,7 +40,7 @@ struct AudioMetersView: View {
                 .frame(height: 5)
                 .accessibilityElement()
                 .accessibilityLabel(label)
-                .accessibilityValue(level > 0 ? "Audio detected" : "No audio detected")
+                .accessibilityValue(percent > 0 ? "\(percent) percent" : "No audio detected")
         }
     }
 }
