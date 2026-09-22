@@ -350,6 +350,8 @@ final class RecoveryTests: XCTestCase {
         ] {
             model.fail(error)
             XCTAssertEqual(model.state, .failed)
+            XCTAssertNotNil(model.errorDetails, "Failures keep the error domain for the Details disclosure")
+            XCTAssertEqual(model.primaryButtonSymbol, "arrow.clockwise", "A recovery action never shows the record dot")
             XCTAssertEqual(model.privacyPermission, permission)
             XCTAssertFalse(model.captureAccessNotice.isSecondary, "Blocked access must not look like quiet ready status")
             XCTAssertEqual(model.primaryButtonTitle, title, "Keep the existing restart or retry as the secondary action")

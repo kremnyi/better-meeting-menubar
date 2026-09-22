@@ -89,7 +89,8 @@ struct CaptureOptionsView: View {
     }
 
     private var appSettings: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("General").font(.headline)
             Toggle("Launch at login", isOn: Binding(
                 get: { launchAtLoginStatus == .enabled },
                 set: setLaunchAtLogin
@@ -116,7 +117,7 @@ struct CaptureOptionsView: View {
             }
             Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
                 .help("Shows the elapsed time beside the menu bar icon while recording")
-            Divider()
+            Text("Updates").font(.headline)
             Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
                 .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
             Toggle("Include beta releases", isOn: $model.betaUpdates)
@@ -391,6 +392,12 @@ struct AdvancedTranscriptionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text("Applies to future transcriptions.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HelpPopover(text: "The engine picks speed or accuracy; the model trades memory for quality; vocabulary and decoding help Whisper with names and noisy audio. Defaults suit most meetings.")
+                Spacer(minLength: 0)
+            }
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                 GridRow {
                     Text("Engine")
@@ -496,6 +503,28 @@ struct AdvancedTranscriptionView: View {
             .frame(width: 76)
             .accessibilityLabel(title)
             .help(help)
+        }
+    }
+}
+
+/// A visible ? beside advanced controls; `.help()` tooltips alone stay hidden until hover.
+private struct HelpPopover: View {
+    let text: String
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing = true } label: {
+            Image(systemName: "questionmark.circle")
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Help")
+        .popover(isPresented: $showing) {
+            Text(text)
+                .font(.callout)
+                .textSelection(.enabled)
+                .frame(maxWidth: 260)
+                .padding(12)
         }
     }
 }

@@ -59,6 +59,7 @@ struct MeetingHistorySection: View {
 
             if model.hasMeetings {
                 MeetingSearchField(text: $model.historyQuery, focusRequest: searchFocusRequest)
+                    .help("Search meetings (⌘F)")
                     .frame(height: 24)
                     .background {
                         // Invisible target for ⌘F; the search field itself is AppKit.

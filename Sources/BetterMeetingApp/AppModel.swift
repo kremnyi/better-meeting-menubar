@@ -52,7 +52,15 @@ final class AppModel: ObservableObject {
     private(set) var recordingID: UUID?
     weak var menuWindow: NSWindow?
     @Published private(set) var statusText = "Ready to record your display and audio."
-    @Published private(set) var errorMessage: String?
+    @Published private(set) var lastError: Error?
+    /// The failure text shown in the menu: the error's own description when it has a friendly one.
+    var errorMessage: String? {
+        lastError.map { ($0 as? LocalizedError)?.errorDescription ?? $0.localizedDescription }
+    }
+    /// The failed error's domain and code, shown behind Details in the failure panel.
+    var errorDetails: String? {
+        lastError.map { error in let ns = error as NSError; return "\(ns.domain) \(ns.code)" }
+    }
     @Published private(set) var completedFolder: URL? {
         didSet {
             // Checked once when the folder is set; the menu reads the flag on every redraw.
@@ -285,7 +293,7 @@ final class AppModel: ObservableObject {
         if state == .recording {
             return "stop.fill"
         }
-        if state == .failed, privacyPermission == .screenRecording || retryableMeeting != nil {
+        if state == .failed {
             return "arrow.clockwise"
         }
         return "record.circle"
@@ -581,7 +589,7 @@ final class AppModel: ObservableObject {
         processingFolder = item.folderURL
         processingTitle = item.title
         if !isCapturing { elapsed = item.duration }
-        errorMessage = nil
+        lastError = nil
         privacyPermission = nil
         setProcessingPhase(.preparingAudio, fraction: 0)
     }
@@ -607,7 +615,7 @@ final class AppModel: ObservableObject {
         processingFolder = meeting.folderURL
         elapsed = meeting.duration
         completionMessage = nil
-        errorMessage = nil
+        lastError = nil
         setProcessingPhase(.extractingScreens, fraction: 0)
         processingTask = Task {
             var succeeded = false
@@ -649,7 +657,7 @@ final class AppModel: ObservableObject {
     func dismissFailure() {
         guard state == .failed else { return }
         state = .idle
-        errorMessage = nil
+        lastError = nil
         privacyPermission = nil
         meetingTitle = ""
         refreshHistory()
@@ -865,7 +873,7 @@ final class AppModel: ObservableObject {
         elapsed = 0
         state = .preparing
         statusText = "Checking screen and microphone access…"
-        errorMessage = nil
+        lastError = nil
         completedFolder = nil
         privacyPermission = nil
         activeFolder = nil
@@ -1044,7 +1052,7 @@ final class AppModel: ObservableObject {
         meetingTitle = ""
         titleWasProvided = true
         if state == .idle {
-            errorMessage = nil
+            lastError = nil
             privacyPermission = nil
         }
     }
@@ -1298,7 +1306,7 @@ final class AppModel: ObservableObject {
             processingFraction = nil
             processingPhase = nil
         }
-        errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        lastError = error
         if let folder = processingFolder ?? activeFolder {
             completedFolder = folder
         }

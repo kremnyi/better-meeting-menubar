@@ -31,11 +31,7 @@ struct MeetingOptionsView: View {
                     accessRequest
                 }
                 if let error = calendar.errorMessage {
-                    Label {
-                        Text(error).fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-                    }
+                    ErrorPanel(message: error)
                 }
             }
             .disabled(!calendar.enabled)

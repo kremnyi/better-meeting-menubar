@@ -17,9 +17,7 @@ struct ModelStorageView: View {
             }
             Divider()
             if let error = model.modelDownloadError {
-                Text(error)
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                ErrorPanel(message: error)
             }
             Button("Show models folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([LocalTranscriber.defaultDownloadBase])

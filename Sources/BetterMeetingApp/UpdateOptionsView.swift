@@ -29,9 +29,7 @@ struct UpdateOptionsView: View {
             .frame(minHeight: 22)
 
             if let error = updates.errorMessage {
-                Text(error).font(.caption).foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                ErrorPanel(message: error)
             }
             if updates.installationWaiting {
                 Text("The update will install when this meeting finishes.")

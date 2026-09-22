@@ -378,7 +378,7 @@ struct MenuBarControlView: View {
             }
 
             if let error = model.errorMessage {
-                errorView(error)
+                ErrorPanel(message: error, title: model.failureTitle, details: model.errorDetails)
             }
 
             if let permission = model.privacyPermission {
@@ -444,28 +444,6 @@ struct MenuBarControlView: View {
                     .controlSize(.small)
             }
         }
-    }
-
-    private func errorView(_ message: String) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                if let title = model.failureTitle {
-                    Text(title)
-                        .fontWeight(.medium)
-                }
-                Text(message)
-                    .foregroundStyle(model.failureTitle == nil ? .primary : .secondary)
-                    .textSelection(.enabled)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-        }
-        .font(.callout)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
