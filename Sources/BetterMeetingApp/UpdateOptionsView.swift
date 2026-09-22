@@ -18,7 +18,7 @@ struct UpdateOptionsView: View {
                 if updateInProgress {
                     ProgressView().controlSize(.small).accessibilityHidden(true)
                     Text(updates.status.message)
-                        .foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.secondary)
                 } else {
                     Spacer(minLength: 8)
                     Text(updates.status.message)
