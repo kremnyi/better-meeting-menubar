@@ -30,7 +30,7 @@ enum SpeechModel: String, CaseIterable, Codable, Sendable {
     var label: String {
         switch self {
         case .small: "Small"
-        case .turbo: "Large v3 Turbo (default)"
+        case .turbo: "Large v3 Turbo"
         case .large: "Large v3"
         }
     }

@@ -74,7 +74,7 @@ final class ModelStorageTests: XCTestCase {
         let models = LocalTranscriber.storedModels(in: base)
 
         XCTAssertEqual(models.map(\.title), [
-            "Whisper Small", "Whisper Large v3 Turbo (default)", "Whisper Large v3", "Parakeet v3", "Speaker labels",
+            "Whisper Small", "Whisper Large v3 Turbo", "Whisper Large v3", "Parakeet v3", "Speaker labels",
         ])
         let small = try XCTUnwrap(models.first)
         XCTAssertTrue(small.installed)

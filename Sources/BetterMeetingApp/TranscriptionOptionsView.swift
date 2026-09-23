@@ -422,7 +422,7 @@ struct AdvancedTranscriptionView: View {
                         Text("Model")
                         Picker("Whisper model", selection: $settings.model) {
                             ForEach(SpeechModel.allCases, id: \.self) { model in
-                                Text(model.label).tag(model)
+                                Text(model == .turbo ? "\(model.label) (default)" : model.label).tag(model)
                             }
                         }
                         .labelsHidden()
