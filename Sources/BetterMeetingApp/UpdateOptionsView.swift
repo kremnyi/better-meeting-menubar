@@ -13,18 +13,16 @@ struct UpdateOptionsView: View {
             HStack(spacing: 8) {
                 Button(updates.actionTitle) { updates.performAction() }
                     .disabled(!updates.canPerformAction || version == nil)
+                    .fixedSize()
                     .opacity(updates.status == .installing ? 0 : 1)
                     .accessibilityHidden(updates.status == .installing)
                 if updateInProgress {
                     ProgressView().controlSize(.small).accessibilityHidden(true)
-                    Text(updates.status.message)
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Spacer(minLength: 8)
-                    Text(updates.status.message)
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 8)
+                Text(updates.status.message)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(minHeight: 22)
 
