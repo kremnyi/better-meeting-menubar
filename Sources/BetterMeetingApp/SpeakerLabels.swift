@@ -1,9 +1,8 @@
 import Foundation
 import SpeakerKit
-import WhisperKit
 
 enum SpeakerLabels {
-    struct Turn: Codable, Equatable, Sendable {
+    struct Turn: Codable, Sendable {
         let start: Double
         let end: Double
         let speaker: Int

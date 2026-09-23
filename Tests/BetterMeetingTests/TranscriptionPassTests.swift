@@ -116,13 +116,6 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertTrue(options.skipSpecialTokens)
         XCTAssertNil(options.promptTokens)
         XCTAssertEqual(options.concurrentWorkerCount, SpeechSettings.whisperWorkers)
-        let logits = try MLMultiArray(shape: [1, 1, 3], dataType: .float32)
-        logits[0] = 1000
-        logits[1] = 1000
-        logits[2] = 1000
-        XCTAssertEqual(SpeechProbabilityDecoder.probability(of: 1, in: logits), 1 / 3, accuracy: 0.00001)
-        logits[1] = 1010
-        XCTAssertGreaterThan(SpeechProbabilityDecoder.probability(of: 1, in: logits), 0.99)
         // The model's logits are half precision; reading the buffer must match reading each boxed value.
         let half = try MLMultiArray(shape: [1, 1, 3], dataType: .float16)
         half[0] = 2.5

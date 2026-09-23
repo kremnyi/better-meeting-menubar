@@ -36,8 +36,6 @@
 	<string>Better Meeting records your microphone so your side of the meeting is included.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Better Meeting records the selected display and meeting audio to create a local recording and transcript.</string>
-	<key>SUAllowsAutomaticUpdates</key>
-	<true/>
 	<key>SUAutomaticallyUpdate</key>
 	<false/>
 	<key>SUEnableAutomaticChecks</key>

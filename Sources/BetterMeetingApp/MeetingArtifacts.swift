@@ -230,13 +230,13 @@ enum MeetingArtifacts {
         return settings
     }
 
+    private static func hasMedia(in folder: URL) -> Bool {
+        ["recording.mp4", "audio.m4a"].contains { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
+    }
+
     // A folder without media holds nothing recoverable; drop it after a failed start.
-    @discardableResult
     static func removeFolderWithoutMedia(_ folder: URL) -> Bool {
-        let files = ["recording.mp4", "audio.m4a"]
-        guard !files.contains(where: {
-            FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
-        }) else { return false }
+        guard !hasMedia(in: folder) else { return false }
         do {
             try FileManager.default.removeItem(at: folder)
             return true
@@ -259,10 +259,7 @@ enum MeetingArtifacts {
             FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
         }
         let complete = manifest != nil && manifest?.transcriptionComplete != false && hasTranscripts
-        let hasRecording = ["recording.mp4", "audio.m4a"].contains {
-            FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
-        }
-        guard complete || hasRecording else { return nil }
+        guard complete || hasMedia(in: folder) else { return nil }
 
         let nameParts = folder.lastPathComponent.components(separatedBy: " — ")
 
@@ -352,13 +349,10 @@ enum MeetingActionError: LocalizedError {
 enum Timecode {
     /// "4:05" under an hour and "1:02:33" after, for clocks that tick.
     static func compact(_ interval: TimeInterval) -> String {
-        let seconds = max(0, Int(interval.rounded(.down)))
-        let hours = seconds / 3_600
-        let minutes = (seconds % 3_600) / 60
-        let remainder = seconds % 60
-        return hours > 0
-            ? String(format: "%d:%02d:%02d", hours, minutes, remainder)
-            : String(format: "%d:%02d", minutes, remainder)
+        let seconds = max(0, Int(interval))
+        return seconds < 3_600
+            ? String(format: "%d:%02d", seconds / 60, seconds % 60)
+            : String(format: "%d:%02d:%02d", seconds / 3_600, seconds / 60 % 60, seconds % 60)
     }
 
     /// "34 sec", "12 min", or "1 hr, 5 min", for meeting lengths in lists.

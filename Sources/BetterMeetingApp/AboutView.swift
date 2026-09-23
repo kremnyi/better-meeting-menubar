@@ -71,11 +71,10 @@ struct AboutView: View {
 
     private struct LinkRow: View {
         let link: AboutLink
-        @Environment(\.openURL) private var openURL
         @State private var hovering = false
 
         var body: some View {
-            Button { openURL(link.url) } label: {
+            Link(destination: link.url) {
                 HStack(spacing: 10) {
                     Image(systemName: link.systemImage)
                         .foregroundStyle(.secondary)

@@ -483,10 +483,9 @@ private final class CalendarReaderFixture: CalendarReading {
     var calendars = [CalendarChoice(id: "fixture-calendar", title: "Work", account: "Example account")]
     var beforeReturn: (() async -> Void)?
 
-    func requestAccess() async throws -> Bool {
+    func requestAccess() async throws {
         requests += 1
         authorizationStatus = .fullAccess
-        return true
     }
 
     func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot {

@@ -17,7 +17,7 @@ struct CalendarSnapshot: Sendable {
 @MainActor
 protocol CalendarReading {
     var authorizationStatus: EKAuthorizationStatus { get }
-    func requestAccess() async throws -> Bool
+    func requestAccess() async throws
     func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot
 }
 
@@ -27,7 +27,7 @@ final class EventKitCalendarReader: CalendarReading {
     private var lastRefreshSources = Date.distantPast
     var authorizationStatus: EKAuthorizationStatus { EKEventStore.authorizationStatus(for: .event) }
 
-    func requestAccess() async throws -> Bool { try await store.requestFullAccessToEvents() }
+    func requestAccess() async throws { _ = try await store.requestFullAccessToEvents() }
 
     func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot {
         guard authorizationStatus == .fullAccess else { return CalendarSnapshot(calendars: [], events: []) }
@@ -141,7 +141,7 @@ final class CalendarIntegration: ObservableObject {
         errorMessage = nil
         defer { requestingAccess = false }
         do {
-            _ = try await reader.requestAccess()
+            try await reader.requestAccess()
         } catch {
             if enabled { errorMessage = "Couldn’t access calendars. Try again or check Calendar privacy settings." }
         }

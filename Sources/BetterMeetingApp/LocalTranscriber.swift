@@ -231,7 +231,6 @@ actor LocalTranscriber {
     }
 
     func downloadParakeet(progress: @escaping @Sendable (Double) -> Void) async throws {
-        guard !Self.cachedParakeetModels(in: downloadBase) else { return }
         _ = try await AsrModels.download(
             to: Self.parakeetDirectory(in: downloadBase),
             version: Self.parakeetVersion,

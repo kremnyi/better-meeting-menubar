@@ -205,7 +205,7 @@ final class MeetingActionTests: XCTestCase {
     }
 
     @MainActor
-    func testCopyUsesSavedMarkdownAndKeepsClipboardOnReadFailure() async throws {
+    func testCopyUsesSavedMarkdownAndKeepsClipboardOnReadFailure() throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingActions")
         let pasteboard = NSPasteboard(name: NSPasteboard.Name(suite))
         defer {
@@ -214,17 +214,13 @@ final class MeetingActionTests: XCTestCase {
         }
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Copy me", recordedAt: date)
-        try MeetingArtifacts.write(title: "Copy me", recordedAt: date, duration: 0, segments: [], to: folder)
-        let model = AppModel(defaults: defaults)
-        await model.historyRefreshTask?.value
-        let item = try XCTUnwrap(model.transcriptionHistory.first)
         let markdownURL = folder.appendingPathComponent("transcript.md")
         let text = "# My notes\n\nAn edited transcript.\n"
         try text.write(to: markdownURL, atomically: true, encoding: .utf8)
-        try AppModel.copyTranscript(in: item.folderURL, to: pasteboard)
+        try AppModel.copyTranscript(in: folder, to: pasteboard)
         XCTAssertEqual(pasteboard.string(forType: .string), text)
         try FileManager.default.removeItem(at: markdownURL)
-        XCTAssertThrowsError(try AppModel.copyTranscript(in: item.folderURL, to: pasteboard))
+        XCTAssertThrowsError(try AppModel.copyTranscript(in: folder, to: pasteboard))
         XCTAssertEqual(pasteboard.string(forType: .string), text)
     }
 

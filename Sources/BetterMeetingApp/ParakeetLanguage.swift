@@ -1,5 +1,3 @@
-import Foundation
-
 /// Parakeet v3 returns no per-segment language, so transcripts and bundles lose
 /// their language tags. Tags the uk/ru/en mix from script and function-word
 /// evidence; inconclusive segments stay untagged.

@@ -115,9 +115,7 @@ struct MeetingOptionsView: View {
             .disabled(calendar.requestingAccess)
         } else {
             Button("Open Calendar Privacy Settings…") {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
-                    NSWorkspace.shared.open(url)
-                }
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
             }
         }
     }
@@ -175,9 +173,7 @@ private struct CalendarReminderOptionsView: View {
                     .padding(.leading, 18)
                 HStack {
                     Button("Notification Settings…") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
-                            NSWorkspace.shared.open(url)
-                        }
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
                     }
                     Button("Retry") { Task { await calendar.setNotifyAtStart(true) } }
                         .disabled(reminders.requestingAccess)
@@ -331,9 +327,7 @@ struct UpcomingMeetingView: View {
     }
 
     private func openCalendar() {
-        if let url = URL(string: "ical://") {
-            NSWorkspace.shared.open(url)
-        }
+        NSWorkspace.shared.open(URL(string: "ical://")!)
     }
 }
 

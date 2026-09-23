@@ -90,7 +90,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
             action()
         } else {
             errorMessage = nil
-            status = .checking
             updater.checkForUpdates()
         }
     }

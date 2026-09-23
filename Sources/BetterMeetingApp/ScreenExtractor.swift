@@ -5,7 +5,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import Vision
 
-struct ScreenEvent: Codable, Equatable, Sendable {
+struct ScreenEvent: Codable, Sendable {
     let time: TimeInterval
     let added: [String]
     var screenshot: String?

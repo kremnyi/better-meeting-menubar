@@ -1199,17 +1199,11 @@ final class AppModel: ObservableObject {
                 refreshHistory()
                 return false
             }
-            failProcessing(error, folder: run.folder)
+            // ponytail: background failure while recording is not shown as its own screen.
+            if state == .idle { fail(error) }
             await MeetingNotifications.post(title: run.title, folder: run.folder, failed: true)
             return false
         }
-    }
-
-    // ponytail: background failure while recording is not shown as its own screen.
-    private func failProcessing(_ error: Error, folder: URL) {
-        completedFolder = folder
-        guard state == .idle else { return }
-        fail(error)
     }
 
     func recordingDidStart(at startDate: Date) {

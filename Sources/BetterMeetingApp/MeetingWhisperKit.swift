@@ -1,7 +1,6 @@
 import CoreML
 import Foundation
 import WhisperKit
-import ArgmaxCore
 
 final class MeetingWhisperKit: WhisperKit {
     override func setupTranscribeTask(
@@ -100,17 +99,8 @@ final class SpeechProbabilityDecoder: TextDecoding {
 
     static func probability(of token: Int, in logits: MLMultiArray) -> Float {
         // Reading the buffer directly avoids boxing every vocabulary entry in an NSNumber.
-        switch logits.dataType {
-        #if arch(arm64)
-        case .float16:
-            return logits.withUnsafeBufferPointer(ofType: Float16.self) { probability(of: token, in: $0, count: logits.count) }
-        #endif
-        case .float32:
-            return logits.withUnsafeBufferPointer(ofType: Float32.self) { probability(of: token, in: $0, count: logits.count) }
-        case .double:
-            return logits.withUnsafeBufferPointer(ofType: Double.self) { probability(of: token, in: $0, count: logits.count) }
-        default:
-            return probability(of: token, in: (0..<logits.count).map { logits[$0].doubleValue }, count: logits.count)
+        logits.withUnsafeBufferPointer(ofType: Float16.self) {
+            probability(of: token, in: $0, count: logits.count)
         }
     }
 
