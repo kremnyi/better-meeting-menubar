@@ -18,7 +18,7 @@ struct CalendarSnapshot: Sendable {
 protocol CalendarReading {
     var authorizationStatus: EKAuthorizationStatus { get }
     func requestAccess() async throws
-    func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot
+    func load(selectedIDs: Set<String>, now: Date) async throws -> CalendarSnapshot
 }
 
 @MainActor
@@ -29,13 +29,14 @@ final class EventKitCalendarReader: CalendarReading {
 
     func requestAccess() async throws { _ = try await store.requestFullAccessToEvents() }
 
-    func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot {
+    func load(selectedIDs: Set<String>, now: Date) async throws -> CalendarSnapshot {
         guard authorizationStatus == .fullAccess else { return CalendarSnapshot(calendars: [], events: []) }
         let store = store
         // Decided here so the detached load below touches no mutable state.
         let refreshSources = now.timeIntervalSince(lastRefreshSources) >= 60
         if refreshSources { lastRefreshSources = now }
-        return await Task.detached(priority: .userInitiated) {
+        return try await Task.detached(priority: .userInitiated) { () throws -> CalendarSnapshot in
+            try Task.checkCancellation()
             if refreshSources { store.refreshSourcesIfNecessary() }
             let calendars = store.calendars(for: .event)
             let choices = calendars.map {
@@ -63,6 +64,8 @@ final class CalendarIntegration: ObservableObject {
     @Published private(set) var events: [CalendarEvent] = []
     @Published private(set) var isLoading = false
     @Published private(set) var hasLoaded = false
+    @Published private(set) var lastSuccessfulRefresh: Date?
+    @Published private(set) var isStale = false
     @Published private(set) var requestingAccess = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var notifyAtStart: Bool
@@ -88,15 +91,35 @@ final class CalendarIntegration: ObservableObject {
         authorization = reader.authorizationStatus
     }
 
+    var diagnosticSummary: String {
+        let access = authorization == .fullAccess ? "access granted" : "access needed"
+        let refresh: String
+        if isStale {
+            refresh = "last refresh failed; showing saved meetings"
+        } else if let lastSuccessfulRefresh {
+            refresh = "updated \(lastSuccessfulRefresh.formatted(date: .omitted, time: .shortened))"
+        } else {
+            refresh = "not refreshed yet"
+        }
+        return "Calendar: \(access) · \(refresh)"
+    }
+
+    private func clearSnapshot() {
+        events = []
+        calendars = []
+        hasLoaded = false
+        lastSuccessfulRefresh = nil
+        isStale = false
+        isLoading = false
+        reminders.update(events: [], enabled: false)
+    }
+
     func setEnabled(_ value: Bool) {
         enabled = value
         defaults.set(value, forKey: "calendarIntegrationEnabled")
         revision += 1
-        events = []
-        calendars = []
         errorMessage = nil
-        isLoading = false
-        reminders.update(events: [], enabled: false)
+        clearSnapshot()
     }
 
     func select(_ id: String, enabled: Bool) {
@@ -104,6 +127,10 @@ final class CalendarIntegration: ObservableObject {
         defaults.set(selectedIDs.sorted(), forKey: "selectedCalendarIDs")
         revision += 1
         events = []
+        hasLoaded = false
+        lastSuccessfulRefresh = nil
+        isStale = false
+        errorMessage = nil
         reminders.update(events: [], enabled: false)
     }
 
@@ -170,26 +197,43 @@ final class CalendarIntegration: ObservableObject {
         guard revision == currentRevision else { return }
         authorization = reader.authorizationStatus
         guard enabled, authorization == .fullAccess else {
-            events = []
-            calendars = []
-            isLoading = false
-            reminders.update(events: [], enabled: false)
+            clearSnapshot()
             return
         }
         isLoading = true
-        let snapshot = await reader.load(selectedIDs: selectedIDs, now: now)
+        let snapshot: CalendarSnapshot
+        do {
+            snapshot = try await reader.load(selectedIDs: selectedIDs, now: now)
+        } catch is CancellationError {
+            if revision == currentRevision { isLoading = false }
+            return
+        } catch {
+            guard revision == currentRevision else { return }
+            authorization = reader.authorizationStatus
+            guard enabled, authorization == .fullAccess else {
+                clearSnapshot()
+                return
+            }
+            isStale = hasLoaded
+            errorMessage = isStale
+                ? "Calendar refresh failed. Showing the last available meetings."
+                : "Couldn’t refresh calendars. Try again."
+            isLoading = false
+            return
+        }
         guard revision == currentRevision else { return }
         authorization = reader.authorizationStatus
-        isLoading = false
         guard enabled, authorization == .fullAccess else {
-            events = []
-            calendars = []
-            reminders.update(events: [], enabled: false)
+            clearSnapshot()
             return
         }
         calendars = snapshot.calendars
         events = snapshot.events
         hasLoaded = true
+        lastSuccessfulRefresh = now
+        isStale = false
+        errorMessage = nil
+        isLoading = false
         reminders.update(events: events, enabled: notifyAtStart, now: now)
     }
 

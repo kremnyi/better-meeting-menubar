@@ -33,6 +33,13 @@ struct MeetingOptionsView: View {
                 if let error = calendar.errorMessage {
                     ErrorPanel(message: error)
                 }
+                if calendar.enabled, calendar.hasLoaded || calendar.isStale || calendar.errorMessage != nil {
+                    Text(calendar.diagnosticSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .disabled(!calendar.enabled)
             .opacity(calendar.enabled ? 1 : 0.5)

@@ -237,6 +237,56 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(calendar.events.count, 1)
     }
 
+    @MainActor
+    func testRefreshFailureKeepsLastGoodSnapshotAndReportsStaleState() async throws {
+        let suite = "CalendarFailure.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let reader = CalendarReaderFixture()
+        reader.authorizationStatus = .fullAccess
+        let calendar = CalendarIntegration(defaults: defaults, reader: reader)
+        calendar.setEnabled(true)
+        calendar.select("fixture-calendar", enabled: true)
+        let firstRefresh = Date()
+        let error = NSError(domain: "CalendarFixture", code: 1)
+
+        reader.loadError = error
+        await calendar.refresh(now: firstRefresh)
+        XCTAssertTrue(calendar.events.isEmpty)
+        XCTAssertFalse(calendar.isStale)
+        XCTAssertNil(calendar.lastSuccessfulRefresh)
+        XCTAssertNotNil(calendar.errorMessage)
+
+        let firstEvent = try calendarEventFixture(id: "first")
+        reader.loadError = nil
+        reader.events = [firstEvent]
+        await calendar.refresh(now: firstRefresh.addingTimeInterval(60))
+        let firstSnapshot = calendar.events
+        let firstCalendars = calendar.calendars
+        let firstSuccessfulRefresh = try XCTUnwrap(calendar.lastSuccessfulRefresh)
+        XCTAssertEqual(firstSnapshot, [firstEvent])
+        XCTAssertFalse(calendar.isStale)
+        XCTAssertNil(calendar.errorMessage)
+
+        reader.loadError = error
+        await calendar.refresh(now: firstRefresh.addingTimeInterval(120))
+        XCTAssertEqual(calendar.events, firstSnapshot)
+        XCTAssertEqual(calendar.calendars, firstCalendars)
+        XCTAssertEqual(calendar.lastSuccessfulRefresh, firstSuccessfulRefresh)
+        XCTAssertTrue(calendar.isStale)
+        XCTAssertTrue(calendar.diagnosticSummary.contains("last refresh failed"))
+
+        reader.loadError = nil
+        let secondEvent = try calendarEventFixture(id: "second")
+        reader.events = [secondEvent]
+        let secondRefresh = firstRefresh.addingTimeInterval(180)
+        await calendar.refresh(now: secondRefresh)
+        XCTAssertEqual(calendar.events, [secondEvent])
+        XCTAssertEqual(calendar.lastSuccessfulRefresh, secondRefresh)
+        XCTAssertFalse(calendar.isStale)
+        XCTAssertNil(calendar.errorMessage)
+    }
+
     private let sidecar = """
     {"schemaVersion":1,"meetingId":"fixture","event":{
       "title":"Portfolio discussion","attendees":[
@@ -315,6 +365,10 @@ final class MeetingCalendarTests: XCTestCase {
         reader.authorizationStatus = .denied
         await calendar.refresh()
         XCTAssertTrue(calendar.events.isEmpty)
+        XCTAssertFalse(calendar.hasLoaded)
+        XCTAssertNil(calendar.lastSuccessfulRefresh)
+        XCTAssertFalse(calendar.isStale)
+        XCTAssertTrue(calendar.diagnosticSummary.contains("access needed"))
         do { _ = try await calendar.eventForRecording(id: "occurrence"); XCTFail("Revoked access must fail") }
         catch { XCTAssertTrue(error is CalendarRecordingError) }
 
@@ -482,16 +536,18 @@ private final class CalendarReaderFixture: CalendarReading {
     var events: [CalendarEvent] = []
     var calendars = [CalendarChoice(id: "fixture-calendar", title: "Work", account: "Example account")]
     var beforeReturn: (() async -> Void)?
+    var loadError: Error?
 
     func requestAccess() async throws {
         requests += 1
         authorizationStatus = .fullAccess
     }
 
-    func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot {
+    func load(selectedIDs: Set<String>, now: Date) async throws -> CalendarSnapshot {
         loads += 1
         self.selectedIDs = selectedIDs
         await beforeReturn?()
+        if let loadError { throw loadError }
         return CalendarSnapshot(
             calendars: calendars,
             events: events.filter { selectedIDs.contains($0.providerCalendarId) }
