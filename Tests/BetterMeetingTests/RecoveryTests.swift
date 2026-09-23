@@ -437,11 +437,12 @@ final class RecoveryTests: XCTestCase {
             ).frame(width: 328)), 328, .unchecked),
             ("retranscribe", AnyView(RetranscriptionView(
                 meeting: meeting, languages: ["uk", "ru", "en"],
-                hints: "", settings: SpeechSettings(), start: { _, _, _ in }
+                hints: "", settings: SpeechSettings(), dismiss: {}, start: { _, _, _ in }
             )), 360, .unchecked),
             ("retranscribe-advanced", AnyView(RetranscriptionView(
                 meeting: meeting, languages: ["uk", "ru", "en"],
-                hints: "Anna, Approck", settings: SpeechSettings(), advancedPresented: true, start: { _, _, _ in }
+                hints: "Anna, Approck", settings: SpeechSettings(), advancedPresented: true,
+                dismiss: {}, start: { _, _, _ in }
             )), 360, .unchecked)
         ]
         for (name, status): (String, AppUpdater.Status) in [

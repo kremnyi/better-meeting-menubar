@@ -30,7 +30,9 @@ struct MenuBarControlView: View {
                 .keyboardShortcut(",")
                 .help("Recording and app options (⌘,)")
                 .accessibilityLabel("Options")
-                .popover(isPresented: $captureOptionsPresented, arrowEdge: .top) {
+                // Attached to the menu's side: below the footer a tall page runs out of
+                // screen, and AppKit flips the popover to the top like a second window.
+                .popover(isPresented: $captureOptionsPresented, arrowEdge: .trailing) {
                     CaptureOptionsView(
                         meetingsPresented: meetingOptionsPresented,
                         appSettingsPresented: appSettingsPresented
@@ -63,7 +65,8 @@ struct MenuBarControlView: View {
         .sheet(item: $retranscribingMeeting) { meeting in
             RetranscriptionView(
                 meeting: meeting, languages: model.transcriptionLanguages, hints: model.transcriptionHints,
-                settings: MeetingArtifacts.speechSettings(in: meeting.folderURL) ?? model.speechSettings
+                settings: MeetingArtifacts.speechSettings(in: meeting.folderURL) ?? model.speechSettings,
+                dismiss: { retranscribingMeeting = nil }
             ) { languages, hints, settings in
                 model.retryTranscription(meeting, languages: languages, hints: hints, settings: settings)
             }

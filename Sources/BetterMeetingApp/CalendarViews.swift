@@ -148,33 +148,31 @@ private struct CalendarReminderOptionsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                         .padding(.leading, 18)
                 }
-            }
-            if calendar.notifyAtStart, unavailableReason == nil {
-                TimelineView(.periodic(from: .now, by: 60)) { context in
-                    let scheduled = reminders.scheduledEvents.filter { $0.scheduledStart > context.date }
-                    if let next = scheduled.first {
-                        HStack(spacing: 10) {
-                            Image(systemName: "calendar")
-                                .font(.title3)
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 3) {
+                // Schedule status belongs under its own toggle, not between the two checkboxes.
+                if calendar.notifyAtStart, unavailableReason == nil {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        let scheduled = reminders.scheduledEvents.filter { $0.scheduledStart > context.date }
+                        if let next = scheduled.first {
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(scheduled.count == 1 ? "1 meeting scheduled" : "\(scheduled.count) meetings scheduled")
                                 Text("Next: \(next.title) · \(next.relativeStart(at: context.date))")
-                                    .font(.caption).foregroundStyle(.secondary)
                                     .lineLimit(2)
                                     .help(next.title)
                             }
-                        }
-                        .padding(.top, 4)
-                    } else if reminders.message == nil {
-                        Text("No upcoming reminders scheduled.")
                             .font(.caption).foregroundStyle(.secondary)
+                            .padding(.leading, 18)
+                        } else if reminders.message == nil {
+                            Text("No upcoming reminders scheduled.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .padding(.leading, 18)
+                        }
                     }
                 }
             }
             if calendar.notifyAtStart, unavailableReason == nil, let message = reminders.message {
-                Text(message).font(.caption).fixedSize(horizontal: false, vertical: true)
+                Text(message)
+                    .font(.caption).fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 18)
                 HStack {
                     Button("Notification Settings…") {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {

@@ -333,8 +333,8 @@ struct RetranscriptionView: View {
     @State var hints: String
     @State var settings: SpeechSettings
     @State var advancedPresented = false
+    let dismiss: () -> Void
     let start: ([String], String, SpeechSettings) -> Void
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
