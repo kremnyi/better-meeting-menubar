@@ -133,7 +133,9 @@ under **Suggest recording**, the app also sends a notification when the event st
 
 The integration is off by default, reads events only, and never edits them.
 macOS requires full calendar access for reading; the app offers to request it
-when you first enable the feature. Event details stay on your Mac. Links
+when you first enable the feature. If a refresh fails, the last successful
+snapshot stays visible and is marked stale in **Options → Meetings**; disabling
+the integration or losing access clears it. Event details stay on your Mac. Links
 between recordings and calendar events are stored in the meeting folder; see
 [docs/calendar-data.md](docs/calendar-data.md) for the data model.
 
