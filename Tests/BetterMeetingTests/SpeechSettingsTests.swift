@@ -21,9 +21,6 @@ final class SpeechSettingsTests: XCTestCase {
             }
             XCTAssertEqual(ran, index != 1)
         }
-        let segment = ScoredSegment(start: 0, end: 2, text: "Noise", lang: "en", score: -1.2, nospeech: 0.5)
-        XCTAssertEqual(TranscriptionPasses.merge([segment]).count, 1)
-        XCTAssertTrue(TranscriptionPasses.merge([segment], noSpeechThreshold: 0.4).isEmpty)
     }
 
     func testActualModelSwitching() async throws {

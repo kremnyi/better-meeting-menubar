@@ -20,6 +20,9 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertTrue(TranscriptionPasses.merge([]).isEmpty)
         XCTAssertEqual(TranscriptionPasses.merge([segment(0, 2, "uk", -1, silence: 0.9)]).count, 1)
         XCTAssertEqual(TranscriptionPasses.merge([segment(0, 2, "uk", -2, silence: 0.6)]).count, 1)
+        let noise = segment(0, 2, "en", -1.2, silence: 0.5)
+        XCTAssertEqual(TranscriptionPasses.merge([noise]).count, 1)
+        XCTAssertTrue(TranscriptionPasses.merge([noise], noSpeechThreshold: 0.4).isEmpty, "A lower threshold drops the same segment")
         XCTAssertEqual(TranscriptionPasses.merge([
             segment(0, 2, "uk", -0.2), segment(0, 2, "ru", -0.2)
         ]).first?.lang, "uk")

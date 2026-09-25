@@ -105,14 +105,14 @@ final class TranscriptionQueueTests: XCTestCase {
                 visited += 1
                 model.cancelTranscription()
                 XCTAssertTrue(Task.isCancelled)
-                return false
+                return true // Only the cancellation check may stop the queue here.
             }
             await model.processingTask?.value
             XCTAssertEqual(visited, 1)
             XCTAssertEqual(model.state, .idle)
             XCTAssertFalse(model.isTranscribingBatch)
             XCTAssertFalse(model.cancellingTranscription)
-            XCTAssertTrue(model.completionMessage?.contains("0 of 3 finished") == true)
+            XCTAssertTrue(model.completionMessage?.contains("1 of 3 finished") == true)
             for folder in folders {
                 XCTAssertEqual(try Data(contentsOf: folder.appendingPathComponent("audio.m4a")), Data([1]))
             }
@@ -126,14 +126,12 @@ final class TranscriptionQueueTests: XCTestCase {
 
     func testFailureStopsQueueAndLeavesSingleRetryAvailable() async throws {
         try await withMeetings { model in
-            var visited = 0
-            model.transcribeAllRecordings { _ in
-                visited += 1
-                model.fail(AppError.missingRecording)
-                return false
-            }
+            // The fixture audio is unreadable and there is no recording.mp4, so the first meeting fails for real.
+            let first = try XCTUnwrap(model.unfinishedRecordings.first)
+            model.transcribeAllRecordings()
             await model.processingTask?.value
-            XCTAssertEqual(visited, 1)
+            XCTAssertEqual(model.completedFolder, first.folderURL, "The queue must stop at the first failed meeting")
+            XCTAssertEqual(model.unfinishedRecordings.count, 3)
             XCTAssertEqual(model.state, .failed)
             XCTAssertFalse(model.isTranscribingBatch)
             XCTAssertEqual(model.primaryButtonTitle, "Retry transcription")

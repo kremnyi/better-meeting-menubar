@@ -12,6 +12,20 @@ Read only the documentation relevant to the requested work:
 
 Use Impeccable only when the user explicitly names Impeccable or invokes one of its commands. An ordinary UI edit or review does not authorize its design workflow. Plugin installation alone does not make a skill explicit-only.
 
+## Tests
+
+Before adding or changing a test, name the behavior it protects, the regression that would make it fail, and why existing tests miss it. Prefer extending the test that already owns the behavior over adding a near-duplicate.
+
+Do not add tests that:
+- assert nothing, or only restate constants, declared flags, or copied lists;
+- take expected values from the code under test;
+- rely on a fixture or injected closure to produce the result being asserted, such as a closure that stops the queue itself;
+- break under behavior-preserving refactoring.
+
+Injection hooks such as `prepareSpeechModel(_:)` or a `trash:` parameter stay only while production calls the same path through a default. A regression test must fail on the pre-fix code for the intended reason.
+
+Keep tests that guard saved files and migrations, settings, permissions and privacy, notifications, updates, and menu layout, even when they are slow or look implementation-shaped. Run the owning test with `swift test --filter <name>`, then `swift test`.
+
 ## Completion
 
 Complete the requested implementation, applicable verification, and any explicitly requested delivery steps before handing back. A diagnosis-only or recommendations-first request ends with findings; do not implement it without authorization.
