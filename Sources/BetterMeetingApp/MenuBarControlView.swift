@@ -177,6 +177,12 @@ struct MenuBarControlView: View {
                 Text(message)
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
+                if message.hasPrefix("Transcribed "), !model.unfinishedRecordings.isEmpty {
+                    let count = model.unfinishedRecordings.count
+                    Text(count == 1 ? "1 still needs transcription." : "\(count) still need transcription.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if let folder = model.completedFolder {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 12) { completionActions(folder) }
@@ -278,6 +284,10 @@ struct MenuBarControlView: View {
             .font(.callout)
 
             primaryActionButton
+
+            Button("Cancel recording", role: .destructive) { model.cancelRecording() }
+                .frame(maxWidth: .infinity)
+                .help("Stop and discard this recording without transcribing it")
 
             modelSetupStatus
 
@@ -406,6 +416,11 @@ struct MenuBarControlView: View {
 
     @ViewBuilder
     private var failureSecondaryActions: some View {
+        if model.showsRecordingOptionsAction {
+            Button("Open Recording Options") { captureOptionsPresented = true }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("open-recording-options")
+        }
         if model.privacyPermission != nil {
             Button(model.primaryButtonTitle, action: model.primaryAction)
                 .buttonStyle(.bordered)
@@ -456,7 +471,9 @@ private struct RecordingElapsed: View {
 
     var body: some View {
         Text(Timecode.compact(clock.elapsed))
-            .font(.system(size: 32, weight: .medium).monospacedDigit())
+            .font(.system(.largeTitle, design: .rounded).weight(.medium).monospacedDigit())
+            .accessibilityLabel("Recording time")
+            .accessibilityValue(Timecode.compact(clock.elapsed))
     }
 }
 

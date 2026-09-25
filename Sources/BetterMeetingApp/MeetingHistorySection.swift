@@ -90,7 +90,9 @@ struct MeetingHistorySection: View {
                                     .accessibilityAddTraits(.isHeader)
                                 ForEach(group.items) { item in
                                     historyRow(
-                                        item, isNew: item.folderURL == model.completedFolder,
+                                        item,
+                                        isNew: item.folderURL == model.completedFolder
+                                            && !model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL),
                                         canEdit: model.state == .idle && !model.isProcessing,
                                         status: rowStatus(item)
                                     )
@@ -106,8 +108,25 @@ struct MeetingHistorySection: View {
             }
             .font(.callout)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: model.hasMeetings ? 6 * 43 : nil, alignment: .top)
+            .frame(height: historyViewportHeight, alignment: .top)
         }
+    }
+
+    private var historyViewportHeight: CGFloat? {
+        guard model.hasMeetings, !model.allHistoryDays.isEmpty else { return nil }
+        let limit: CGFloat = 232
+        var height: CGFloat = 0
+        for (groupIndex, group) in model.allHistoryDays.enumerated() {
+            let headerHeight: CGFloat = groupIndex == 0 ? 17 : 22
+            guard height + headerHeight <= limit else { break }
+            height += headerHeight
+            for (itemIndex, _) in group.items.enumerated() {
+                let rowHeight: CGFloat = itemIndex == group.items.count - 1 ? 42 : 43
+                guard height + rowHeight <= limit else { return height }
+                height += rowHeight
+            }
+        }
+        return height
     }
 
     static func rowHelp(_ item: MeetingHistoryItem) -> String {
@@ -135,6 +154,7 @@ struct MeetingHistorySection: View {
             return .working("\(verb) · \(fraction.formatted(.percent.precision(.fractionLength(0))))")
         }
         if model.queuedFolders.contains(where: { $0.standardizedFileURL.path == path }) { return .queued }
+        if model.failedTranscriptionFolders.contains(URL(fileURLWithPath: path)) { return .failed }
         return item.needsTranscription ? .notTranscribed : nil
     }
 
@@ -159,14 +179,21 @@ struct MeetingHistorySection: View {
                                 .help("Just saved")
                         }
                         if let badge = status ?? (item.needsTranscription ? .notTranscribed : nil) {
-                            Text(badge.text)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(badge.isWorking ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                                .lineLimit(1)
-                                .fixedSize()
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background((badge.isWorking ? Color.accentColor : Color.secondary).opacity(0.15), in: Capsule())
+                            if badge == .failed, canEdit {
+                                Button("Retry") { model.retryTranscription(item) }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                    .accessibilityLabel("Retry transcription for \(item.title)")
+                            } else {
+                                Text(badge.text)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(badge.isWorking ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                                    .lineLimit(1)
+                                    .fixedSize()
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1)
+                                    .background((badge.isWorking ? Color.accentColor : Color.secondary).opacity(0.15), in: Capsule())
+                            }
                         }
                     }
                     .font(.callout)
@@ -255,12 +282,14 @@ enum MeetingRowStatus: Equatable {
     case working(String)
     case queued
     case notTranscribed
+    case failed
 
     var text: String {
         switch self {
         case .working(let text): text
         case .queued: "Queued"
         case .notTranscribed: "Not transcribed"
+        case .failed: "Failed"
         }
     }
 

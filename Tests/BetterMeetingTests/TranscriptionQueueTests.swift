@@ -25,6 +25,8 @@ final class TranscriptionQueueTests: XCTestCase {
 
     func testQueueRunsInOrderAndExcludesCompletedMeetings() async throws {
         try await withMeetings { model in
+            var announcements: [String] = []
+            model.accessibilityAnnouncement = { announcements.append($0) }
             model.prepareSpeechModel { _ in }
             try await model.modelPreparationTask?.value
             let expected = model.unfinishedRecordings
@@ -52,6 +54,7 @@ final class TranscriptionQueueTests: XCTestCase {
             await task.value
             XCTAssertEqual(visited, expected)
             XCTAssertEqual(model.completionMessage, "Transcribed 3 of 3 recordings.")
+            XCTAssertTrue(announcements.contains("Transcribed 3 of 3 recordings."))
             XCTAssertTrue(model.queuedFolders.isEmpty)
             XCTAssertNotNil(model.modelUnloadTask, "A finished queue schedules releasing the speech model")
             XCTAssertFalse(model.isTranscribingBatch)

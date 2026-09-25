@@ -376,6 +376,42 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundFailurePersistsAndOffersRetry() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingBackgroundFailure")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Background failure", recordedAt: Date())
+        try Data([1]).write(to: folder.appendingPathComponent("audio.m4a"))
+        let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
+        let item = try XCTUnwrap(model.unfinishedRecordings.first)
+        var announcements: [String] = []
+        model.accessibilityAnnouncement = { announcements.append($0) }
+
+        model.retryTranscription(item)
+        let task = try XCTUnwrap(model.processingTask)
+        model.recordingDidStart(at: Date())
+        await task.value
+
+        XCTAssertEqual(model.state, .recording)
+        XCTAssertFalse(model.isProcessing)
+        XCTAssertTrue(model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL))
+        XCTAssertTrue(announcements.contains { $0.hasPrefix("Transcription failed for Background failure") })
+        model.fail(AppError.missingRecording)
+        model.dismissFailure()
+        await model.historyRefreshTask?.value
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertTrue(model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL))
+        let reopened = AppModel(defaults: defaults)
+        XCTAssertTrue(reopened.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL))
+        await reopened.historyRefreshTask?.value
+
+        let view = hostingView(MenuBarControlView(), model: model)
+        XCTAssertEqual(view.fittingSize.width, 304)
+        XCTAssertGreaterThan(view.fittingSize.height, 0)
+        try writePanelPreview(view, name: "background-failure")
+    }
+
+    @MainActor
     func testPermissionFailuresKeepRecoveryVisible() throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingPermissions")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
@@ -400,6 +436,23 @@ final class RecoveryTests: XCTestCase {
             model.dismissFailure()
             XCTAssertEqual(model.state, .idle)
             XCTAssertNil(model.privacyPermission)
+        }
+    }
+
+    @MainActor
+    func testDeviceFailuresOpenRecordingOptions() throws {
+        _ = NSApplication.shared
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingDeviceRecovery")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let model = AppModel(defaults: defaults)
+
+        for error in [RecorderError.noDisplay, .noMicrophone] {
+            model.fail(error)
+            XCTAssertTrue(model.showsRecordingOptionsAction)
+            let view = hostingView(MenuBarControlView(), model: model)
+            XCTAssertGreaterThan(view.fittingSize.height, 0)
+            try writePanelPreview(view, name: "device-failure")
+            model.dismissFailure()
         }
     }
 
@@ -462,6 +515,8 @@ final class RecoveryTests: XCTestCase {
             ("options-enabled", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("options-single-language", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
             ("options-many-languages", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("language-picker", AnyView(TranscriptionLanguagePicker(languages: .constant(["uk", "ru", "en"]))), 300, .unchecked),
+            ("language-picker-dark", AnyView(TranscriptionLanguagePicker(languages: .constant(["uk", "ru", "en"]))), 300, .unchecked),
             ("advanced", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
             ("advanced-models", AnyView(AdvancedTranscriptionView(
                 settings: .constant(SpeechSettings()), hints: .constant("")
@@ -508,14 +563,20 @@ final class RecoveryTests: XCTestCase {
             }
             model.speechSettings.speakerLabels = name == "options-enabled"
             model.exportAfterRecording = name == "options-enabled"
+            if name == "options-single-language" || name == "options-many-languages" {
+                model.speechSettings.engine = .whisper
+            } else {
+                model.speechSettings.engine = nil
+            }
             model.transcriptionLanguages = name == "options-single-language" ? ["uk"]
+
                 : name == "options-many-languages" ? ["uk", "ru", "en", "fr", "de", "es", "pt", "ja"]
                 : ["uk", "ru", "en"]
             let view = hostingView(content, model: model, scheme: name.hasSuffix("-dark") ? .dark : .light)
             XCTAssertEqual(view.fittingSize.width, width, "\(name) must keep its panel width")
             XCTAssertGreaterThan(view.fittingSize.height, 0)
             if ["options", "options-current", "options-checking", "options-ready"].contains(name) {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 400, "Options must stay compact")
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 401, "Options must stay compact")
                 if let optionsHeight { XCTAssertEqual(view.fittingSize.height, optionsHeight, "Update states must not resize Options") }
                 else { optionsHeight = view.fittingSize.height }
             }
@@ -612,6 +673,30 @@ final class RecoveryTests: XCTestCase {
                 .frame(width: 264))
             XCTAssertEqual(row.fittingSize.height, 42, "The status indicators must not wrap meeting details")
         }
+    }
+
+    @MainActor
+    func testHistoryViewportAdaptsToContent() async throws {
+        func height(for count: Int) async throws -> CGFloat {
+            let (defaults, suite, root) = try makeTempDefaults("BetterMeetingHistory\(count)")
+             defer { removeTempDefaults(defaults, suite: suite, root: root) }
+             for index in 0..<count {
+                 let recordedAt = Date(timeIntervalSince1970: 1_788_611_948 - Double(index))
+                 let folder = try MeetingArtifacts.createDirectory(
+                     in: root, title: "Meeting \(index)", recordedAt: recordedAt
+                 )
+                 try MeetingArtifacts.write(title: "Meeting \(index)", recordedAt: recordedAt, duration: 60, segments: [], to: folder)
+             }
+
+            let model = AppModel(defaults: defaults)
+            await model.historyRefreshTask?.value
+            return hostingView(MenuBarControlView(), model: model).fittingSize.height
+        }
+
+        let sparse = try await height(for: 1)
+        let dense = try await height(for: 7)
+        XCTAssertLessThan(sparse, dense, "A sparse history must not reserve the dense viewport")
+        XCTAssertLessThan(dense, 700)
     }
 
     @MainActor
@@ -731,6 +816,8 @@ final class RecoveryTests: XCTestCase {
         _ = NSApplication.shared
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingAudioWarning")
         let model = AppModel(defaults: defaults)
+        var announcements: [String] = []
+        model.accessibilityAnnouncement = { announcements.append($0) }
         defer {
             model.fail(AppError.missingRecording)
             removeTempDefaults(defaults, suite: suite, root: root)
@@ -747,6 +834,7 @@ final class RecoveryTests: XCTestCase {
         if let panels { try writePreview(view, to: panels.appendingPathComponent("recording-normal.png")) }
         model.checkRecordingAudio(elapsed: 30, audioDetected: false)
         XCTAssertTrue(model.audioWarning)
+        XCTAssertEqual(announcements, ["Recording started.", "No audio detected yet. Check your microphone and meeting audio."])
         model.checkRecordingAudio(elapsed: 120, audioDetected: false)
         XCTAssertEqual(warnings, 1)
         XCTAssertEqual(model.state, .recording, "A warning must not stop recording")

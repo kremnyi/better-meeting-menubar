@@ -282,6 +282,7 @@ struct CaptureOptionsView: View {
 struct TranscriptionOptionsView: View {
     @Binding var languages: [String]
     @Binding var settings: SpeechSettings
+    @State private var languagePickerPresented = false
     var locked = false
 
     private var languageNames: String {
@@ -292,26 +293,32 @@ struct TranscriptionOptionsView: View {
         Group {
             GridRow {
                 Text("Languages")
-                Menu(settings.usesWhisperOptions ? languageNames : "Detected automatically") {
-                    ForEach(TranscriptionLanguage.allCases, id: \.self) { language in
-                        Toggle(language.label, isOn: Binding(
-                            get: { languages.contains(language.rawValue) },
-                            set: { selected in
-                                if selected { languages.append(language.rawValue) }
-                                else if languages.count > 1 { languages.removeAll { $0 == language.rawValue } }
-                            }
-                        ))
-                        .disabled(languages == [language.rawValue])
-                    }
+                Button {
+                    languagePickerPresented = true
+                } label: {
+                    Text(settings.usesWhisperOptions ? languageNames : "Detected automatically")
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .lineLimit(1)
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
                 .frame(minWidth: 0, maxWidth: .infinity)
+                .overlay(alignment: .trailing) {
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.trailing, 7)
+                        .allowsHitTesting(false)
+                }
                 .disabled(locked || !settings.usesWhisperOptions)
                 .accessibilityLabel("Spoken languages")
                 .accessibilityValue(settings.usesWhisperOptions ? languageNames : "Detected automatically")
                 .help(settings.usesWhisperOptions
                     ? languageNames + ". One transcription pass per language; at least one is required."
                     : "Parakeet detects each language automatically. To choose languages, switch to Whisper in Advanced transcription.")
+                .popover(isPresented: $languagePickerPresented, arrowEdge: .bottom) {
+                    TranscriptionLanguagePicker(languages: $languages)
+                }
             }
             GridRow {
                 Toggle("Add speaker labels", isOn: Binding(
@@ -323,6 +330,116 @@ struct TranscriptionOptionsView: View {
                 .help("Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
                 .gridCellColumns(2)
             }
+        }
+    }
+}
+
+struct TranscriptionLanguagePicker: View {
+    @Binding var languages: [String]
+    @State private var query = ""
+
+    private static let commonCodes = ["uk", "ru", "en", "de", "fr", "es", "pt"]
+
+    private var selectedLanguages: [TranscriptionLanguage] {
+        languages.compactMap(TranscriptionLanguage.init(rawValue:))
+    }
+
+    private var commonLanguages: [TranscriptionLanguage] {
+        Self.commonCodes.compactMap(TranscriptionLanguage.init(rawValue:))
+            .filter { !languages.contains($0.rawValue) }
+    }
+
+    private var remainingLanguages: [TranscriptionLanguage] {
+        let excluded = Set(languages + Self.commonCodes)
+        return TranscriptionLanguage.allCases.filter { !excluded.contains($0.rawValue) }
+    }
+
+    private var results: [TranscriptionLanguage] {
+        Self.orderedLanguages(query: query, selected: languages)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Spoken languages")
+                .font(.headline)
+            TextField("Search languages", text: $query)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("Search languages")
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        if !selectedLanguages.isEmpty {
+                            sectionHeader("Selected")
+                            ForEach(selectedLanguages, id: \.rawValue) { languageRow($0) }
+                        }
+                        if !commonLanguages.isEmpty {
+                            sectionHeader("Common")
+                            ForEach(commonLanguages, id: \.rawValue) { languageRow($0) }
+                        }
+                        sectionHeader("All languages")
+                        ForEach(remainingLanguages, id: \.rawValue) { languageRow($0) }
+                    } else if !results.isEmpty {
+                        sectionHeader("Results")
+                        ForEach(results, id: \.rawValue) { languageRow($0) }
+                    } else {
+                        Text("No matching languages")
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 12)
+                    }
+                }
+                .padding(.horizontal, 10)
+            }
+            Text("At least one language is required. Each selected language adds one transcription pass.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(width: 300, height: 360)
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+    }
+
+    @ViewBuilder
+    private func languageRow(_ language: TranscriptionLanguage) -> some View {
+        Toggle(language.label, isOn: Binding(
+            get: { languages.contains(language.rawValue) },
+            set: { _ in languages = Self.toggled(language.rawValue, in: languages) }
+        ))
+        .toggleStyle(.checkbox)
+        .disabled(languages.contains(language.rawValue) && languages.count == 1)
+        .padding(.vertical, 5)
+    }
+
+    static func toggled(_ rawValue: String, in languages: [String]) -> [String] {
+        var result = languages
+        if let index = result.firstIndex(of: rawValue) {
+            guard result.count > 1 else { return result }
+            result.remove(at: index)
+        } else {
+            result.append(rawValue)
+        }
+        return result
+    }
+
+    static func orderedLanguages(query: String, selected: [String]) -> [TranscriptionLanguage] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedSet = Set(selected)
+        let matches = TranscriptionLanguage.allCases.filter { language in
+            trimmed.isEmpty || language.label.localizedStandardContains(trimmed)
+                || language.rawValue.localizedStandardContains(trimmed)
+        }
+        return matches.sorted {
+            let leftSelected = selectedSet.contains($0.rawValue)
+            let rightSelected = selectedSet.contains($1.rawValue)
+            if leftSelected != rightSelected { return leftSelected }
+            return $0.label.localizedStandardCompare($1.label) == .orderedAscending
         }
     }
 }

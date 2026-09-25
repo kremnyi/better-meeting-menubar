@@ -72,6 +72,15 @@ final class SpeechSettingsTests: XCTestCase {
         XCTAssertEqual(AppModel(defaults: defaults).speechSettings.selectedEngine, .parakeet)
     }
 
+    func testLanguagePickerPrioritizesSelectedResultsAndKeepsOneLanguage() {
+        XCTAssertEqual(TranscriptionLanguagePicker.toggled("en", in: ["en"]), ["en"])
+        XCTAssertEqual(TranscriptionLanguagePicker.toggled("en", in: ["en", "uk"]), ["uk"])
+        XCTAssertEqual(TranscriptionLanguagePicker.toggled("fr", in: ["en", "uk"]), ["en", "uk", "fr"])
+
+        let results = TranscriptionLanguagePicker.orderedLanguages(query: "ru", selected: ["en", "ru"])
+        XCTAssertEqual(results.first?.rawValue, "ru")
+    }
+
     func testEngineSwitchKeepsCompletedWhisperPasses() async throws {
         let folder = makeTempRoot()
         defer { removeTempRoot(folder) }

@@ -249,6 +249,38 @@ final class MeetingActionTests: XCTestCase {
     }
 
     @MainActor
+    func testCancelRecordingTrashesOnlyTheActiveRecordingAfterConfirmation() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingCancel")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let date = Date()
+        let kept = try MeetingArtifacts.createDirectory(in: root, title: "Earlier meeting", recordedAt: date)
+        try MeetingArtifacts.write(title: "Earlier meeting", recordedAt: date, duration: 60, segments: [], to: kept)
+        let active = try MeetingArtifacts.createDirectory(in: root, title: "Nobody came", recordedAt: date)
+        let model = AppModel(defaults: defaults)
+        model.activeFolder = active
+        model.recordingDidStart(at: date)
+        var trashed: [URL] = []
+        let done = expectation(description: "trashed")
+        // Tests must not fill the real Trash; removing the folder stands in for it.
+        let trash: (URL) throws -> Void = { url in
+            trashed.append(url)
+            try FileManager.default.removeItem(at: url)
+            done.fulfill()
+        }
+
+        model.cancelRecording(confirm: { _ in .alertFirstButtonReturn }, trash: trash)
+        XCTAssertEqual(model.state, .recording, "Keep recording must leave the recording running")
+        XCTAssertTrue(trashed.isEmpty)
+
+        model.cancelRecording(confirm: { _ in .alertSecondButtonReturn }, trash: trash)
+        XCTAssertEqual(model.state, .idle)
+        await fulfillment(of: [done], timeout: 5)
+        XCTAssertEqual(trashed, [active])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path), "Other meetings must stay")
+        XCTAssertFalse(model.isProcessing, "A canceled recording must not be transcribed")
+    }
+
+    @MainActor
     func testListTimesAndDayGroupsReadNaturally() throws {
         XCTAssertEqual(Timecode.compact(0), "0:00")
         XCTAssertEqual(Timecode.compact(245), "4:05")

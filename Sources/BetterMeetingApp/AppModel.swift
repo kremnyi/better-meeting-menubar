@@ -18,6 +18,8 @@ private struct ProcessingRun {
     var folderTitle: String?
 }
 
+private let failedTranscriptionFoldersKey = "failedTranscriptionFolders"
+
 private extension LocalTranscriptionProgress {
     /// Setup and transcription share one progress enum; only model steps map onto a processing phase.
     var modelStep: (phase: ProcessingPhase, fraction: Double?)? {
@@ -73,6 +75,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var outputRoot: URL
     @Published private(set) var privacyPermission: PrivacyPermission?
     @Published private(set) var processingFraction: Double?
+    var showsRecordingOptionsAction: Bool {
+        guard let error = lastError as? RecorderError else { return false }
+        return switch error {
+        case .noDisplay, .noMicrophone: true
+        default: false
+        }
+    }
     @Published private(set) var processingPhase: ProcessingPhase?
     @Published private(set) var processingStatusText = ""
     @Published private(set) var processingTitle = ""
@@ -81,6 +90,8 @@ final class AppModel: ObservableObject {
     }
     /// The listed meetings grouped by day, computed when the list changes rather than on every redraw.
     private(set) var historyDays: [MeetingDayGroup] = []
+    private(set) var allHistoryDays: [MeetingDayGroup] = []
+    @Published private(set) var failedTranscriptionFolders: Set<URL> = []
     @Published var historyQuery = "" {
         didSet { searchHistory() }
     }
@@ -194,7 +205,7 @@ final class AppModel: ObservableObject {
     private let transcriber = LocalTranscriber()
     private let library = MeetingLibrary()
     private(set) var modelUnloadTask: Task<Void, Never>?
-    private var activeFolder: URL?
+    var activeFolder: URL?
     private var recordedAt: Date?
     private var titleWasProvided = true
     private var recordingFolderTitle = ""
@@ -220,6 +231,9 @@ final class AppModel: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        failedTranscriptionFolders = Set((defaults.stringArray(forKey: failedTranscriptionFoldersKey) ?? []).map {
+            URL(fileURLWithPath: $0).standardizedFileURL
+        })
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         outputRoot = defaults.url(forKey: "outputFolder")
             ?? documents.appendingPathComponent("Better Meetings", isDirectory: true)
@@ -263,6 +277,13 @@ final class AppModel: ObservableObject {
         (CGPreflightScreenCaptureAccess(), AVCaptureDevice.authorizationStatus(for: .audio))
     } {
         didSet { refreshCaptureAccess() }
+    }
+
+    var accessibilityAnnouncement: (String) -> Void = { message in
+        NSAccessibility.post(element: NSApplication.shared, notification: .announcementRequested, userInfo: [
+            .announcement: message,
+            .priority: NSAccessibilityPriorityLevel.high.rawValue
+        ])
     }
 
     /// The last read of `captureAccess`, so a menu redraw never asks the system again. Granting access
@@ -518,6 +539,18 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func updateFailedTranscriptionFolders(_ update: (inout Set<URL>) -> Void) {
+        var folders = failedTranscriptionFolders
+        update(&folders)
+        let normalized = Set(folders.map { $0.standardizedFileURL })
+        failedTranscriptionFolders = normalized
+        defaults.set(normalized.map(\.path), forKey: failedTranscriptionFoldersKey)
+    }
+
+    private func announce(_ message: String) {
+        accessibilityAnnouncement(message)
+    }
+
     func retryTranscription(_ item: MeetingHistoryItem, languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil) {
         guard !isProcessing, !isTranscribingBatch, state == .idle || state == .failed else { return }
         prepareSavedTranscription(item)
@@ -554,9 +587,11 @@ final class AppModel: ObservableObject {
             }
             let cancelled = Task.isCancelled
             if errorMessage == nil {
-                completionMessage = cancelled
+                let message = cancelled
                     ? "Transcription cancelled. \(completed) of \(recordings.count) finished; remaining recordings are kept."
                     : "Transcribed \(completed) of \(recordings.count) recordings."
+                completionMessage = message
+                announce(message)
             }
             batchRemaining = []
             transcriptionBatchTotal = 0
@@ -705,8 +740,10 @@ final class AppModel: ObservableObject {
     func setOutputFolder(_ url: URL) {
         outputRoot = url
         defaults.set(url, forKey: "outputFolder")
+        updateFailedTranscriptionFolders { $0.removeAll() }
         completedMeetings = []
         unfinishedRecordings = []
+        allHistoryDays = []
         transcriptionHistory = []
         searchHistory()
         refreshHistory()
@@ -749,6 +786,12 @@ final class AppModel: ObservableObject {
         guard !Task.isCancelled else { return }
         completedMeetings = meetings.filter { !$0.needsTranscription }
         unfinishedRecordings = meetings.filter(\.needsTranscription)
+        let currentFolders = Set(meetings.map { $0.folderURL.standardizedFileURL })
+        let validFailedFolders = failedTranscriptionFolders.intersection(currentFolders)
+        if validFailedFolders != failedTranscriptionFolders {
+            updateFailedTranscriptionFolders { $0 = validFailedFolders }
+        }
+        allHistoryDays = MeetingDayGroup.groups(meetingsByRecency)
         historyTotalBytes = meetings.reduce(0) { $0 + $1.totalBytes }
         searchHistory()
     }
@@ -806,6 +849,7 @@ final class AppModel: ObservableObject {
         guard state == .idle, !isProcessing else { return }
         do {
             try trash(meeting.folderURL)
+            updateFailedTranscriptionFolders { $0.remove(meeting.folderURL) }
             completedFolder = nil
             completionMessage = "Moved “\(meeting.title)” to the Trash."
         } catch {
@@ -829,6 +873,10 @@ final class AppModel: ObservableObject {
         do {
             let folder = try MeetingArtifacts.renameMeeting(meeting, to: nameField.stringValue)
             if completedFolder == meeting.folderURL { completedFolder = folder }
+            updateFailedTranscriptionFolders {
+                guard $0.remove(meeting.folderURL) != nil else { return }
+                $0.insert(folder)
+            }
         } catch {
             NSAlert(error: error).runActive()
         }
@@ -922,6 +970,37 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Stops capture and moves the recording to the Trash without transcribing it,
+    /// for meetings nobody joined.
+    func cancelRecording(
+        confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runActive() },
+        trash: @escaping (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+    ) {
+        guard state == .recording else { return }
+        let alert = NSAlert()
+        alert.messageText = "Cancel this recording?"
+        alert.informativeText = "The recording stops and is moved to the Trash. It won’t be transcribed."
+        alert.addButton(withTitle: "Keep recording")
+        alert.addButton(withTitle: "Cancel Recording")
+        alert.buttons[1].hasDestructiveAction = true
+        // Capture may have stopped while the confirmation was open.
+        guard confirm(alert) == .alertSecondButtonReturn, state == .recording else { return }
+        stopTimer()
+        let folder = activeFolder
+        activeFolder = nil
+        recordedAt = nil
+        elapsed = 0
+        meetingTitle = ""
+        state = .idle
+        announce("Recording canceled.")
+        Task {
+            try? await recorder.stop()
+            guard let folder else { return }
+            do { try trash(folder) } catch { NSAlert(error: error).runActive() }
+            refreshHistory()
+        }
+    }
+
     private func discardUnstartedFolder() {
         // Capture may start while a confirmation is open; never discard a live recording.
         guard state == .preparing, let folder = activeFolder,
@@ -951,6 +1030,7 @@ final class AppModel: ObservableObject {
             return
         }
         state = .idle
+        announce("Recording stopped. Transcription started.")
         processingFolder = run.folder
         if !isProcessing { setProcessingPhase(.finalizingRecording) }
         if stopCapture {
@@ -1172,6 +1252,7 @@ final class AppModel: ObservableObject {
             }
 
             completedFolder = folder
+            updateFailedTranscriptionFolders { $0.remove(folder) }
             modelReady = Self.modelIsCached(run.settings)
             modelSetupError = nil
             refreshHistory()
@@ -1192,13 +1273,15 @@ final class AppModel: ObservableObject {
             if let speakerWarning {
                 completionMessage = [speakerWarning, completionMessage].compactMap { $0 }.joined(separator: "\n")
             }
+            if !inBatch { announce("Transcript ready for \(title).") }
             await MeetingNotifications.post(
                 title: meeting?.title ?? folder.lastPathComponent,
                 folder: folder, failed: false
             )
             return true
         } catch {
-            completedFolder = run.folder
+            let failedFolder = completedFolder ?? run.folder
+            completedFolder = failedFolder
             if Task.isCancelled {
                 completionMessage = run.replacing == nil
                     ? "Transcription cancelled. Recording kept; transcribe it from the menu to resume."
@@ -1206,9 +1289,10 @@ final class AppModel: ObservableObject {
                 refreshHistory()
                 return false
             }
-            // ponytail: background failure while recording is not shown as its own screen.
+            updateFailedTranscriptionFolders { $0.insert(failedFolder) }
             if state == .idle { fail(error) }
-            await MeetingNotifications.post(title: run.title, folder: run.folder, failed: true)
+            announce("Transcription failed for \(run.title). Open Better Meeting to retry.")
+            await MeetingNotifications.post(title: run.title, folder: failedFolder, failed: true)
             return false
         }
     }
@@ -1221,6 +1305,7 @@ final class AppModel: ObservableObject {
         elapsed = 0
         state = .recording
         statusText = "Recording the selected display, system audio, and microphone."
+        announce("Recording started.")
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.state == .recording, self.recordingID == recordingID else { return }
@@ -1243,6 +1328,7 @@ final class AppModel: ObservableObject {
         let warning = elapsed >= 30 && !audioDetected
         guard audioWarning != warning else { return }
         audioWarning = warning
+        if warning { announce("No audio detected yet. Check your microphone and meeting audio.") }
         if warning, menuWindow?.isVisible != true, let recordingID {
             audioWarningTask = Task {
                 await MeetingNotifications.post(MeetingNotifications.audioWarning(recordingID: recordingID))
@@ -1309,6 +1395,7 @@ final class AppModel: ObservableObject {
         }
         lastError = error
         if let folder = processingFolder ?? activeFolder {
+            updateFailedTranscriptionFolders { $0.insert(folder) }
             completedFolder = folder
         }
         refreshHistory()
