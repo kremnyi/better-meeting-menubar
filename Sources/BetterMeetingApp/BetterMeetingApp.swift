@@ -178,8 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             do {
                 try AppModel.copyTranscript(in: folder)
             } catch {
-                NSApp.activate(ignoringOtherApps: true)
-                NSAlert(error: error).runModal()
+                NSAlert(error: error).runActive()
             }
         case MeetingNotifications.showInFinderAction:
             NSWorkspace.shared.activateFileViewerSelecting([folder])

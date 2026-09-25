@@ -664,7 +664,7 @@ final class AppModel: ObservableObject {
     }
 
     func terminationReply(
-        confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }
+        confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runActive() }
     ) -> NSApplication.TerminateReply {
         guard state == .recording || isProcessing || state == .preparing else {
             return .terminateNow
@@ -729,6 +729,7 @@ final class AppModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.directoryURL = outputRoot
 
+        NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK, let url = panel.url {
             setOutputFolder(url)
         }
@@ -808,7 +809,7 @@ final class AppModel: ObservableObject {
             completedFolder = nil
             completionMessage = "Moved “\(meeting.title)” to the Trash."
         } catch {
-            NSAlert(error: error).runModal()
+            NSAlert(error: error).runActive()
         }
         refreshHistory()
     }
@@ -824,12 +825,12 @@ final class AppModel: ObservableObject {
         nameField.setAccessibilityLabel("Meeting name")
         alert.accessoryView = nameField
         alert.window.initialFirstResponder = nameField
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard alert.runActive() == .alertFirstButtonReturn else { return }
         do {
             let folder = try MeetingArtifacts.renameMeeting(meeting, to: nameField.stringValue)
             if completedFolder == meeting.folderURL { completedFolder = folder }
         } catch {
-            NSAlert(error: error).runModal()
+            NSAlert(error: error).runActive()
         }
         refreshHistory()
     }
@@ -1321,5 +1322,15 @@ final class AppModel: ObservableObject {
         default:
             privacyPermission = nil
         }
+    }
+}
+
+extension NSAlert {
+    /// A menu-bar app is not active when its menu opens a dialog; without activation the
+    /// alert never becomes key, so its text field ignores mouse selection.
+    @MainActor
+    func runActive() -> NSApplication.ModalResponse {
+        NSApp.activate(ignoringOtherApps: true)
+        return runModal()
     }
 }

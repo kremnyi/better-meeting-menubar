@@ -199,7 +199,7 @@ struct MenuBarControlView: View {
                     try AppModel.copyTranscript(in: folder)
                     copiedTranscript = true
                 } catch {
-                    NSAlert(error: error).runModal()
+                    NSAlert(error: error).runActive()
                 }
             }
         }
