@@ -239,6 +239,11 @@ final class CalendarIntegration: ObservableObject {
 
     func eventForRecording(id: String) async throws -> CalendarEvent {
         await refresh()
+        // Start recording brings the app forward, and that activation's refresh can supersede ours.
+        while let loadTask {
+            await loadTask.value
+            await Task.yield()
+        }
         guard enabled, authorization == .fullAccess, !isLoading,
               let event = events.first(where: { $0.id == id && selectedIDs.contains($0.providerCalendarId) }),
               event.scheduledEnd > Date() else { throw CalendarRecordingError.eventUnavailable }

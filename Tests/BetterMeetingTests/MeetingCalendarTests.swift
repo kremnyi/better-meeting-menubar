@@ -172,10 +172,20 @@ final class MeetingCalendarTests: XCTestCase {
         await delegate.handleCalendarReminder(request, action: UNNotificationDefaultActionIdentifier) { _ in starts += 1 }
         await delegate.handleCalendarReminder(request, action: UNNotificationDismissActionIdentifier) { _ in starts += 1 }
         XCTAssertEqual(starts, 0)
+        // Start recording brings the app forward, and its activation refresh supersedes the action's own.
+        var activated = false
+        reader.beforeReturn = {
+            if activated { try? await Task.sleep(for: .milliseconds(50)); return }
+            activated = true
+            Task { await calendar.refresh() }
+            await Task.yield()
+        }
         await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { selected in
             starts += 1
             XCTAssertEqual(selected.id, event.id)
         }
+        reader.beforeReturn = nil
+        XCTAssertTrue(activated)
         XCTAssertEqual(starts, 1)
         model.recordingDidStart(at: Date())
         await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }

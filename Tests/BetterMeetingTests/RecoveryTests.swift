@@ -95,6 +95,43 @@ final class RecoveryTests: XCTestCase {
             .contains { $0.hasPrefix(".audio-") })
     }
 
+    /// A just-stopped capture can be handed off before ScreenCaptureKit writes the MP4 index.
+    func testWaitsForRecordingToFinishWriting() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let finishedURL = root.appendingPathComponent("finished.m4a")
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
+        buffer.frameLength = buffer.frameCapacity
+        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
+        do {
+            let file = try AVAudioFile(forWriting: finishedURL, settings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 1,
+            ])
+            try file.write(from: buffer)
+        }
+        // An MP4 still being written: file type and media data, but no index yet.
+        let unfinished = Data([0, 0, 0, 16]) + Data("ftypmp42".utf8) + Data(count: 4)
+            + Data([0, 0, 0, 0]) + Data("mdat".utf8) + Data(count: 64)
+        let recordingURL = root.appendingPathComponent("recording.mp4")
+        try unfinished.write(to: recordingURL)
+
+        do {
+            try await AudioExtractor.waitUntilReadable(recordingURL, timeout: .milliseconds(300), interval: .milliseconds(50))
+            XCTFail("A recording that never finishes must still fail")
+        } catch {}
+
+        let finish = Task {
+            try await Task.sleep(for: .milliseconds(300))
+            try Data(contentsOf: finishedURL).write(to: recordingURL)
+        }
+        try await AudioExtractor.waitUntilReadable(recordingURL, timeout: .seconds(10), interval: .milliseconds(50))
+        try await finish.value
+        let audioURL = root.appendingPathComponent("audio.m4a")
+        try await AudioExtractor.extract(from: recordingURL, to: audioURL) { _ in }
+        XCTAssertGreaterThan(try AVAudioFile(forReading: audioURL).length, 0)
+    }
+
     func testEmptyModelDirectoriesAreNotAReadyCache() throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }

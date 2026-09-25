@@ -255,8 +255,13 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             let code = SCStreamError.Code(rawValue: nsError.code)
             let wasStoppedIntentionally = nsError.domain == SCStreamErrorDomain
                 && (code == .userStopped || code == .systemStoppedStream)
-            // The recording-output callback confirms the MP4 has finished writing.
-            if wasStoppedIntentionally, startContinuation == nil { return }
+            // Our own stop waits for the recording-output callback. A stop from the macOS
+            // screen-sharing menu may never deliver it, so hand the recording off now;
+            // processing waits until the MP4 is readable.
+            if wasStoppedIntentionally, startContinuation == nil {
+                if stopContinuation == nil { finishUnexpectedStop(with: nil) }
+                return
+            }
             if startContinuation != nil {
                 finishStart(with: .failure(error))
             } else if stopContinuation != nil {

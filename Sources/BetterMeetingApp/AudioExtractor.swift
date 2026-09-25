@@ -2,6 +2,24 @@ import AVFoundation
 import Foundation
 
 enum AudioExtractor {
+    /// ScreenCaptureKit can report a recording as finished before the MP4 index is written,
+    /// notably when the capture was stopped from the macOS screen-sharing menu.
+    static func waitUntilReadable(
+        _ recordingURL: URL, timeout: Duration = .seconds(300), interval: Duration = .seconds(1)
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while true {
+            do {
+                _ = try await AVURLAsset(url: recordingURL).load(.tracks)
+                return
+            } catch let error as AVError
+                where [.fileFormatNotRecognized, .fileFailedToParse].contains(error.code)
+                && ContinuousClock.now < deadline {
+                try await Task.sleep(for: interval)
+            }
+        }
+    }
+
     static func extract(
         from recordingURL: URL,
         to audioURL: URL,

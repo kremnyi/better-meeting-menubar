@@ -1069,8 +1069,14 @@ final class AppModel: ObservableObject {
 
             let recordingURL = folder.appendingPathComponent("recording.mp4")
             let audioURL = folder.appendingPathComponent("audio.m4a")
+            let needsAudio = ((try? AVAudioFile(forReading: audioURL).length) ?? 0) == 0
+            // Only a capture that just ended can still be finishing its MP4.
+            if needsAudio, run.folderTitle != nil {
+                setProcessingPhase(.finalizingRecording)
+                try await AudioExtractor.waitUntilReadable(recordingURL)
+            }
             setProcessingPhase(.preparingAudio, fraction: 0)
-            if ((try? AVAudioFile(forReading: audioURL).length) ?? 0) == 0 {
+            if needsAudio {
                 try await AudioExtractor.extract(from: recordingURL, to: audioURL) { [weak self] fraction in
                     Task { @MainActor [weak self] in
                         guard self?.processingPhase == .preparingAudio else { return }
