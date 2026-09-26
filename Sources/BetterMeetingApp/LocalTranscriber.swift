@@ -14,6 +14,11 @@ enum LocalTranscriptionProgress: Sendable {
     case engineTranscribing(Double?)
 }
 
+extension Double {
+    /// A progress fraction within 0...1, or nil when a reporter sends NaN or infinity.
+    var unitClamped: Double? { isFinite ? Swift.min(Swift.max(self, 0), 1) : nil }
+}
+
 struct StoredModelInfo: Identifiable, Sendable {
     enum Kind: Sendable {
         case whisper(SpeechModel)
@@ -223,9 +228,7 @@ actor LocalTranscriber {
             variant: model.rawValue,
             downloadBase: downloadBase,
             progressCallback: { update in
-                let fraction = update.fractionCompleted
-                guard fraction.isFinite else { return }
-                progress(min(max(fraction, 0), 1))
+                if let fraction = update.fractionCompleted.unitClamped { progress(fraction) }
             }
         )
     }
@@ -235,10 +238,8 @@ actor LocalTranscriber {
             to: Self.parakeetDirectory(in: downloadBase),
             version: Self.parakeetVersion,
             progressHandler: { update in
-                guard case .downloading = update.phase else { return }
-                let fraction = update.fractionCompleted
-                guard fraction.isFinite else { return }
-                progress(min(max(fraction, 0), 1))
+                guard case .downloading = update.phase, let fraction = update.fractionCompleted.unitClamped else { return }
+                progress(fraction)
             }
         )
     }
@@ -264,9 +265,8 @@ actor LocalTranscriber {
                 case .listing:
                     progressHandler(.preparingModel)
                 case .downloading:
-                    let fraction = progress.fractionCompleted
-                    guard fraction.isFinite else { return }
-                    progressHandler(.downloadingModel(min(max(fraction, 0), 1)))
+                    guard let fraction = progress.fractionCompleted.unitClamped else { return }
+                    progressHandler(.downloadingModel(fraction))
                 case .compiling:
                     progressHandler(.loadingModel)
                 }

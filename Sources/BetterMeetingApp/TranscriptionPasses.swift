@@ -31,10 +31,8 @@ struct TranscriptionLanguage: RawRepresentable, Hashable {
     }
 
     static func candidates(from saved: [String]) -> [String] {
-        var unique: [String] = []
-        for code in saved where Constants.languageCodes.contains(code) && !unique.contains(code) {
-            unique.append(code)
-        }
+        var seen: Set<String> = []
+        let unique = saved.filter { Constants.languageCodes.contains($0) && seen.insert($0).inserted }
         return unique.isEmpty ? defaultCandidates : unique
     }
 }

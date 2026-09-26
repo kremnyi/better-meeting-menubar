@@ -194,12 +194,17 @@ final class CalendarIntegration: ObservableObject {
     }
 
     private func performRefresh(now: Date, revision currentRevision: Int) async {
-        guard revision == currentRevision else { return }
-        authorization = reader.authorizationStatus
-        guard enabled, authorization == .fullAccess else {
-            clearSnapshot()
-            return
+        // Still the latest refresh, and still allowed to show events; clears them when not allowed.
+        func stillCurrent() -> Bool {
+            guard revision == currentRevision else { return false }
+            authorization = reader.authorizationStatus
+            guard enabled, authorization == .fullAccess else {
+                clearSnapshot()
+                return false
+            }
+            return true
         }
+        guard stillCurrent() else { return }
         isLoading = true
         let snapshot: CalendarSnapshot
         do {
@@ -208,12 +213,7 @@ final class CalendarIntegration: ObservableObject {
             if revision == currentRevision { isLoading = false }
             return
         } catch {
-            guard revision == currentRevision else { return }
-            authorization = reader.authorizationStatus
-            guard enabled, authorization == .fullAccess else {
-                clearSnapshot()
-                return
-            }
+            guard stillCurrent() else { return }
             isStale = hasLoaded
             errorMessage = isStale
                 ? "Calendar refresh failed. Showing the last available meetings."
@@ -221,12 +221,7 @@ final class CalendarIntegration: ObservableObject {
             isLoading = false
             return
         }
-        guard revision == currentRevision else { return }
-        authorization = reader.authorizationStatus
-        guard enabled, authorization == .fullAccess else {
-            clearSnapshot()
-            return
-        }
+        guard stillCurrent() else { return }
         calendars = snapshot.calendars
         events = snapshot.events
         hasLoaded = true

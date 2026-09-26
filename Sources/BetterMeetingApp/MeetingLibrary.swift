@@ -85,7 +85,7 @@ final class MeetingLibrary: Sendable {
                 continue
             }
             let text = searchText(in: meeting.folderURL)
-            if MeetingCalendar.matches(text.calendarFields, query: query)
+            if text.calendarFields.contains(where: { $0.localizedStandardContains(query) })
                 || text.transcript?.localizedStandardContains(query) == true {
                 matches.append(meeting)
             }

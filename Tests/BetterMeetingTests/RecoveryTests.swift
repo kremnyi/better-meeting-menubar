@@ -351,8 +351,7 @@ final class RecoveryTests: XCTestCase {
         let field = try XCTUnwrap(searchField(in: view), "Processing must keep the history search visible")
         XCTAssertTrue(field.isEnabled)
         XCTAssertTrue(model.updates.isBusy())
-        XCTAssertFalse(model.captureSettingsLocked, "Transcribing must not lock the display and microphone for the next recording")
-        XCTAssertTrue(model.transcriptionSettingsLocked)
+        XCTAssertFalse(model.isCapturing, "Transcribing must not lock the display and microphone for the next recording")
         try writePanelPreview(view, name: "processing")
         try writePanelPreview(hostingView(CaptureOptionsView(), model: model), name: "options-processing")
         field.stringValue = "Product"

@@ -104,10 +104,6 @@ final class AppModel: ObservableObject {
     var transcriptionBatchWaiting: Int { max(0, transcriptionBatchTotal - transcriptionBatchIndex) }
     var isProcessing: Bool { processingPhase != nil }
     var isCapturing: Bool { state == .preparing || state == .recording }
-    /// Display, microphone, and quality apply when a recording starts, so only a running capture locks them.
-    var captureSettingsLocked: Bool { isCapturing }
-    /// Transcription settings are read when a recording stops, so they lock only while a transcription runs.
-    var transcriptionSettingsLocked: Bool { isProcessing }
     /// The save folder and automatic export stay in use until the last job finishes.
     var fileSettingsLocked: Bool { isCapturing || isProcessing }
     var settingsLockNotice: String? {
@@ -311,13 +307,11 @@ final class AppModel: ObservableObject {
     }
 
     var primaryButtonSymbol: String {
-        if state == .recording {
-            return "stop.fill"
+        switch state {
+        case .recording: "stop.fill"
+        case .failed: "arrow.clockwise"
+        case .idle, .preparing: "record.circle"
         }
-        if state == .failed {
-            return "arrow.clockwise"
-        }
-        return "record.circle"
     }
 
     var captureAccessNotice: (text: String, isSecondary: Bool) {
@@ -547,10 +541,6 @@ final class AppModel: ObservableObject {
         defaults.set(normalized.map(\.path), forKey: failedTranscriptionFoldersKey)
     }
 
-    private func announce(_ message: String) {
-        accessibilityAnnouncement(message)
-    }
-
     func retryTranscription(_ item: MeetingHistoryItem, languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil) {
         guard !isProcessing, !isTranscribingBatch, state == .idle || state == .failed else { return }
         prepareSavedTranscription(item)
@@ -591,7 +581,7 @@ final class AppModel: ObservableObject {
                     ? "Transcription cancelled. \(completed) of \(recordings.count) finished; remaining recordings are kept."
                     : "Transcribed \(completed) of \(recordings.count) recordings."
                 completionMessage = message
-                announce(message)
+                accessibilityAnnouncement(message)
             }
             batchRemaining = []
             transcriptionBatchTotal = 0
@@ -750,10 +740,9 @@ final class AppModel: ObservableObject {
     }
 
     func completeTermination(_ success: Bool, terminate: @MainActor () -> Void = { NSApp.terminate(nil) }) {
-        if quitWhenFinished {
-            quitWhenFinished = false
-            if success { terminate() }
-        }
+        guard quitWhenFinished else { return }
+        quitWhenFinished = false
+        if success { terminate() }
     }
 
     func chooseOutputFolder() {
@@ -992,7 +981,7 @@ final class AppModel: ObservableObject {
         elapsed = 0
         meetingTitle = ""
         state = .idle
-        announce("Recording canceled.")
+        accessibilityAnnouncement("Recording canceled.")
         Task {
             try? await recorder.stop()
             guard let folder else { return }
@@ -1030,7 +1019,7 @@ final class AppModel: ObservableObject {
             return
         }
         state = .idle
-        announce("Recording stopped. Transcription started.")
+        accessibilityAnnouncement("Recording stopped. Transcription started.")
         processingFolder = run.folder
         if !isProcessing { setProcessingPhase(.finalizingRecording) }
         if stopCapture {
@@ -1209,8 +1198,8 @@ final class AppModel: ObservableObject {
                     ) { [weak self] fraction in
                         Task { @MainActor [weak self] in
                             guard let self, self.processingPhase == .labelingSpeakers,
-                                  !self.cancellingTranscription, fraction.isFinite else { return }
-                            self.setProcessingFraction(min(max(fraction, 0), 1))
+                                  !self.cancellingTranscription, let fraction = fraction.unitClamped else { return }
+                            self.setProcessingFraction(fraction)
                             let statusText = "Identifying speakers on this Mac…"
                             if self.processingStatusText != statusText { self.processingStatusText = statusText }
                         }
@@ -1273,7 +1262,7 @@ final class AppModel: ObservableObject {
             if let speakerWarning {
                 completionMessage = [speakerWarning, completionMessage].compactMap { $0 }.joined(separator: "\n")
             }
-            if !inBatch { announce("Transcript ready for \(title).") }
+            if !inBatch { accessibilityAnnouncement("Transcript ready for \(title).") }
             await MeetingNotifications.post(
                 title: meeting?.title ?? folder.lastPathComponent,
                 folder: folder, failed: false
@@ -1291,7 +1280,7 @@ final class AppModel: ObservableObject {
             }
             updateFailedTranscriptionFolders { $0.insert(failedFolder) }
             if state == .idle { fail(error) }
-            announce("Transcription failed for \(run.title). Open Better Meeting to retry.")
+            accessibilityAnnouncement("Transcription failed for \(run.title). Open Better Meeting to retry.")
             await MeetingNotifications.post(title: run.title, folder: failedFolder, failed: true)
             return false
         }
@@ -1305,7 +1294,7 @@ final class AppModel: ObservableObject {
         elapsed = 0
         state = .recording
         statusText = "Recording the selected display, system audio, and microphone."
-        announce("Recording started.")
+        accessibilityAnnouncement("Recording started.")
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.state == .recording, self.recordingID == recordingID else { return }
@@ -1328,7 +1317,7 @@ final class AppModel: ObservableObject {
         let warning = elapsed >= 30 && !audioDetected
         guard audioWarning != warning else { return }
         audioWarning = warning
-        if warning { announce("No audio detected yet. Check your microphone and meeting audio.") }
+        if warning { accessibilityAnnouncement("No audio detected yet. Check your microphone and meeting audio.") }
         if warning, menuWindow?.isVisible != true, let recordingID {
             audioWarningTask = Task {
                 await MeetingNotifications.post(MeetingNotifications.audioWarning(recordingID: recordingID))

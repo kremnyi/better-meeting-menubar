@@ -322,7 +322,7 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), sidecar, "Transcription must preserve calendar data")
         for invalid in ["{", sidecar.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":2")] {
             try invalid.write(to: url, atomically: true, encoding: .utf8)
-            XCTAssertFalse(MeetingCalendar.matches(MeetingCalendar.searchFields(in: root), query: "example.com"))
+            XCTAssertTrue(MeetingCalendar.searchFields(in: root).isEmpty)
             XCTAssertEqual(MeetingLibrary().search([item], query: "Recording"), [item])
         }
     }
@@ -418,7 +418,7 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(link["recordedAtAtLink"] as? String, ISO8601DateFormatter().string(from: actualStart))
         XCTAssertNil(json["match"], "Explicit selection has no matching score")
         XCTAssertEqual((json["event"] as? [String: Any])?["occurrenceId"] as? String, event.id)
-        XCTAssertTrue(MeetingCalendar.matches(MeetingCalendar.searchFields(in: root), query: "EXAMPLE.COM"))
+        XCTAssertTrue(MeetingCalendar.searchFields(in: root).contains { $0.localizedStandardContains("EXAMPLE.COM") })
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o600)
         XCTAssertThrowsError(try selected.attach(to: root, recordedAt: Date()))
         XCTAssertEqual(try Data(contentsOf: url), data)

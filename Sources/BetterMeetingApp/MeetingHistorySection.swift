@@ -7,6 +7,7 @@ struct MeetingHistorySection: View {
     @Binding var retranscribingMeeting: MeetingHistoryItem?
     @State private var hoveredMeetingID: MeetingHistoryItem.ID?
     @State private var searchFocusRequest = 0
+    @State private var scrollOffset: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -105,13 +106,16 @@ struct MeetingHistorySection: View {
                         .scrollTargetLayout()
                     }
                     // Snaps to a row or day header so the top never shows a half-cut line,
-                    // and fades the bottom edge where a partial row can still peek in.
+                    // and hides a row that only partly fits at the bottom.
                     .scrollTargetBehavior(.viewAligned)
-                    .mask {
-                        VStack(spacing: 0) {
+                    .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+                        scrollOffset = offset
+                    }
+                    .mask(alignment: .top) {
+                        if let height = historyViewportHeight {
+                            Color.black.frame(height: visibleHeight(in: height))
+                        } else {
                             Color.black
-                            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                                .frame(height: 14)
                         }
                     }
                     .scrollIndicators(.hidden)
@@ -125,19 +129,29 @@ struct MeetingHistorySection: View {
 
     private var historyViewportHeight: CGFloat? {
         guard model.hasMeetings, !model.allHistoryDays.isEmpty else { return nil }
-        let limit: CGFloat = 232
+        return Self.lineBottoms(model.allHistoryDays).last { $0 <= 232 } ?? 232
+    }
+
+    /// The height down to the last row or header that fits whole below the current scroll position.
+    private func visibleHeight(in viewport: CGFloat) -> CGFloat {
+        guard let bottom = Self.lineBottoms(model.historyDays).last(where: { $0 - scrollOffset <= viewport + 0.5 }),
+              bottom > scrollOffset else { return viewport }
+        return min(viewport, bottom - scrollOffset)
+    }
+
+    /// The bottom edge of each day header and row, matching the list's layout.
+    private static func lineBottoms(_ days: [MeetingDayGroup]) -> [CGFloat] {
+        var bottoms: [CGFloat] = []
         var height: CGFloat = 0
-        for (groupIndex, group) in model.allHistoryDays.enumerated() {
-            let headerHeight: CGFloat = groupIndex == 0 ? 17 : 22
-            guard height + headerHeight <= limit else { break }
-            height += headerHeight
-            for (itemIndex, _) in group.items.enumerated() {
-                let rowHeight: CGFloat = itemIndex == group.items.count - 1 ? 42 : 43
-                guard height + rowHeight <= limit else { return height }
-                height += rowHeight
+        for (groupIndex, group) in days.enumerated() {
+            height += groupIndex == 0 ? 17 : 22
+            bottoms.append(height)
+            for itemIndex in group.items.indices {
+                height += itemIndex == group.items.count - 1 ? 42 : 43
+                bottoms.append(height)
             }
         }
-        return height
+        return bottoms
     }
 
     static func rowHelp(_ item: MeetingHistoryItem) -> String {
@@ -170,7 +184,8 @@ struct MeetingHistorySection: View {
     }
 
     func historyRow(_ item: MeetingHistoryItem, isNew: Bool, canEdit: Bool, status: MeetingRowStatus? = nil) -> some View {
-        HStack(spacing: 10) {
+        let badge: MeetingRowStatus? = status ?? (item.needsTranscription ? .notTranscribed : nil)
+        return HStack(spacing: 10) {
             Button {
                 open(item)
             } label: {
@@ -189,7 +204,7 @@ struct MeetingHistorySection: View {
                                 .background(Color.accentColor.opacity(0.15), in: Capsule())
                                 .help("Just saved")
                         }
-                        if let badge = status ?? (item.needsTranscription ? .notTranscribed : nil) {
+                        if let badge {
                             if badge == .failed, canEdit {
                                 Button("Retry") { model.retryTranscription(item) }
                                     .buttonStyle(.bordered)
@@ -226,7 +241,7 @@ struct MeetingHistorySection: View {
             .accessibilityLabel(item.needsTranscription
                 ? "Open \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard)), in Finder"
                 : "Open transcript of \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard))")
-            .accessibilityValue((status ?? (item.needsTranscription ? .notTranscribed : nil))?.text ?? "")
+            .accessibilityValue(badge?.text ?? "")
 
             Menu {
                 meetingActions(item, canEdit: canEdit)

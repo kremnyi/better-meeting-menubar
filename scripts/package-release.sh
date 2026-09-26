@@ -8,10 +8,7 @@ if [[ $(uname -m) != arm64 ]]; then
     exit 1
 fi
 
-channel="stable"
-if [[ $# -gt 0 ]]; then
-    channel="$1"
-fi
+channel=${1:-stable}
 if [[ "$channel" != stable && "$channel" != beta ]]; then
     echo "Usage: package-release.sh [stable|beta]" >&2
     exit 1
@@ -26,10 +23,7 @@ codesign --verify --deep --strict \
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_dir/Contents/Info.plist")
 archive="Better-Meeting-${version}-arm64.zip"
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "dist/$archive"
-cd dist
-shasum -a 256 "$archive" > "$archive.sha256"
-cat "$archive.sha256"
-cd ..
+(cd dist && shasum -a 256 "$archive" | tee "$archive.sha256")
 feed_dir="$PWD/.build/sparkle-release/$version"
 mkdir -p "$feed_dir"
 ln -f "dist/$archive" "$feed_dir/$archive"

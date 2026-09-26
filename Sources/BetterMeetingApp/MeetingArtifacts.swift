@@ -237,12 +237,7 @@ enum MeetingArtifacts {
     // A folder without media holds nothing recoverable; drop it after a failed start.
     static func removeFolderWithoutMedia(_ folder: URL) -> Bool {
         guard !hasMedia(in: folder) else { return false }
-        do {
-            try FileManager.default.removeItem(at: folder)
-            return true
-        } catch {
-            return false
-        }
+        return (try? FileManager.default.removeItem(at: folder)) != nil
     }
 
     static func meeting(in folder: URL) -> MeetingHistoryItem? {
@@ -350,9 +345,7 @@ enum Timecode {
     /// "4:05" under an hour and "1:02:33" after, for clocks that tick.
     static func compact(_ interval: TimeInterval) -> String {
         let seconds = max(0, Int(interval))
-        return seconds < 3_600
-            ? String(format: "%d:%02d", seconds / 60, seconds % 60)
-            : String(format: "%d:%02d:%02d", seconds / 3_600, seconds / 60 % 60, seconds % 60)
+        return Duration.seconds(seconds).formatted(.time(pattern: seconds < 3_600 ? .minuteSecond : .hourMinuteSecond))
     }
 
     /// "34 sec", "12 min", or "1 hr, 5 min", for meeting lengths in lists.

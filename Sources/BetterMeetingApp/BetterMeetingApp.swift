@@ -159,11 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if request.content.categoryIdentifier == MeetingNotifications.audioWarningCategory {
             guard action == UNNotificationDefaultActionIdentifier else { return }
             guard model?.state == .recording, model?.recordingID?.uuidString == request.identifier else { return }
-            if let window = model?.menuWindow, window.isVisible {
-                window.makeKeyAndOrderFront(nil)
-                return
-            }
-            clickStatusItem()
+            showMenu()
             return
         }
         guard let folder = MeetingNotifications.folder(from: request.content) else { return }

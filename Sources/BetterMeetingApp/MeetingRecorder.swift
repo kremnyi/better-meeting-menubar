@@ -238,13 +238,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     ) {
         Task { @MainActor in
             guard recordingOutput === self.recordingOutput else { return }
-            if startContinuation != nil {
-                finishStart(with: .failure(error))
-            } else if stopContinuation != nil {
-                finishStop(with: .failure(error))
-            } else {
-                finishUnexpectedStop(with: error)
-            }
+            finish(failing: error)
         }
     }
 
@@ -262,13 +256,18 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                 if stopContinuation == nil { finishUnexpectedStop(with: nil) }
                 return
             }
-            if startContinuation != nil {
-                finishStart(with: .failure(error))
-            } else if stopContinuation != nil {
-                finishStop(with: .failure(error))
-            } else {
-                finishUnexpectedStop(with: error)
-            }
+            finish(failing: error)
+        }
+    }
+
+    /// Fails whichever of start or stop is waiting, or reports the capture ending on its own.
+    private func finish(failing error: Error) {
+        if startContinuation != nil {
+            finishStart(with: .failure(error))
+        } else if stopContinuation != nil {
+            finishStop(with: .failure(error))
+        } else {
+            finishUnexpectedStop(with: error)
         }
     }
 

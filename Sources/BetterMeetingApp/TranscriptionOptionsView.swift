@@ -6,10 +6,6 @@ struct CaptureOptionsView: View {
     /// is a round trip to the login items service, so it is read when the menu opens and after changes.
     private(set) static var knownLaunchAtLoginStatus = SMAppService.mainApp.status
 
-    static func refreshLaunchAtLoginStatus() {
-        knownLaunchAtLoginStatus = SMAppService.mainApp.status
-    }
-
     /// The menu calls this on every open; the status read can block for seconds, so it lands after.
     /// Pass the toggle's binding where the caller also shows the value.
     static func refreshLaunchAtLoginStatusInBackground(updating state: Binding<SMAppService.Status>? = nil) {
@@ -42,7 +38,7 @@ struct CaptureOptionsView: View {
                     settings: $model.speechSettings, hints: $model.transcriptionHints,
                     modelSelectionDisabled: model.modelPreparationTask != nil
                 )
-                .disabled(model.transcriptionSettingsLocked)
+                .disabled(model.isProcessing)
             } else if appSettingsPresented && aboutPresented {
                 OptionsPageHeader(title: "About", backTo: "App & updates") { aboutPresented = false }
                 AboutView(version: version)
@@ -156,7 +152,7 @@ struct CaptureOptionsView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
-                .disabled(model.captureSettingsLocked)
+                .disabled(model.isCapturing)
                 .help("The entire selected display is recorded")
                 .accessibilityLabel("Display")
             }
@@ -173,7 +169,7 @@ struct CaptureOptionsView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity)
-                .disabled(model.captureSettingsLocked)
+                .disabled(model.isCapturing)
                 .help("Recorded along with system audio")
                 .accessibilityLabel("Microphone")
             }
@@ -201,7 +197,7 @@ struct CaptureOptionsView: View {
                 }
                 .lineLimit(1)
                 .frame(minWidth: 0, maxWidth: .infinity)
-                .disabled(model.captureSettingsLocked)
+                .disabled(model.isCapturing)
                 .accessibilityLabel("Video quality")
                 .accessibilityValue(videoQualityLabel)
                 .help("Resolution limits the video's longest edge without upscaling. Smoother motion uses more storage.")
@@ -212,7 +208,7 @@ struct CaptureOptionsView: View {
             }
             TranscriptionOptionsView(
                 languages: $model.transcriptionLanguages, settings: $model.speechSettings,
-                locked: model.transcriptionSettingsLocked
+                locked: model.isProcessing
             )
             Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
             GridRow {
@@ -252,7 +248,7 @@ struct CaptureOptionsView: View {
         } catch {
             launchAtLoginError = error.localizedDescription
         }
-        Self.refreshLaunchAtLoginStatus()
+        Self.knownLaunchAtLoginStatus = service.status
         launchAtLoginStatus = Self.knownLaunchAtLoginStatus
     }
 

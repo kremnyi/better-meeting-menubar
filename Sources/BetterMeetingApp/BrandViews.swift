@@ -153,9 +153,7 @@ struct MenuBarStatusLabel: View {
             .font(.system(size: 13))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Better Meeting, recording, \(elapsed)")
-        } else if attention {
-            MenuBarStatusIcon(state: state, processing: processing, processingFrame: spinner.frame, attention: true)
-        } else if let event = previewEvent {
+        } else if !attention, let event = previewEvent {
             let now = Date()
             let relative = event.relativeStart(at: now, compact: true)
             HStack(spacing: 5) {
