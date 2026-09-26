@@ -102,6 +102,17 @@ struct MeetingHistorySection: View {
                                 }
                             }
                         }
+                        .scrollTargetLayout()
+                    }
+                    // Snaps to a row or day header so the top never shows a half-cut line,
+                    // and fades the bottom edge where a partial row can still peek in.
+                    .scrollTargetBehavior(.viewAligned)
+                    .mask {
+                        VStack(spacing: 0) {
+                            Color.black
+                            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 14)
+                        }
                     }
                     .scrollIndicators(.hidden)
                 }

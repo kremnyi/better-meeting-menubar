@@ -285,7 +285,9 @@ struct MenuBarControlView: View {
 
             primaryActionButton
 
-            Button("Cancel recording", role: .destructive) { model.cancelRecording() }
+            Button("Cancel recording") { model.cancelRecording() }
+                .buttonStyle(.link)
+                .font(.callout)
                 .frame(maxWidth: .infinity)
                 .help("Stop and discard this recording without transcribing it")
 
