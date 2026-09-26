@@ -181,7 +181,7 @@ code, pre { font-family: var(--mono); }
 /* Desktop scene */
 .scene {
   position: relative;
-  height: 600px;
+  height: 640px;
   border-radius: 24px;
   overflow: hidden;
   isolation: isolate;
@@ -279,7 +279,14 @@ code, pre { font-family: var(--mono); }
 .pop-rule { height: 1px; margin: 12px 0 0; background: var(--pop-line); }
 .pop-head { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-weight: 600; font-size: 13.5px; }
 .pop-head svg { width: 17px; height: 17px; color: var(--pop-ink-2); stroke-width: 1.4; }
-.pop-day { margin: 16px 0 4px; color: var(--pop-ink-2); font-size: 11px; font-weight: 500; }
+.pop-head small { margin-left: 6px; color: var(--pop-ink-2); font-size: 11px; font-weight: 500; }
+.pop-head > span { flex: 1; }
+.pop-list { margin-top: 6px; }
+.pop-next { border-bottom: 1px solid var(--pop-line); }
+.pop-next svg { width: 18px; height: 18px; color: var(--pop-ink-2); stroke-width: 1.4; }
+.pop-next svg circle:last-child { fill: currentColor; stroke: none; }
+.pop-later { padding: 8px 0 10px; color: var(--pop-ink-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pop-later b { margin-left: 8px; color: var(--pop-ink); font-weight: 400; }
 .pop-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0 8px; }
 .pop-row + .pop-row { border-top: 1px solid var(--pop-line); }
 .pop-row strong { display: block; font-weight: 500; font-size: 13px; }
@@ -291,7 +298,7 @@ code, pre { font-family: var(--mono); }
 .scene-caption { margin-top: 14px; text-align: center; font-size: 13px; color: var(--ink-3); }
 
 @media (max-width: 520px) {
-  .scene { height: 580px; border-radius: 20px; }
+  .scene { height: 630px; border-radius: 20px; }
   .call { display: none; }
   .pop { right: 50%; transform: translateX(50%); width: min(304px, calc(100% - 24px)); top: 46px; }
   .mb-hide { display: none; }
@@ -647,7 +654,7 @@ footer { border-top: 1px solid var(--line); padding: 40px 0 48px; font-size: 14p
       </div>
 
       <div>
-        <div class="scene" role="img" aria-label="A macOS desktop with a video call in progress and the Better Meeting menu open below its menu bar icon, showing a Start recording button and a list of recorded meetings.">
+        <div class="scene" role="img" aria-label="A macOS desktop with a video call in progress and the Better Meeting menu open below its menu bar icon, showing a Start recording button, upcoming calendar meetings, and a list of recorded meetings.">
           <div class="menubar" aria-hidden="true">
             <span class="mb-app"><svg><use href="#glyph"/></svg></span>
             <svg class="mb-hide" viewBox="0 0 20 15"><path d="M10 13.6 7.6 11.2a3.4 3.4 0 0 1 4.8 0L10 13.6Zm-4.2-4.2L4.1 7.7a8.3 8.3 0 0 1 11.8 0l-1.7 1.7a5.9 5.9 0 0 0-8.4 0ZM2.3 5.9.6 4.2a13.3 13.3 0 0 1 18.8 0l-1.7 1.7a10.9 10.9 0 0 0-15.4 0Z"/></svg>
@@ -677,19 +684,26 @@ footer { border-top: 1px solid var(--line); padding: 40px 0 48px; font-size: 14p
             </div>
             <div class="pop-rule"></div>
             <div class="pop-head">
-              Recorded meetings
+              <span>Upcoming meetings</span>
+              <svg viewBox="0 0 16 16"><path d="M2 4.5h12M2 8h12M2 11.5h12"/><circle cx="5" cy="4.5" r="1.4" fill="var(--pop-bg)"/><circle cx="10.5" cy="8" r="1.4" fill="var(--pop-bg)"/><circle cx="6.5" cy="11.5" r="1.4" fill="var(--pop-bg)"/></svg>
+            </div>
+            <div class="pop-row pop-next"><div><strong>Weekly roadmap review</strong><small id="up-next">Starts in 25 min · 11:00–11:30</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.4"/><circle cx="10" cy="10" r="3.4"/></svg></div>
+            <div class="pop-later">Later today<br><span id="up-later">12:00–12:30</span><b>Partner demo</b></div>
+            <div class="pop-rule" style="margin-top:0"></div>
+            <div class="pop-head">
+              <span>Recorded meetings<small>1.4 GB</small></span>
               <svg viewBox="0 0 20 20"><path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h3.6l1.6 1.8h6.8a1.5 1.5 0 0 1 1.5 1.5v7.2a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5Z"/><path d="M2.5 8h15"/></svg>
             </div>
             <div class="pop-field" style="margin-top:12px">
               <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.6"/><path d="m10.4 10.4 3.6 3.6"/></svg>
-              Search meetings
+              Search 4 meetings
             </div>
-            <div class="pop-day">Friday, Sep 4</div>
-            <div class="pop-row"><div><strong>Product sync</strong><small>16:00 · 12 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
-            <div class="pop-row"><div><strong>Release planning</strong><small>15:00 · 15 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
-            <div class="pop-row"><div><strong>Design review</strong><small>14:00 · 18 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
-            <div class="pop-day">Thursday, Sep 3</div>
-            <div class="pop-row"><div><strong>Customer interview</strong><small>16:00 · 21 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+            <div class="pop-list">
+              <div class="pop-row"><div><strong>Product sync</strong><small>Fri, Sep 4, 16:00 · 12 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+              <div class="pop-row"><div><strong>Release planning</strong><small>Fri, Sep 4, 15:00 · 15 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+              <div class="pop-row"><div><strong>Design review</strong><small>Fri, Sep 4, 14:00 · 18 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+              <div class="pop-row"><div><strong>Customer interview</strong><small>Thu, Sep 3, 16:00 · 21 min</small></div><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.6"/><circle cx="6.6" cy="10" r=".7" fill="currentColor"/><circle cx="10" cy="10" r=".7" fill="currentColor"/><circle cx="13.4" cy="10" r=".7" fill="currentColor"/></svg></div>
+            </div>
             <div class="pop-foot">
               <span><svg viewBox="0 0 16 16"><path d="M2 4.5h12M2 8h12M2 11.5h12"/><circle cx="5" cy="4.5" r="1.4" fill="var(--pop-bg)"/><circle cx="10.5" cy="8" r="1.4" fill="var(--pop-bg)"/><circle cx="6.5" cy="11.5" r="1.4" fill="var(--pop-bg)"/></svg>Options</span>
               <span>Quit</span>
@@ -1065,6 +1079,13 @@ are ready for review.</pre>
     const day = `${part({ weekday: 'short' })} ${now.getDate()} ${part({ month: 'short' })}`;
     const time = part({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
     clock.textContent = `${day}  ${time}`;
+    // The sample calendar meetings start on the half hour after the live clock.
+    const hhmm = (date) => date.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    const halfHour = 30 * 60000;
+    const start = new Date(Math.ceil((now.getTime() + halfHour) / halfHour) * halfHour);
+    const span = (from) => `${hhmm(from)}–${hhmm(new Date(from.getTime() + halfHour))}`;
+    document.getElementById('up-next').textContent = `Starts in ${Math.ceil((start - now) / 60000)} min · ${span(start)}`;
+    document.getElementById('up-later').textContent = span(new Date(start.getTime() + 2 * halfHour));
   };
   tick();
   setInterval(tick, 15000);

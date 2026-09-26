@@ -11,9 +11,9 @@ about 1.6 GB. Transcription runs locally and works offline afterward.
 
 Project website: [kremnyi.github.io/better-meeting-menubar](https://kremnyi.github.io/better-meeting-menubar/)
 
-<img src="docs/menu-bar.png" alt="Better Meeting menu with a search field and meeting rows, each with an action button" width="304">
+<img src="docs/menu-bar.png" alt="Better Meeting menu with upcoming calendar meetings above a search field and recorded meeting rows, each with an action button" width="304">
 
-The app's menu, shown with fictional meetings.
+The app's menu, shown with fictional calendar events and meetings.
 
 ## Install with Homebrew
 
@@ -79,7 +79,9 @@ updates. Uninstalling the app keeps saved meetings and downloaded models; see
    **Microphone** access. If access is blocked, click **Open System Settings** to enable it,
    then use **Restart Better Meeting** for screen access or **Try again** for microphone access.
 5. Stop recording and wait for transcription. Click the finished meeting to
-   open its transcript.
+   open its transcript. To discard a recording instead, click **Cancel recording**
+   below the stop button and confirm; the recording moves to the Trash without
+   being transcribed.
 
 The app downloads and prepares the selected speech model in the background when
 needed. The menu shows progress; you can record during setup, but transcription
@@ -104,8 +106,9 @@ click it to open the recording controls. Recording continues. The warning clears
 when either source detects audio, and later pauses do not trigger another warning.
 
 The menu-bar icon spins during processing, or stays still with Reduce Motion enabled.
-A warning icon appears if recording or transcription fails and stays until you retry
-or dismiss the error. Search, Finder, and **Copy Transcript** remain available during
+A warning icon appears if recording or transcription fails, or if screen or microphone
+access needs attention, and stays until you retry, dismiss the error, or grant access.
+Recordings that are only waiting to be transcribed don't raise it. Search, Finder, and **Copy Transcript** remain available during
 transcription and export; renaming and starting another job wait until processing finishes.
 
 Before your first recording or retry, the app asks permission to send notifications
@@ -125,9 +128,10 @@ Better Meeting to open at login.
 
 The menu can show your meetings from the macOS Calendar app. Enable
 **Use calendar** in **Options → Meetings** and choose which calendars to read. The menu lists
-today's remaining meetings, with a **Record this meeting** button on the first
-one that starts a recording named after the event. It becomes a labeled
-**Record** button once the meeting is under way or starts within five minutes.
+today's remaining meetings under **Upcoming meetings**. The record button on the
+next meeting starts a recording named after the event. Once that meeting is under way
+or starts within five minutes, **Start recording** itself becomes **Record
+"<title>"**. A meeting that appears on two selected calendars is listed once.
 Once today is done the menu names the first meeting of tomorrow. With **When a calendar meeting starts** enabled
 under **Suggest recording**, the app also sends a notification when the event starts.
 

@@ -542,7 +542,7 @@ final class MeetingCalendarTests: XCTestCase {
 }
 
 @MainActor
-private final class CalendarReaderFixture: CalendarReading {
+final class CalendarReaderFixture: CalendarReading {
     var authorizationStatus: EKAuthorizationStatus = .notDetermined
     var requests = 0
     var loads = 0
@@ -569,7 +569,7 @@ private final class CalendarReaderFixture: CalendarReading {
     }
 }
 
-private func calendarEventFixture(id: String = "occurrence", date: Date = Date().addingTimeInterval(600), title: String = "Portfolio review with Alex") throws -> CalendarEvent {
+func calendarEventFixture(id: String = "occurrence", date: Date = Date().addingTimeInterval(600), title: String = "Portfolio review with Alex") throws -> CalendarEvent {
     let iso = ISO8601DateFormatter()
     let json = """
     {"calendarKey":"eventkit:fixture","providerCalendarId":"fixture-calendar","providerEventId":"item",
@@ -585,7 +585,7 @@ private func calendarEventFixture(id: String = "occurrence", date: Date = Date()
 }
 
 @MainActor
-private final class ReminderCenterFixture: CalendarReminderCenter {
+final class ReminderCenterFixture: CalendarReminderCenter {
     var allowed = true
     var authorizationRequests = 0
     var pending: [String: UNNotificationRequest] = [:]
