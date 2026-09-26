@@ -382,8 +382,9 @@ extension CalendarEvent {
     }
 
     var timeRange: String {
-        scheduledStart.formatted(date: .omitted, time: .shortened) + "–"
-            + scheduledEnd.formatted(date: Calendar.current.isDate(scheduledStart, inSameDayAs: scheduledEnd) ? .omitted : .abbreviated,
-                                     time: .shortened)
+        // A meeting ending exactly at midnight still belongs to its day: "23:30–0:00", not a dated end.
+        let sameDay = Calendar.current.isDate(scheduledStart, inSameDayAs: scheduledEnd.addingTimeInterval(-1))
+        return scheduledStart.formatted(date: .omitted, time: .shortened) + "–"
+            + scheduledEnd.formatted(date: sameDay ? .omitted : .abbreviated, time: .shortened)
     }
 }

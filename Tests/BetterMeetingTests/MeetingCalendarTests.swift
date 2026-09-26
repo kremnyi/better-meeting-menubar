@@ -105,6 +105,17 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertNotEqual(tomorrowText, "Tomorrow")
     }
 
+    func testMeetingEndingAtMidnightShowsTimeRangeWithoutDate() throws {
+        let midnight = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86400)
+        let endsAtMidnight = try calendarEventFixture(date: midnight.addingTimeInterval(-1800))
+        XCTAssertEqual(endsAtMidnight.timeRange,
+                       endsAtMidnight.scheduledStart.formatted(date: .omitted, time: .shortened) + "–"
+                           + midnight.formatted(date: .omitted, time: .shortened))
+        let crossesMidnight = try calendarEventFixture(date: midnight.addingTimeInterval(-900))
+        XCTAssertTrue(crossesMidnight.timeRange.hasSuffix(midnight.addingTimeInterval(900).formatted(date: .abbreviated, time: .shortened)),
+                      "A meeting running past midnight still dates its end")
+    }
+
     func testMenuPreviewPicksActionableMeetingsOnly() throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-09T12:00:00Z"))
         let tomorrow = try calendarEventFixture(id: "tomorrow", date: now.addingTimeInterval(20 * 3600))
