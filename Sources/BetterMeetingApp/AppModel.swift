@@ -509,8 +509,9 @@ final class AppModel: ObservableObject {
             defer { modelDownloadTask = nil }
             let report: @Sendable (Double) -> Void = { [weak self] fraction in
                 Task { @MainActor [weak self] in
-                    guard self?.modelDownloads[item.id] != nil else { return }
-                    self?.modelDownloads[item.id] = fraction
+                    guard let self, let shown = self.modelDownloads[item.id],
+                          Self.shownPercent(fraction) != Self.shownPercent(shown) else { return }
+                    self.modelDownloads[item.id] = fraction
                 }
             }
             do {

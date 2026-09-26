@@ -5,6 +5,7 @@ struct MenuBarControlView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var updates: AppUpdater
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State var captureOptionsPresented = false
     @State private var meetingOptionsPresented = false
     @State private var appSettingsPresented = false
@@ -246,7 +247,7 @@ struct MenuBarControlView: View {
             Button(copiedTranscript ? "Copied" : "Copy Transcript") {
                 do {
                     try AppModel.copyTranscript(in: folder)
-                    copiedTranscript = true
+                    withAnimation(.easeOut(duration: 0.15)) { copiedTranscript = true }
                 } catch {
                     NSAlert(error: error).runActive()
                 }
@@ -329,6 +330,7 @@ struct MenuBarControlView: View {
                 .accessibilityHidden(!model.audioWarning)
             }
             .font(.callout)
+            .animation(.easeInOut(duration: 0.2), value: model.audioWarning)
 
             primaryActionButton
 
@@ -361,6 +363,10 @@ struct MenuBarControlView: View {
                 Image(systemName: model.isExportingBundle ? "shippingbox" : "waveform")
                     .font(.title2)
                     .foregroundStyle(.tint)
+                    .contentTransition(.symbolEffect(.replace))
+                    // The waveform sweeps while audio is being turned into text.
+                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating,
+                                  isActive: !reduceMotion && !model.isExportingBundle)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(processingHeadline)
@@ -563,12 +569,15 @@ private struct RecordingElapsed: View {
     @ObservedObject var clock: RecordingClock
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "circle.fill")
                 .font(.body)
                 .foregroundStyle(colorScheme == .dark ? Color.signalCoralBright : Color.signalCoral)
+                // The on-air light: a slow breath says the capture is live without competing with the clock.
+                .symbolEffect(.pulse, options: .repeating.speed(0.5), isActive: !reduceMotion)
                 .accessibilityHidden(true)
             Text(Timecode.compact(clock.elapsed))
                 .font(.system(.largeTitle, design: .rounded).weight(.medium).monospacedDigit())

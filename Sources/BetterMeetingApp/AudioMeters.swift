@@ -16,6 +16,7 @@ final class AudioMeters: ObservableObject {
 struct AudioMetersView: View {
     @ObservedObject var meters: AudioMeters
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 6) {
@@ -38,6 +39,8 @@ struct AudioMetersView: View {
                                 ? Color.green
                                 : Color(red: 0.13, green: 0.60, blue: 0.22))
                             .frame(width: proxy.size.width * min(max(level, 0), 1))
+                            // Levels arrive every 0.25 s; gliding over that interval reads as live audio, not steps.
+                            .animation(reduceMotion ? nil : .linear(duration: 0.25), value: level)
                     }
                 }
                 .frame(height: 5)
