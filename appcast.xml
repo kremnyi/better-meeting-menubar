@@ -3,15 +3,15 @@
     <channel>
         <title>Better Meeting</title>
         <item>
-            <title>0.4.3b3</title>
-            <pubDate>Fri, 25 Sep 2026 16:23:12 +0200</pubDate>
-            <link>https://github.com/kremnyi/better-meeting-menubar/releases/tag/v0.4.3b3</link>
+            <title>0.4.3b4</title>
+            <pubDate>Sat, 26 Sep 2026 18:20:27 +0200</pubDate>
+            <link>https://github.com/kremnyi/better-meeting-menubar/releases/tag/v0.4.3b4</link>
             <sparkle:channel>beta</sparkle:channel>
-            <sparkle:version>94</sparkle:version>
-            <sparkle:shortVersionString>0.4.3b3</sparkle:shortVersionString>
+            <sparkle:version>95</sparkle:version>
+            <sparkle:shortVersionString>0.4.3b4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/kremnyi/better-meeting-menubar/releases/download/v0.4.3b3/Better-Meeting-0.4.3b3-arm64.zip" length="13606457" type="application/octet-stream" sparkle:edSignature="NEVYSaOfJj0cPPvzQUObJDN3daqpJPjcZ7+yyHjaocpNTkAwR2LMAtmb9pUPWxKoIoOH7sUEKl9+OyyoRbsJDA==" />
+            <enclosure url="https://github.com/kremnyi/better-meeting-menubar/releases/download/v0.4.3b4/Better-Meeting-0.4.3b4-arm64.zip" length="13612882" type="application/octet-stream" sparkle:edSignature="2WoDgZTYtoUj88/45ukx3BHXKqSUMWqa5TmGx4BZSy6nkus5d9UCpZ8h3eppjplNniyKlHb44vMdyyhKCVPMCg==" />
         </item>
         <item>
             <title>0.4.2</title>
