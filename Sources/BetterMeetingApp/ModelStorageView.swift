@@ -43,25 +43,31 @@ struct ModelStorageView: View {
     private func actions(_ item: StoredModelInfo) -> some View {
         if pendingDelete?.id == item.id {
             Button("Cancel") { pendingDelete = nil }
-            Button("Delete") {
+                .accessibilityLabel("Keep \(item.title)")
+            Button("Delete", role: .destructive) {
                 pendingDelete = nil
                 Task { await model.deleteStoredModel(item) }
             }
+            .accessibilityLabel("Confirm delete \(item.title)")
             // System red fails AA on white in light mode; darken there, keep it in dark mode.
             .foregroundStyle(colorScheme == .dark ? Color.red : Color(red: 0.70, green: 0.13, blue: 0.12))
         } else if let fraction = model.modelDownloads[item.id] {
             ProgressView(value: fraction)
                 .progressViewStyle(.linear)
                 .frame(width: 70)
+                .accessibilityLabel("Downloading \(item.title)")
             Text(fraction.formatted(.percent.precision(.fractionLength(0))))
                 .font(.caption).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         } else if item.installed {
             Button("Delete…") { pendingDelete = item }
                 .disabled(busy)
+                .accessibilityLabel("Delete \(item.title)")
                 .help("Deletes the downloaded files and frees their disk space. They download again when next needed.")
         } else {
             Button("Download") { model.downloadStoredModel(item) }
                 .disabled(busy)
+                .accessibilityLabel("Download \(item.title)")
                 .help("Downloads now so transcription does not wait later")
         }
     }

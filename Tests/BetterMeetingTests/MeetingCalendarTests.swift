@@ -192,10 +192,12 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(starts, 1)
         XCTAssertEqual(model.state, .recording)
         model.fail(AppError.missingRecording)
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
+        XCTAssertEqual(starts, 2, "A failed recording must not block Start recording for the next meeting")
         model.dismissFailure()
         reader.events = [try calendarEventFixture(date: Date().addingTimeInterval(1800))]
         await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
-        XCTAssertEqual(starts, 1, "A moved event must not be recorded through its old alert")
+        XCTAssertEqual(starts, 2, "A moved event must not be recorded through its old alert")
         XCTAssertNotNil(model.completionMessage)
         await calendar.setNotifyAtStart(false)
         await calendar.reminders.task?.value
@@ -504,9 +506,11 @@ final class MeetingCalendarTests: XCTestCase {
         let third = try calendarEventFixture(id: "third", date: now.addingTimeInterval(10_800))
         let fourth = try calendarEventFixture(id: "fourth", date: now.addingTimeInterval(14_400))
         let tomorrow = try calendarEventFixture(id: "tomorrow", date: now.addingTimeInterval(86_400))
-        let layout = UpcomingMeetingLayout.make(events: [first, second, third, fourth, tomorrow], now: now)
+        // The same meeting on a second selected calendar has its own occurrence ID.
+        let secondCopy = try calendarEventFixture(id: "second-copy", date: now.addingTimeInterval(7_200))
+        let layout = UpcomingMeetingLayout.make(events: [first, second, secondCopy, third, fourth, tomorrow], now: now)
         XCTAssertEqual(layout.primary?.id, "first")
-        XCTAssertEqual(layout.compact.map(\.id), ["second", "third"])
+        XCTAssertEqual(layout.compact.map(\.id), ["second", "third"], "A meeting on two calendars is listed once")
         XCTAssertEqual(layout.extraTodayCount, 1)
         XCTAssertNil(layout.tomorrowFirst, "Tomorrow appears only once today is done")
     }

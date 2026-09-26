@@ -282,8 +282,9 @@ queue runs, the app asks whether to wait until it finishes.
 
 ### Retry or cancel transcription
 
-If transcription fails, use **Retry transcription** to resume from the saved audio
-or video. After a restart, unfinished recordings appear with **Transcribe** in the
+If transcription fails, the error appears below **Start recording**, so the next
+meeting still starts with one click. Use **Retry transcription** there, or **Retry**
+on the meeting's row, to resume from the saved audio or video. After a restart, unfinished recordings appear with **Transcribe** in the
 menu; see [Transcribe all unfinished recordings](#transcribe-all-unfinished-recordings).
 When quitting during work, choose **Finish and quit** or **Wait and quit** to let
 saving finish. Force Quit or power loss can leave an unfinished video that cannot

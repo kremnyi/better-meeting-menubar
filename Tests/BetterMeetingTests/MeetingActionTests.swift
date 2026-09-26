@@ -36,13 +36,15 @@ final class MeetingActionTests: XCTestCase {
         model.retryTranscription(item)
         XCTAssertNil(model.completionMessage, "A new attempt must clear the cancellation notice")
         await model.processingTask?.value
-        XCTAssertEqual(model.state, .failed)
-        XCTAssertEqual(model.primaryButtonTitle, "Retry transcription")
-        XCTAssertEqual(model.primaryButtonSymbol, "arrow.clockwise")
-        model.primaryAction()
+        XCTAssertEqual(model.state, .idle, "A failed transcription must not take the place of Start recording")
+        XCTAssertEqual(model.primaryButtonTitle, "Start recording")
+        XCTAssertEqual(model.failedTranscriptionMeeting?.title, item.title)
+        XCTAssertEqual(model.failureTitle, "Couldn’t transcribe “\(item.title)”")
+        model.retryFailedTranscription()
         XCTAssertTrue(model.isProcessing, "Retry must use saved media, not start a new recording")
         await model.processingTask?.value
-        XCTAssertEqual(model.state, .failed)
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertNotNil(model.failedTranscriptionMeeting)
         XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, original)
         XCTAssertFalse(try XCTUnwrap(model.transcriptionHistory.first).needsTranscription)
 

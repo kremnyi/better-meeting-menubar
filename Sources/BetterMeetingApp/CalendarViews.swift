@@ -195,7 +195,8 @@ struct UpcomingMeetingView: View {
     let configure: () -> Void
     let record: (CalendarEvent) -> Void
 
-    /// Once a meeting is under way or this close to starting, recording it is the likely next step.
+    /// Once a meeting is under way or this close to starting, recording it is the likely next step,
+    /// so the menu's Start button records it.
     static let prominentRecordLeadTime: TimeInterval = 5 * 60
 
     var body: some View {
@@ -206,7 +207,7 @@ struct UpcomingMeetingView: View {
                         Text("Upcoming meetings").font(.callout.weight(.medium))
                         Spacer()
                         Button(action: configure) {
-                            Image(systemName: "calendar").frame(width: 28, height: 24)
+                            Image(systemName: "slider.horizontal.3").frame(width: 28, height: 24)
                         }
                             .buttonStyle(.borderless)
                             .accessibilityLabel("Meeting options")
@@ -251,30 +252,16 @@ struct UpcomingMeetingView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .help("Open Calendar")
-                                    .accessibilityLabel("Open Calendar for \(event.title)")
-                                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                                        if event.scheduledStart.timeIntervalSince(context.date) <= Self.prominentRecordLeadTime {
-                                            Button { record(event) } label: {
-                                                Label("Record", systemImage: "record.circle")
-                                            }
-                                            .buttonStyle(.borderedProminent)
-                                            .controlSize(.small)
-                                            .tint(.signalCoral)
-                                            .fixedSize()
-                                            .accessibilityLabel("Record this meeting: \(event.title)")
-                                            .help("Record this meeting")
-                                        } else {
-                                            Button { record(event) } label: {
-                                                Image(systemName: "record.circle")
-                                                    .font(.system(size: 16))
-                                                    .frame(width: 28, height: 28)
-                                                    .contentShape(Rectangle())
-                                            }
-                                            .buttonStyle(.borderless)
-                                            .accessibilityLabel("Record this meeting: \(event.title)")
-                                            .help("Record this meeting")
-                                        }
+                                    .accessibilityLabel("Open Calendar for \(event.title), \(event.relativeStart(at: Date())), \(event.timeRange)")
+                                    Button { record(event) } label: {
+                                        Image(systemName: "record.circle")
+                                            .font(.system(size: 16))
+                                            .frame(width: 28, height: 28)
+                                            .contentShape(Rectangle())
                                     }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Record this meeting: \(event.title)")
+                                    .help("Record this meeting")
                                 }
                                 if !layout.compact.isEmpty {
                                     Divider().padding(.vertical, 2)
@@ -294,7 +281,7 @@ struct UpcomingMeetingView: View {
                                                 }
                                                 .buttonStyle(.plain)
                                                 .help("Open Calendar · " + meeting.title)
-                                                .accessibilityLabel("Open Calendar for \(meeting.title)")
+                                                .accessibilityLabel("Open Calendar for \(meeting.title), \(meeting.timeRange)")
                                             }
                                         }
                                     }
@@ -353,7 +340,7 @@ struct UpcomingMeetingLayout {
 
     static func make(events: [CalendarEvent], now: Date, calendar: Calendar = .current) -> UpcomingMeetingLayout {
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
-        let today = events.filter { $0.scheduledStart < tomorrowStart }
+        let today = CalendarEvent.withoutDuplicates(events).filter { $0.scheduledStart < tomorrowStart }
         let compact = Array(today.dropFirst().prefix(compactLimit))
         let tomorrow = events.first { $0.scheduledStart >= tomorrowStart }
         return UpcomingMeetingLayout(
@@ -366,6 +353,14 @@ struct UpcomingMeetingLayout {
 }
 
 extension CalendarEvent {
+    /// One meeting invited to two selected calendars arrives twice; the menu lists it once.
+    static func withoutDuplicates(_ events: [CalendarEvent]) -> [CalendarEvent] {
+        var seen = Set<String>()
+        return events.filter {
+            seen.insert("\($0.title)\u{0}\($0.scheduledStart.timeIntervalSince1970)\u{0}\($0.scheduledEnd.timeIntervalSince1970)").inserted
+        }
+    }
+
     /// `compact` abbreviates the countdown for the menu bar: "in 26m" or "in 1h20m".
     func relativeStart(at now: Date, calendar: Calendar = .current, compact: Bool = false) -> String {
         if scheduledEnd <= now { return "Ended" }

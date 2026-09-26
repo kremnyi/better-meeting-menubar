@@ -28,7 +28,7 @@ struct BetterMeetingApp: App {
             MenuBarStatusLabel(
                 calendar: model.calendar, spinner: spinner, clock: model.recordingClock,
                 state: model.state, processing: model.isProcessing,
-                attention: model.captureAccessNeedsAttention || !model.unfinishedRecordings.isEmpty,
+                attention: model.needsAttention,
                 showRecordingTime: model.menuBarRecordingTime
             )
         }
@@ -82,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func startMicrophoneRecording(action: String, start: (() -> Void)? = nil) {
         guard action == UNNotificationDefaultActionIdentifier || action == MicrophoneMeeting.startActionID else { return }
         MeetingNotifications.remove(MicrophoneMeeting.requestID)
-        if action == MicrophoneMeeting.startActionID, let model, model.state == .idle {
+        if action == MicrophoneMeeting.startActionID, let model, model.state == .idle || model.state == .failed {
             if let start { start() } else { model.startRecording() }
         }
         showMenu()
@@ -120,13 +120,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                                 start: ((CalendarEvent) -> Void)? = nil) async {
         guard action == UNNotificationDefaultActionIdentifier || action == CalendarReminder.startActionID else { return }
         guard let model else { return }
-        if action == CalendarReminder.startActionID, model.state == .idle {
+        if action == CalendarReminder.startActionID, model.state == .idle || model.state == .failed {
             do {
                 guard model.calendar.notifyAtStart,
                       let id = request.content.userInfo["occurrenceId"] as? String else { throw CalendarRecordingError.eventUnavailable }
                 let event = try await model.calendar.eventForRecording(id: id)
                 guard CalendarReminder.matches(request, event: event) else { throw CalendarRecordingError.eventUnavailable }
-                guard model.state == .idle else { return }
+                guard model.state == .idle || model.state == .failed else { return }
                 if let start { start(event) } else { model.startCalendarRecording(event) }
             } catch {
                 if model.state == .idle {

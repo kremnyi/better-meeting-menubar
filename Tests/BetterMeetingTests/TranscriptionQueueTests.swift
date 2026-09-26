@@ -131,13 +131,17 @@ final class TranscriptionQueueTests: XCTestCase {
         try await withMeetings { model in
             // The fixture audio is unreadable and there is no recording.mp4, so the first meeting fails for real.
             let first = try XCTUnwrap(model.unfinishedRecordings.first)
+            XCTAssertEqual(model.needsAttention, model.captureAccessNeedsAttention,
+                           "Recordings waiting for transcription are not a problem to flag in the menu bar")
             model.transcribeAllRecordings()
             await model.processingTask?.value
             XCTAssertEqual(model.completedFolder, first.folderURL, "The queue must stop at the first failed meeting")
             XCTAssertEqual(model.unfinishedRecordings.count, 3)
-            XCTAssertEqual(model.state, .failed)
+            XCTAssertEqual(model.state, .idle, "A failed transcription must leave Start recording available")
             XCTAssertFalse(model.isTranscribingBatch)
-            XCTAssertEqual(model.primaryButtonTitle, "Retry transcription")
+            XCTAssertEqual(model.primaryButtonTitle, "Start recording")
+            XCTAssertEqual(model.failedTranscriptionMeeting?.folderURL, first.folderURL)
+            XCTAssertTrue(model.needsAttention, "A failed transcription flags the menu-bar icon")
             XCTAssertNil(model.processingTask)
         }
     }

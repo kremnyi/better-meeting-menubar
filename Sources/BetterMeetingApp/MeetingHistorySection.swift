@@ -59,7 +59,10 @@ struct MeetingHistorySection: View {
             }
 
             if model.hasMeetings {
-                MeetingSearchField(text: $model.historyQuery, focusRequest: searchFocusRequest)
+                // The list shows a handful of rows, so the field states how many meetings it searches.
+                let count = model.allHistoryDays.reduce(0) { $0 + $1.items.count }
+                MeetingSearchField(text: $model.historyQuery, focusRequest: searchFocusRequest,
+                                   placeholder: count > 1 ? "Search \(count) meetings" : "Search meetings")
                     .help("Search meetings (⌘F)")
                     .frame(height: 24)
                     .background {
@@ -154,10 +157,11 @@ struct MeetingHistorySection: View {
         return bottoms
     }
 
+    /// Leads with the full title, which the row cuts to one line.
     static func rowHelp(_ item: MeetingHistoryItem) -> String {
         let action = item.needsTranscription ? "Open meeting folder" : "Open transcript"
-        guard item.totalBytes > 0 else { return action }
-        return action + " · " + ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file)
+        let size = item.totalBytes > 0 ? " · " + ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file) : ""
+        return item.title + "\n" + action + size
     }
 
     static func dayTitle(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> String {        if calendar.isDate(day, inSameDayAs: now) { return "Today" }
@@ -204,22 +208,15 @@ struct MeetingHistorySection: View {
                                 .background(Color.accentColor.opacity(0.15), in: Capsule())
                                 .help("Just saved")
                         }
-                        if let badge {
-                            if badge == .failed, canEdit {
-                                Button("Retry") { model.retryTranscription(item) }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.mini)
-                                    .accessibilityLabel("Retry transcription for \(item.title)")
-                            } else {
-                                Text(badge.text)
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(badge.isWorking ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                                    .lineLimit(1)
-                                    .fixedSize()
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 1)
-                                    .background((badge.isWorking ? Color.accentColor : Color.secondary).opacity(0.15), in: Capsule())
-                            }
+                        if let badge, !(badge == .failed && canEdit) {
+                            Text(badge.text)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(badge.isWorking ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                                .lineLimit(1)
+                                .fixedSize()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background((badge.isWorking ? Color.accentColor : Color.secondary).opacity(0.15), in: Capsule())
                         }
                     }
                     .font(.callout)
@@ -241,7 +238,17 @@ struct MeetingHistorySection: View {
             .accessibilityLabel(item.needsTranscription
                 ? "Open \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard)), in Finder"
                 : "Open transcript of \(item.title), \(item.recordedAt.formatted(date: .abbreviated, time: .standard))")
-            .accessibilityValue(badge?.text ?? "")
+            .accessibilityValue([isNew ? "New" : nil, badge?.text].compactMap { $0 }.joined(separator: ", "))
+
+            // Beside the row button, not inside its label, so it stays its own control for VoiceOver.
+            if badge == .failed, canEdit {
+                Button("Retry") { model.retryTranscription(item) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .accessibilityLabel("Retry transcription for \(item.title)")
+                    .help("Transcription failed. Transcribe this recording again.")
+            }
 
             Menu {
                 meetingActions(item, canEdit: canEdit)
@@ -329,6 +336,7 @@ private struct MeetingSearchField: NSViewRepresentable {
     @Binding var text: String
     /// Incremented to move keyboard focus into the field.
     var focusRequest = 0
+    var placeholder = "Search meetings"
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
@@ -347,6 +355,7 @@ private struct MeetingSearchField: NSViewRepresentable {
     func updateNSView(_ field: NSSearchField, context: Context) {
         context.coordinator.text = $text
         if field.stringValue != text { field.stringValue = text }
+        if field.placeholderString != placeholder { field.placeholderString = placeholder }
         if context.coordinator.focusRequest != focusRequest {
             context.coordinator.focusRequest = focusRequest
             field.window?.makeFirstResponder(field)

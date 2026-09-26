@@ -24,9 +24,8 @@ enum ProcessingPhase: Equatable {
         case .finalizingRecording: "Step 1 of 5"
         case .preparingAudio: "Step 2 of 5"
         case .preparingModel, .downloadingModel, .loadingModel: "Step 3 of 5"
-        case .transcribing: "Step 4 of 5"
+        case .transcribing, .labelingSpeakers: "Step 4 of 5"
         case .writingFiles: "Step 5 of 5"
-        case .labelingSpeakers: "Speaker labels"
         case .extractingScreens: "Step 1 of 2"
         case .exportingBundle: "Step 2 of 2"
         }
@@ -54,7 +53,7 @@ enum PrivacyPermission: Equatable {
 
     var accessNeededText: String {
         switch self {
-        case .screenRecording: "Screen access needed"
+        case .screenRecording: "Screen Recording access needed"
         case .microphone: "Microphone access needed"
         }
     }

@@ -61,7 +61,7 @@ struct MenuBarStatusIcon: View {
     let state: AppState
     var processing = false
     var processingFrame = 0
-    /// Idle work waits: permissions to grant or recordings to transcribe.
+    /// Idle work waits: access to grant or a failed transcription.
     var attention = false
 
     var body: some View {
@@ -131,7 +131,7 @@ struct MenuBarStatusLabel: View {
     let state: AppState
     // Plain values rather than the model, so progress updates don't redraw the menu bar item.
     var processing = false
-    /// Permissions to grant or recordings to transcribe; beats the calendar preview.
+    /// Access to grant or a failed transcription; beats the calendar preview.
     var attention = false
     /// Whether to show elapsed time beside the icon while recording.
     var showRecordingTime = false

@@ -55,13 +55,25 @@ final class AppModel: ObservableObject {
     weak var menuWindow: NSWindow?
     @Published private(set) var statusText = "Ready to record your display and audio."
     @Published private(set) var lastError: Error?
+    /// A transcription that failed while nothing was recording. It shows inline in the idle menu,
+    /// so a failed transcript never takes the place of Start recording.
+    @Published private(set) var transcriptionError: Error?
     /// The failure text shown in the menu: the error's own description when it has a friendly one.
     var errorMessage: String? {
-        lastError.map { ($0 as? LocalizedError)?.errorDescription ?? $0.localizedDescription }
+        (lastError ?? transcriptionError).map { ($0 as? LocalizedError)?.errorDescription ?? $0.localizedDescription }
     }
     /// The failed error's domain and code, shown behind Details in the failure panel.
     var errorDetails: String? {
-        lastError.map { error in let ns = error as NSError; return "\(ns.domain) \(ns.code)" }
+        (lastError ?? transcriptionError).map { error in let ns = error as NSError; return "\(ns.domain) \(ns.code)" }
+    }
+    /// The meeting whose transcription failed while idle, for the inline failure and its Retry.
+    var failedTranscriptionMeeting: MeetingHistoryItem? {
+        transcriptionError == nil ? nil : retryableMeeting
+    }
+    /// Access to grant in System Settings, or a failed transcription: what the menu-bar icon flags.
+    /// Recordings merely waiting to be transcribed are not a problem, so they never raise it.
+    var needsAttention: Bool {
+        captureAccessNeedsAttention || failedTranscriptionMeeting != nil
     }
     @Published private(set) var completedFolder: URL? {
         didSet {
@@ -319,10 +331,6 @@ final class AppModel: ObservableObject {
             return (privacyPermission.accessNeededText, false)
         }
 
-        if state == .recording {
-            return ("Stop here or from the macOS recording menu", true)
-        }
-
         let (screenReady, microphone) = grantedAccess
         if screenReady && microphone == .authorized {
             return ("Screen, system audio, and mic ready", true)
@@ -353,6 +361,7 @@ final class AppModel: ObservableObject {
 
     /// Names what failed, so the system's error text has context. Permission failures explain themselves.
     var failureTitle: String? {
+        if state == .idle, let meeting = failedTranscriptionMeeting { return "Couldn’t transcribe “\(meeting.title)”" }
         guard state == .failed, privacyPermission == nil else { return nil }
         if let meeting = retryableMeeting { return "Couldn’t transcribe “\(meeting.title)”" }
         return completedFolder == nil ? "Couldn’t start recording" : "Couldn’t finish this recording"
@@ -367,10 +376,7 @@ final class AppModel: ObservableObject {
     }
 
     var captureAccessSymbol: String {
-        if state == .recording {
-            return "stop.circle"
-        }
-        return captureAccessNeedsAttention ? "exclamationmark.shield" : "shield"
+        captureAccessNeedsAttention ? "exclamationmark.shield" : "shield"
     }
 
     func primaryAction() {
@@ -378,8 +384,8 @@ final class AppModel: ObservableObject {
             beginProcessing(stopCapture: true)
         } else if state == .failed, privacyPermission == .screenRecording {
             restartApplication()
-        } else if state == .failed, let item = retryableMeeting {
-            retryTranscription(item, languages: lastTranscriptionOptions?.languages, hints: lastTranscriptionOptions?.hints, settings: lastTranscriptionOptions?.settings)
+        } else if state == .failed, retryableMeeting != nil {
+            retryFailedTranscription()
         } else if state == .idle || state == .failed {
             startRecording()
         }
@@ -551,6 +557,18 @@ final class AppModel: ObservableObject {
         ))
     }
 
+    /// Retries the failed meeting with the options its last attempt used.
+    func retryFailedTranscription() {
+        guard let item = retryableMeeting else { return }
+        retryTranscription(item, languages: lastTranscriptionOptions?.languages, hints: lastTranscriptionOptions?.hints, settings: lastTranscriptionOptions?.settings)
+    }
+
+    func dismissTranscriptionFailure() {
+        guard transcriptionError != nil else { return }
+        transcriptionError = nil
+        completedFolder = nil
+    }
+
     func transcribeAllRecordings() {
         transcribeAllRecordings { [self] item in
             await finishRecording(run(for: item, replacing: nil), inBatch: true)
@@ -611,6 +629,7 @@ final class AppModel: ObservableObject {
         completionMessage = nil
         completedFolder = nil
         if state == .failed { state = .idle }
+        transcriptionError = nil
         processingFolder = item.folderURL
         processingTitle = item.title
         if !isCapturing { elapsed = item.duration }
@@ -641,6 +660,7 @@ final class AppModel: ObservableObject {
         elapsed = meeting.duration
         completionMessage = nil
         lastError = nil
+        transcriptionError = nil
         setProcessingPhase(.extractingScreens, fraction: 0)
         processingTask = Task {
             var succeeded = false
@@ -901,7 +921,7 @@ final class AppModel: ObservableObject {
     }
 
     func startCalendarRecording(_ event: CalendarEvent) {
-        guard state == .idle else { return }
+        guard state == .idle || state == .failed else { return }
         startRecording(calendarEvent: event)
     }
 
@@ -912,6 +932,7 @@ final class AppModel: ObservableObject {
         state = .preparing
         statusText = "Checking screen and microphone access…"
         lastError = nil
+        transcriptionError = nil
         completedFolder = nil
         privacyPermission = nil
         activeFolder = nil
@@ -981,7 +1002,7 @@ final class AppModel: ObservableObject {
         elapsed = 0
         meetingTitle = ""
         state = .idle
-        accessibilityAnnouncement("Recording canceled.")
+        accessibilityAnnouncement("Recording cancelled.")
         Task {
             try? await recorder.stop()
             guard let folder else { return }
@@ -1279,7 +1300,11 @@ final class AppModel: ObservableObject {
                 return false
             }
             updateFailedTranscriptionFolders { $0.insert(failedFolder) }
-            if state == .idle { fail(error) }
+            if state == .idle {
+                // Shown inline: the next recording must still start with one click.
+                transcriptionError = error
+                refreshHistory()
+            }
             accessibilityAnnouncement("Transcription failed for \(run.title). Open Better Meeting to retry.")
             await MeetingNotifications.post(title: run.title, folder: failedFolder, failed: true)
             return false
@@ -1377,6 +1402,7 @@ final class AppModel: ObservableObject {
     func fail(_ error: Error) {
         stopTimer()
         state = .failed
+        transcriptionError = nil
         statusText = "Couldn’t finish this recording."
         if processingTask == nil {
             processingFraction = nil

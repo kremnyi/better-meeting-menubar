@@ -368,7 +368,8 @@ final class RecoveryTests: XCTestCase {
         try writePanelPreview(view, name: "cancelled")
         model.retryTranscription(item)
         await model.processingTask?.value
-        XCTAssertEqual(model.state, .failed)
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertNotNil(model.failedTranscriptionMeeting)
         XCTAssertFalse(model.updates.isBusy(), "A failure must unlock settings so the user can recover")
         try writePanelPreview(view, name: "failed")
         try writePanelPreview(hostingView(CaptureOptionsView(), model: model), name: "options-failed")

@@ -111,14 +111,21 @@ struct MenuBarControlView: View {
                     ? "Finish recording or processing before updating."
                     : "Install the update and relaunch Better Meeting")
         case .failed:
-            Button("Update failed — View details") {
+            Button {
                 appSettingsPresented = true
                 captureOptionsPresented = true
+            } label: {
+                Label {
+                    Text("Update failed")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
+                }
             }
             .buttonStyle(.plain)
             .font(.caption)
-            .foregroundStyle(.secondary)
-            .help("Open update settings")
+            .help("Update failed. Open update settings for details.")
+            .accessibilityLabel("Update failed. View details")
         default:
             EmptyView()
         }
@@ -146,12 +153,9 @@ struct MenuBarControlView: View {
         VStack(alignment: .leading, spacing: 12) {
             captureSummary
 
-            TextField("Meeting name (optional)", text: $model.meetingTitle)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { model.primaryAction() }
-                .help("Press Return to start recording")
+            startControls
 
-            primaryActionButton
+            transcriptionFailureStatus
 
             modelSetupStatus
 
@@ -167,6 +171,45 @@ struct MenuBarControlView: View {
             }
 
             MeetingHistorySection(retranscribingMeeting: $retranscribingMeeting)
+        }
+    }
+
+    private var startControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Meeting name (optional)", text: $model.meetingTitle)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(startFromMenu)
+                .help("Press Return to start recording")
+            StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle, start: startFromMenu)
+        }
+    }
+
+    /// Records the meeting on the calendar when one is under way or about to start and no other
+    /// name was typed, so the one Start button also carries the event's details.
+    private func startFromMenu() {
+        if let event = StartRecordingButton.imminentEvent(in: model.calendar, title: model.meetingTitle, at: Date()) {
+            model.startCalendarRecording(event)
+        } else {
+            model.primaryAction()
+        }
+    }
+
+    /// A transcription that failed while idle. It sits below Start recording rather than
+    /// replacing it, so the next meeting still starts with one click.
+    @ViewBuilder
+    private var transcriptionFailureStatus: some View {
+        if let meeting = model.failedTranscriptionMeeting, let message = model.errorMessage {
+            VStack(alignment: .leading, spacing: 8) {
+                ErrorPanel(message: message, title: model.failureTitle, details: model.errorDetails)
+                HStack(spacing: 8) {
+                    Button("Retry transcription", action: model.retryFailedTranscription)
+                        .accessibilityLabel("Retry transcription for \(meeting.title)")
+                        .help("Transcribe the saved recording again with the same options")
+                    Button("Dismiss", action: model.dismissTranscriptionFailure)
+                        .help("Hide this message. The meeting stays marked Failed in the list.")
+                }
+                .buttonStyle(.bordered)
+            }
         }
     }
 
@@ -220,8 +263,12 @@ struct MenuBarControlView: View {
             VStack(alignment: .leading, spacing: 6) {
                 if let error = model.modelSetupError {
                     Text("Speech model unavailable. You can still record.")
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                     Button("Retry setup", action: model.prepareSpeechModel)
-                        .help(error)
                 } else {
                     Text(model.modelSetupStatus)
                     if model.modelPreparationTask != nil {
@@ -306,7 +353,7 @@ struct MenuBarControlView: View {
         VStack(alignment: .leading, spacing: 12) {
             captureSummary
 
-            primaryActionButton
+            startControls
 
             Divider()
 
@@ -405,6 +452,17 @@ struct MenuBarControlView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+            } else if model.showsRecordingOptionsAction {
+                // Trying again with the same missing device fails the same way; choosing another comes first.
+                Button {
+                    captureOptionsPresented = true
+                } label: {
+                    Label("Open Recording Options", systemImage: "slider.horizontal.3")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityIdentifier("open-recording-options")
             } else {
                 primaryActionButton
             }
@@ -418,12 +476,7 @@ struct MenuBarControlView: View {
 
     @ViewBuilder
     private var failureSecondaryActions: some View {
-        if model.showsRecordingOptionsAction {
-            Button("Open Recording Options") { captureOptionsPresented = true }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("open-recording-options")
-        }
-        if model.privacyPermission != nil {
+        if model.privacyPermission != nil || model.showsRecordingOptionsAction {
             Button(model.primaryButtonTitle, action: model.primaryAction)
                 .buttonStyle(.bordered)
         } else if let folder = model.completedFolder {
@@ -467,15 +520,62 @@ struct MenuBarControlView: View {
     }
 }
 
+/// The menu's Start button. When a calendar meeting is under way or about to start and no other
+/// name was typed, it records that meeting, so the menu never offers two competing record buttons.
+private struct StartRecordingButton: View {
+    @ObservedObject var calendar: CalendarIntegration
+    let meetingTitle: String
+    let start: () -> Void
+
+    static func imminentEvent(in calendar: CalendarIntegration, title: String, at now: Date) -> CalendarEvent? {
+        guard title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              calendar.enabled, calendar.authorization == .fullAccess,
+              let event = UpcomingMeetingLayout.make(events: calendar.events, now: now).primary,
+              event.scheduledEnd > now,
+              event.scheduledStart.timeIntervalSince(now) <= UpcomingMeetingView.prominentRecordLeadTime else { return nil }
+        return event
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let event = Self.imminentEvent(in: calendar, title: meetingTitle, at: context.date)
+            Button(action: start) {
+                Label {
+                    Text(event.map { "Record “\($0.title)”" } ?? "Start recording")
+                        .lineLimit(1)
+                } icon: {
+                    Image(systemName: "record.circle")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .tint(.signalCoral)
+            .help(event == nil ? "Start recording (Return in the name field)"
+                : "Records with this meeting’s calendar details. Type a name above to record something else.")
+            .accessibilityLabel(event.map { "Record \($0.title)" } ?? "Start recording")
+        }
+    }
+}
+
 /// Observes the clock alone, so 1 Hz ticks redraw only this text.
 private struct RecordingElapsed: View {
     @ObservedObject var clock: RecordingClock
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
-        Text(Timecode.compact(clock.elapsed))
-            .font(.system(.largeTitle, design: .rounded).weight(.medium).monospacedDigit())
-            .accessibilityLabel("Recording time")
-            .accessibilityValue(Timecode.compact(clock.elapsed))
+        HStack(spacing: 8) {
+            Image(systemName: "circle.fill")
+                .font(.body)
+                .foregroundStyle(colorScheme == .dark ? Color.signalCoralBright : Color.signalCoral)
+                .accessibilityHidden(true)
+            Text(Timecode.compact(clock.elapsed))
+                .font(.system(.largeTitle, design: .rounded).weight(.medium).monospacedDigit())
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Recording time")
+        .accessibilityValue(Timecode.compact(clock.elapsed))
     }
 }
 

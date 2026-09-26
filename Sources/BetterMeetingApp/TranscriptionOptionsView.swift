@@ -289,31 +289,39 @@ struct TranscriptionOptionsView: View {
         Group {
             GridRow {
                 Text("Languages")
-                Button {
-                    languagePickerPresented = true
-                } label: {
-                    Text(settings.usesWhisperOptions ? languageNames : "Detected automatically")
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-                .frame(minWidth: 0, maxWidth: .infinity)
-                .overlay(alignment: .trailing) {
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.semibold))
+                if settings.usesWhisperOptions {
+                    Button {
+                        languagePickerPresented = true
+                    } label: {
+                        Text(languageNames)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    .overlay(alignment: .trailing) {
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.trailing, 7)
+                            .allowsHitTesting(false)
+                    }
+                    .disabled(locked)
+                    .accessibilityLabel("Spoken languages")
+                    .accessibilityValue(languageNames)
+                    .help(languageNames + ". One transcription pass per language; at least one is required.")
+                    .popover(isPresented: $languagePickerPresented, arrowEdge: .bottom) {
+                        TranscriptionLanguagePicker(languages: $languages)
+                    }
+                } else {
+                    // Plain text, not a disabled picker: there is nothing to choose with Parakeet.
+                    Text("Detected automatically")
                         .foregroundStyle(.secondary)
-                        .padding(.trailing, 7)
-                        .allowsHitTesting(false)
-                }
-                .disabled(locked || !settings.usesWhisperOptions)
-                .accessibilityLabel("Spoken languages")
-                .accessibilityValue(settings.usesWhisperOptions ? languageNames : "Detected automatically")
-                .help(settings.usesWhisperOptions
-                    ? languageNames + ". One transcription pass per language; at least one is required."
-                    : "Parakeet detects each language automatically. To choose languages, switch to Whisper in Advanced transcription.")
-                .popover(isPresented: $languagePickerPresented, arrowEdge: .bottom) {
-                    TranscriptionLanguagePicker(languages: $languages)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .help("Parakeet detects each language automatically. To choose languages, switch to Whisper in Advanced transcription.")
+                        .accessibilityLabel("Spoken languages")
+                        .accessibilityValue("Detected automatically. To choose languages, switch to Whisper in Advanced transcription.")
                 }
             }
             GridRow {
@@ -629,9 +637,12 @@ private struct HelpPopover: View {
         Button { showing = true } label: {
             Image(systemName: "questionmark.circle")
                 .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Help")
+        .accessibilityLabel("About these options")
+        .help("About these options")
         .popover(isPresented: $showing) {
             Text(text)
                 .font(.callout)
