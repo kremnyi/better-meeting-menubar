@@ -513,19 +513,19 @@ final class RecoveryTests: XCTestCase {
             ("options-login-error", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23")), 360, .unchecked),
             ("options-login-missing", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.", version: "0.3.23")), 360, .unchecked),
             ("options-enabled", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
-            ("options-single-language", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
-            ("options-many-languages", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
+            ("options-single-language", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("options-many-languages", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
             ("language-picker", AnyView(TranscriptionLanguagePicker(languages: .constant(["uk", "ru", "en"]))), 300, .unchecked),
             ("language-picker-dark", AnyView(TranscriptionLanguagePicker(languages: .constant(["uk", "ru", "en"]))), 300, .unchecked),
             ("advanced", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
             ("advanced-models", AnyView(AdvancedTranscriptionView(
-                settings: .constant(SpeechSettings()), hints: .constant("")
+                settings: .constant(SpeechSettings()), languages: .constant(["uk", "ru", "en"]), hints: .constant("")
             ).frame(width: 328)), 328, .unchecked),
             ("advanced-models-dark", AnyView(AdvancedTranscriptionView(
-                settings: .constant(SpeechSettings()), hints: .constant("")
+                settings: .constant(SpeechSettings()), languages: .constant(["uk", "ru", "en"]), hints: .constant("")
             ).frame(width: 328)), 328, .unchecked),
             ("advanced-decoding", AnyView(AdvancedTranscriptionView(
-                settings: .constant(SpeechSettings()), hints: .constant("Anna, Approck"), decodingExpanded: true
+                settings: .constant(SpeechSettings()), languages: .constant(["uk", "ru", "en"]), hints: .constant("Anna, Approck"), decodingExpanded: true
             ).frame(width: 328)), 328, .unchecked),
             ("retranscribe", AnyView(RetranscriptionView(
                 meeting: meeting, languages: ["uk", "ru", "en"],
@@ -719,6 +719,21 @@ final class RecoveryTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
         model.captureAccess = { (true, .authorized) }
+        // Two fictional calendar meetings later today, starting on the half hour so the times look scheduled.
+        // The menu reads the real clock, so render before 22:00 to keep both meetings on today.
+        let reader = CalendarReaderFixture()
+        reader.authorizationStatus = .fullAccess
+        let halfHour = 1_800.0
+        let firstStart = Date(timeIntervalSinceReferenceDate: ((Date().timeIntervalSinceReferenceDate + halfHour) / halfHour).rounded(.up) * halfHour)
+        reader.events = [
+            try calendarEventFixture(id: "preview-standup", date: firstStart, title: "Weekly roadmap review"),
+            try calendarEventFixture(id: "preview-demo", date: firstStart.addingTimeInterval(2 * halfHour), title: "Partner demo")
+        ]
+        model.calendar = CalendarIntegration(defaults: defaults, reader: reader, reminders: CalendarReminders(center: ReminderCenterFixture()))
+        model.calendar.setEnabled(true)
+        model.calendar.select("fixture-calendar", enabled: true)
+        await model.calendar.refresh()
+        XCTAssertEqual(model.calendar.events.count, 2, "The README preview must show its fictional calendar meetings")
         await model.historyRefreshTask?.value
         XCTAssertEqual(model.transcriptionHistory.count, 4, "The README preview must show its fictional meetings")
         let view = hostingView(MenuBarControlView(), model: model)

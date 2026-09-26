@@ -1,27 +1,6 @@
 import Foundation
 import os
 
-/// Meetings recorded on the same day, in list order.
-struct MeetingDayGroup: Identifiable, Equatable {
-    let day: Date
-    var items: [MeetingHistoryItem]
-    var id: Date { day }
-
-    /// Runs of meetings from the same day, keeping the list's order.
-    static func groups(_ items: [MeetingHistoryItem], calendar: Calendar = .current) -> [MeetingDayGroup] {
-        var groups: [MeetingDayGroup] = []
-        for item in items {
-            let day = calendar.startOfDay(for: item.recordedAt)
-            if groups.last?.day == day {
-                groups[groups.count - 1].items.append(item)
-            } else {
-                groups.append(MeetingDayGroup(day: day, items: [item]))
-            }
-        }
-        return groups
-    }
-}
-
 /// Reads meeting folders for the menu and remembers what it parsed between scans and searches.
 /// Entries are keyed by modification dates and sizes, so edits made in Finder or a text editor
 /// are read again on the next scan or search.

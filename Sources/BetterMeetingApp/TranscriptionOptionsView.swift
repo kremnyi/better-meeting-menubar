@@ -35,7 +35,7 @@ struct CaptureOptionsView: View {
             } else if advancedPresented {
                 OptionsPageHeader(title: "Advanced transcription") { advancedPresented = false }
                 AdvancedTranscriptionView(
-                    settings: $model.speechSettings, hints: $model.transcriptionHints,
+                    settings: $model.speechSettings, languages: $model.transcriptionLanguages, hints: $model.transcriptionHints,
                     modelSelectionDisabled: model.modelPreparationTask != nil
                 )
                 .disabled(model.isProcessing)
@@ -59,7 +59,7 @@ struct CaptureOptionsView: View {
                         meetingsPresented = true
                     }
                     OptionsNavigationRow(title: "Advanced transcription", systemImage: "waveform",
-                                         help: "Engine, model, vocabulary, decoding, and downloaded models") {
+                                         help: "Engine, languages, speaker labels, model, vocabulary, decoding, and downloaded models") {
                         advancedPresented = true
                     }
                     OptionsNavigationRow(title: "App & updates", systemImage: "gearshape",
@@ -204,14 +204,6 @@ struct CaptureOptionsView: View {
             }
             Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
             GridRow {
-                Text("Transcription").font(.headline).gridCellColumns(2)
-            }
-            TranscriptionOptionsView(
-                languages: $model.transcriptionLanguages, settings: $model.speechSettings,
-                locked: model.isProcessing
-            )
-            Divider().gridCellUnsizedAxes(.horizontal).padding(.vertical, 2)
-            GridRow {
                 Text("Files").font(.headline).gridCellColumns(2)
             }
             GridRow {
@@ -273,69 +265,6 @@ struct CaptureOptionsView: View {
         .accessibilityHint("Choose a different folder")
     }
 
-}
-
-struct TranscriptionOptionsView: View {
-    @Binding var languages: [String]
-    @Binding var settings: SpeechSettings
-    @State private var languagePickerPresented = false
-    var locked = false
-
-    private var languageNames: String {
-        languages.compactMap { TranscriptionLanguage(rawValue: $0)?.label }.joined(separator: ", ")
-    }
-
-    var body: some View {
-        Group {
-            GridRow {
-                Text("Languages")
-                if settings.usesWhisperOptions {
-                    Button {
-                        languagePickerPresented = true
-                    } label: {
-                        Text(languageNames)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .frame(minWidth: 0, maxWidth: .infinity)
-                    .overlay(alignment: .trailing) {
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.trailing, 7)
-                            .allowsHitTesting(false)
-                    }
-                    .disabled(locked)
-                    .accessibilityLabel("Spoken languages")
-                    .accessibilityValue(languageNames)
-                    .help(languageNames + ". One transcription pass per language; at least one is required.")
-                    .popover(isPresented: $languagePickerPresented, arrowEdge: .bottom) {
-                        TranscriptionLanguagePicker(languages: $languages)
-                    }
-                } else {
-                    // Plain text, not a disabled picker: there is nothing to choose with Parakeet.
-                    Text("Detected automatically")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .help("Parakeet detects each language automatically. To choose languages, switch to Whisper in Advanced transcription.")
-                        .accessibilityLabel("Spoken languages")
-                        .accessibilityValue("Detected automatically. To choose languages, switch to Whisper in Advanced transcription.")
-                }
-            }
-            GridRow {
-                Toggle("Add speaker labels", isOn: Binding(
-                    get: { settings.speakerLabels == true },
-                    set: { settings.speakerLabels = $0 }
-                ))
-                .toggleStyle(.checkbox)
-                .disabled(locked)
-                .help("Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
-                .gridCellColumns(2)
-            }
-        }
-    }
 }
 
 struct TranscriptionLanguagePicker: View {
@@ -463,7 +392,7 @@ struct RetranscriptionView: View {
                 OptionsPageHeader(title: "Advanced transcription", backTo: "Re-transcribe meeting") {
                     advancedPresented = false
                 }
-                AdvancedTranscriptionView(settings: $settings, hints: $hints)
+                AdvancedTranscriptionView(settings: $settings, languages: $languages, hints: $hints)
             } else {
                 HStack {
                     Text("Re-transcribe meeting").font(.headline)
@@ -473,17 +402,14 @@ struct RetranscriptionView: View {
                     }
                     .buttonStyle(.bordered)
                     .accessibilityLabel("Advanced transcription")
-                    .help("Engine, model, vocabulary, and decoding options")
+                    .help("Engine, languages, speaker labels, model, vocabulary, and decoding options")
                 }
                 Text(meeting.title).lineLimit(2)
+                Text(summary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("Replaces the saved transcript, including edits, only after processing succeeds. The meeting name stays the same.")
                     .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-                    TranscriptionOptionsView(
-                        languages: $languages, settings: $settings
-                    )
-                }
             }
             HStack {
                 Spacer()
@@ -499,10 +425,19 @@ struct RetranscriptionView: View {
         .padding(20)
         .frame(width: 360)
     }
+
+    /// What will run, since the choices themselves sit behind Advanced.
+    private var summary: String {
+        let engine = settings.usesWhisperOptions
+            ? "Whisper (" + languages.compactMap { TranscriptionLanguage(rawValue: $0)?.label }.joined(separator: ", ") + ")"
+            : "Parakeet"
+        return "Uses \(engine), " + (settings.speakerLabels == true ? "with speaker labels." : "without speaker labels.")
+    }
 }
 
 struct AdvancedTranscriptionView: View {
     @Binding var settings: SpeechSettings
+    @Binding var languages: [String]
     @Binding var hints: String
     var modelSelectionDisabled = false
     @State var decodingExpanded = false
@@ -539,6 +474,7 @@ struct AdvancedTranscriptionView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if settings.usesWhisperOptions {
+                    LanguagesRow(languages: $languages)
                     GridRow {
                         Text("Model")
                         Picker("Whisper model", selection: $settings.model) {
@@ -563,6 +499,15 @@ struct AdvancedTranscriptionView: View {
                             .textFieldStyle(.roundedBorder)
                             .help("Comma-separated names, companies, or technical terms to help Whisper recognize them")
                     }
+                }
+                GridRow {
+                    Toggle("Add speaker labels", isOn: Binding(
+                        get: { settings.speakerLabels == true },
+                        set: { settings.speakerLabels = $0 }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .help("Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
+                    .gridCellColumns(2)
                 }
             }
             if settings.usesWhisperOptions {
@@ -601,7 +546,7 @@ struct AdvancedTranscriptionView: View {
                     .padding(.top, 2)
                 }
             } else {
-                Text("Vocabulary and decoding options apply to Whisper only.")
+                Text("Parakeet detects each language automatically. Languages, vocabulary, and decoding options apply to Whisper only.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -624,6 +569,45 @@ struct AdvancedTranscriptionView: View {
             .frame(width: 76)
             .accessibilityLabel(title)
             .help(help)
+        }
+    }
+}
+
+/// Whisper's spoken languages: one transcription pass each. Parakeet detects them itself.
+private struct LanguagesRow: View {
+    @Binding var languages: [String]
+    @State private var pickerPresented = false
+
+    private var names: String {
+        languages.compactMap { TranscriptionLanguage(rawValue: $0)?.label }.joined(separator: ", ")
+    }
+
+    var body: some View {
+        GridRow {
+            Text("Languages")
+            Button {
+                pickerPresented = true
+            } label: {
+                Text(names)
+                    .lineLimit(1)
+                    .padding(.trailing, 14) // Clears the chevron drawn over the button's end.
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .frame(minWidth: 0, maxWidth: .infinity)
+            .overlay(alignment: .trailing) {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.trailing, 7)
+                    .allowsHitTesting(false)
+            }
+            .accessibilityLabel("Spoken languages")
+            .accessibilityValue(names)
+            .help(names + ". One transcription pass per language; at least one is required.")
+            .popover(isPresented: $pickerPresented, arrowEdge: .bottom) {
+                TranscriptionLanguagePicker(languages: $languages)
+            }
         }
     }
 }

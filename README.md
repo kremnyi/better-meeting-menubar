@@ -11,7 +11,7 @@ about 1.6 GB. Transcription runs locally and works offline afterward.
 
 Project website: [kremnyi.github.io/better-meeting-menubar](https://kremnyi.github.io/better-meeting-menubar/)
 
-<img src="docs/menu-bar.png" alt="Better Meeting menu with a search field and meeting rows grouped by day, each with an action button" width="304">
+<img src="docs/menu-bar.png" alt="Better Meeting menu with a search field and meeting rows, each with an action button" width="304">
 
 The app's menu, shown with fictional meetings.
 
@@ -188,7 +188,8 @@ downloaded ahead of time.
 
 ### Languages
 
-When Whisper is selected, choose the expected **Languages** in one menu.
+When Whisper is selected, choose the expected **Advanced transcription → Languages**
+in one menu. Parakeet detects each language itself, so the row appears only for Whisper.
 Ukrainian, Russian, and English are selected by default. Choose one for a
 single pass or several for multilingual
 meetings; at least one is required. The app remembers your selection.
@@ -225,8 +226,10 @@ each transcript; retries reuse them and changed settings invalidate cached passe
 
 ### Speaker labels
 
-**Options → Transcription → Add speaker labels** is off by default. When enabled,
-SpeakerKit identifies voices locally after transcription and adds **Speaker 1**,
+**Advanced transcription → Add speaker labels** is on by default; turn it off there
+if you don't need labels. Settings saved before this default turn it on unless you had
+switched it off, and meetings already transcribed without labels keep that when
+retried. SpeakerKit identifies voices locally after transcription and adds **Speaker 1**,
 **Speaker 2**, and so on to the transcript and exported timeline. The first use
 downloads about 11 MB of models; later runs use the saved models offline.
 This adds processing time. Labels describe voices within this meeting, not real
@@ -234,7 +237,7 @@ names or identities across meetings. Each transcript segment gets the speaker
 with the most overlapping speech; ties and unmatched segments stay unlabeled.
 Fast turn-taking within a segment and overlapping voices can be mislabeled.
 
-The setting is saved with each meeting and is also available in **Re-transcribe…**.
+The setting is saved with each meeting and is also available in **Re-transcribe… → Advanced…**.
 Changing it reuses matching transcription passes. Speaker turns are cached in
 `speaker_turns.json`; changing the audio or a damaged cache reruns detection.
 If speaker detection fails, the transcript is saved without labels and the menu
@@ -242,8 +245,9 @@ shows the error. Cancellation keeps completed passes for a later retry.
 
 ## Saved meetings
 
-The menu lists all completed meetings under day headings, most recent first, with
-each meeting's start time and length; scroll to see older ones. The folder button
+The menu lists all completed meetings, most recent first, with each meeting's day,
+start time, and length. It shows five at a time; scroll or search (the field states how
+many meetings it searches) to reach older ones. The folder button
 beside **Recorded meetings** opens the meetings folder. Search finds matching titles
 and saved transcript text across all completed meetings in the selected folder,
 including older meetings and manual Markdown edits. Search runs locally. While the
@@ -263,8 +267,9 @@ and **Show in Finder** below the confirmation.
 
 ### Re-transcribe a meeting
 
-**Re-transcribe…** lets you choose languages and speaker labels for a saved meeting,
-and **Advanced…** there sets its engine, model, vocabulary, and decoding.
+**Re-transcribe…** states the engine, languages, and speaker labels it will use for a
+saved meeting, and **Advanced…** there changes them along with the model, vocabulary,
+and decoding.
 It reuses matching passes and keeps the current transcript available until the
 replacement is ready. A successful run replaces the transcript, including manual
 edits, while preserving the meeting name. Cancellation or failure keeps the old files.
@@ -426,7 +431,7 @@ for building, testing, signing, publishing releases, and updating the website.
 
 - Captures one whole display; window-only and audio-only modes are not available.
 - Transcription and export run one at a time; a recording can start while transcription finishes in the background.
-- Speaker labels are optional and may need correction; automatic speaker naming is not available.
+- Speaker labels may need correction; automatic speaker naming is not available.
 - Whisper can produce text during silence; the no-speech filter does not catch every case.
 - Parakeet v3 covers 25 European languages; choose Whisper for other languages.
 - File import, live captions, and meeting summaries are not included.

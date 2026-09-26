@@ -7,7 +7,11 @@ struct MeetingHistorySection: View {
     @Binding var retranscribingMeeting: MeetingHistoryItem?
     @State private var hoveredMeetingID: MeetingHistoryItem.ID?
     @State private var searchFocusRequest = 0
-    @State private var scrollOffset: CGFloat = 0
+
+    /// Every row is this tall, divider included, so the list always shows whole rows and
+    /// snapping to a row never leaves a gap or a cut-off line at the bottom.
+    static let rowHeight: CGFloat = 43
+    static let visibleRows = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -60,9 +64,8 @@ struct MeetingHistorySection: View {
 
             if model.hasMeetings {
                 // The list shows a handful of rows, so the field states how many meetings it searches.
-                let count = model.allHistoryDays.reduce(0) { $0 + $1.items.count }
                 MeetingSearchField(text: $model.historyQuery, focusRequest: searchFocusRequest,
-                                   placeholder: count > 1 ? "Search \(count) meetings" : "Search meetings")
+                                   placeholder: model.allMeetingCount > 1 ? "Search \(model.allMeetingCount) meetings" : "Search meetings")
                     .help("Search meetings (⌘F)")
                     .frame(height: 24)
                     .background {
@@ -85,42 +88,23 @@ struct MeetingHistorySection: View {
                     // Earlier results stay while a search runs; the header shows its progress.
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(model.historyDays) { group in
-                                Text(Self.dayTitle(group.day))
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.top, group.id == model.historyDays.first?.id ? 0 : 5)
-                                    .padding(.bottom, 1)
-                                    .accessibilityAddTraits(.isHeader)
-                                ForEach(group.items) { item in
-                                    historyRow(
-                                        item,
-                                        isNew: item.folderURL == model.completedFolder
-                                            && !model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL),
-                                        canEdit: model.state == .idle && !model.isProcessing,
-                                        status: rowStatus(item)
-                                    )
-                                    if item.id != group.items.last?.id {
-                                        Divider()
-                                    }
+                            ForEach(model.transcriptionHistory) { item in
+                                historyRow(
+                                    item,
+                                    isNew: item.folderURL == model.completedFolder
+                                        && !model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL),
+                                    canEdit: model.state == .idle && !model.isProcessing,
+                                    status: rowStatus(item)
+                                )
+                                .frame(height: Self.rowHeight)
+                                .overlay(alignment: .top) {
+                                    if item.id != model.transcriptionHistory.first?.id { Divider() }
                                 }
                             }
                         }
                         .scrollTargetLayout()
                     }
-                    // Snaps to a row or day header so the top never shows a half-cut line,
-                    // and hides a row that only partly fits at the bottom.
                     .scrollTargetBehavior(.viewAligned)
-                    .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
-                        scrollOffset = offset
-                    }
-                    .mask(alignment: .top) {
-                        if let height = historyViewportHeight {
-                            Color.black.frame(height: visibleHeight(in: height))
-                        } else {
-                            Color.black
-                        }
-                    }
                     .scrollIndicators(.hidden)
                 }
             }
@@ -130,31 +114,10 @@ struct MeetingHistorySection: View {
         }
     }
 
+    /// Sized from every meeting, not search results, so searching never resizes the menu.
     private var historyViewportHeight: CGFloat? {
-        guard model.hasMeetings, !model.allHistoryDays.isEmpty else { return nil }
-        return Self.lineBottoms(model.allHistoryDays).last { $0 <= 232 } ?? 232
-    }
-
-    /// The height down to the last row or header that fits whole below the current scroll position.
-    private func visibleHeight(in viewport: CGFloat) -> CGFloat {
-        guard let bottom = Self.lineBottoms(model.historyDays).last(where: { $0 - scrollOffset <= viewport + 0.5 }),
-              bottom > scrollOffset else { return viewport }
-        return min(viewport, bottom - scrollOffset)
-    }
-
-    /// The bottom edge of each day header and row, matching the list's layout.
-    private static func lineBottoms(_ days: [MeetingDayGroup]) -> [CGFloat] {
-        var bottoms: [CGFloat] = []
-        var height: CGFloat = 0
-        for (groupIndex, group) in days.enumerated() {
-            height += groupIndex == 0 ? 17 : 22
-            bottoms.append(height)
-            for itemIndex in group.items.indices {
-                height += itemIndex == group.items.count - 1 ? 42 : 43
-                bottoms.append(height)
-            }
-        }
-        return bottoms
+        guard model.hasMeetings, model.allMeetingCount > 0 else { return nil }
+        return CGFloat(min(model.allMeetingCount, Self.visibleRows)) * Self.rowHeight
     }
 
     /// Leads with the full title, which the row cuts to one line.
@@ -164,13 +127,14 @@ struct MeetingHistorySection: View {
         return item.title + "\n" + action + size
     }
 
-    static func dayTitle(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> String {        if calendar.isDate(day, inSameDayAs: now) { return "Today" }
+    static func dayTitle(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if calendar.isDate(day, inSameDayAs: now) { return "Today" }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
            calendar.isDate(day, inSameDayAs: yesterday) {
             return "Yesterday"
         }
         return calendar.isDate(day, equalTo: now, toGranularity: .year)
-            ? day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+            ? day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
             : day.formatted(.dateTime.month(.abbreviated).day().year())
     }
 
@@ -222,7 +186,7 @@ struct MeetingHistorySection: View {
                     .font(.callout)
 
                     HStack(spacing: 4) {
-                        Text(item.recordedAt, format: .dateTime.hour().minute())
+                        Text(Self.dayTitle(item.recordedAt) + ", " + item.recordedAt.formatted(date: .omitted, time: .shortened))
                         Text("·")
                         Text(Timecode.readable(item.duration))
                     }

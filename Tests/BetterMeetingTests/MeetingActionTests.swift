@@ -302,10 +302,8 @@ final class MeetingActionTests: XCTestCase {
                 MeetingHistoryItem(title: iso, recordedAt: try XCTUnwrap(dates.date(from: iso)), duration: 60,
                                    folderURL: URL(fileURLWithPath: "/tmp/\(iso)"), needsTranscription: false, titleWasProvided: true)
             }
-        let groups = MeetingDayGroup.groups(items, calendar: calendar)
-        XCTAssertEqual(groups.map(\.items.count), [2, 1, 1])
-        XCTAssertEqual(groups.prefix(2).map { MeetingHistorySection.dayTitle($0.day, now: now, calendar: calendar) },
-                       ["Today", "Yesterday"])
+        XCTAssertEqual(items.prefix(3).map { MeetingHistorySection.dayTitle($0.recordedAt, now: now, calendar: calendar) },
+                       ["Today", "Today", "Yesterday"])
     }
 
     func testLibraryReusesUnchangedFoldersAndRereadsEditedOnes() throws {

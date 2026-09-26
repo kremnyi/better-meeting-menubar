@@ -107,12 +107,17 @@ final class SpeechSettingsTests: XCTestCase {
         let model = AppModel(defaults: defaults)
         XCTAssertEqual(model.speechSettings.model, .turbo)
         XCTAssertEqual(model.speechSettings.selectedEngine, .parakeet)
-        XCTAssertFalse(model.speechSettings.speakerLabels == true)
-        model.speechSettings.speakerLabels = true
+        XCTAssertEqual(model.speechSettings.speakerLabels, true, "Speaker labels are on by default")
+        model.speechSettings.speakerLabels = false
         model.speechSettings.engine = .parakeet
         model.speechSettings.model = .large
         model.speechSettings.noSpeechThreshold = 0.7
-        XCTAssertEqual(AppModel(defaults: defaults).speechSettings, model.speechSettings)
+        XCTAssertEqual(AppModel(defaults: defaults).speechSettings, model.speechSettings, "Turning labels off is kept")
+        let saved = defaults.data(forKey: "speechSettings")
+        // Preferences saved before labels defaulted on carry no choice, so they turn on.
+        defaults.set(try JSONEncoder().encode(SpeechSettings()), forKey: "speechSettings")
+        XCTAssertEqual(AppModel(defaults: defaults).speechSettings.speakerLabels, true)
+        defaults.set(saved, forKey: "speechSettings")
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Options", recordedAt: date)
         XCTAssertNil(MeetingArtifacts.speechSettings(in: folder))

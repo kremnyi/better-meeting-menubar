@@ -97,12 +97,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var processingPhase: ProcessingPhase?
     @Published private(set) var processingStatusText = ""
     @Published private(set) var processingTitle = ""
-    @Published private(set) var transcriptionHistory: [MeetingHistoryItem] = [] {
-        didSet { historyDays = MeetingDayGroup.groups(transcriptionHistory) }
-    }
-    /// The listed meetings grouped by day, computed when the list changes rather than on every redraw.
-    private(set) var historyDays: [MeetingDayGroup] = []
-    private(set) var allHistoryDays: [MeetingDayGroup] = []
+    @Published private(set) var transcriptionHistory: [MeetingHistoryItem] = []
+    /// Every meeting, whatever the search shows.
+    private(set) var allMeetingCount = 0
     @Published private(set) var failedTranscriptionFolders: Set<URL> = []
     @Published var historyQuery = "" {
         didSet { searchHistory() }
@@ -264,6 +261,12 @@ final class AppModel: ObservableObject {
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
         if (try? speechSettings.validate()) == nil { speechSettings = SpeechSettings() }
+        // Speaker labels are on unless turned off. Only preferences change: a meeting saved
+        // without the field was transcribed without labels and keeps that when retried.
+        if speechSettings.speakerLabels == nil {
+            speechSettings.speakerLabels = true
+            defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings")
+        }
         // Parakeet is the default; keep Whisper when the saved languages include one Parakeet lacks.
         if speechSettings.engine == nil, !transcriptionLanguages.allSatisfy(SpeechSettings.parakeetLanguages.contains) {
             speechSettings.engine = .whisper
@@ -753,7 +756,7 @@ final class AppModel: ObservableObject {
         updateFailedTranscriptionFolders { $0.removeAll() }
         completedMeetings = []
         unfinishedRecordings = []
-        allHistoryDays = []
+        allMeetingCount = 0
         transcriptionHistory = []
         searchHistory()
         refreshHistory()
@@ -800,7 +803,7 @@ final class AppModel: ObservableObject {
         if validFailedFolders != failedTranscriptionFolders {
             updateFailedTranscriptionFolders { $0 = validFailedFolders }
         }
-        allHistoryDays = MeetingDayGroup.groups(meetingsByRecency)
+        allMeetingCount = meetingsByRecency.count
         historyTotalBytes = meetings.reduce(0) { $0 + $1.totalBytes }
         searchHistory()
     }
