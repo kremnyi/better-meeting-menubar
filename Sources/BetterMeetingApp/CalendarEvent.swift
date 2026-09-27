@@ -79,7 +79,7 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
         joinURL = Self.joinURL(url: event.url, location: event.location, notes: event.notes)
     }
 
-    /// The first Google Meet, Zoom, Teams, or Webex join link in the event's URL, location, then notes.
+    /// The first Google Meet, Zoom, or Teams join link in the event's URL, location, then notes.
     /// Invites also carry help, dial-in, and download links on the same hosts, so only join paths count.
     static func joinURL(url: URL?, location: String?, notes: String?) -> URL? {
         if let url, joinService(for: url) != nil { return url }
@@ -97,11 +97,10 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
         let path = url.path.lowercased()
         func within(_ domain: String) -> Bool { host == domain || host.hasSuffix("." + domain) }
         if host == "meet.google.com", path.count > 1 { return "Google Meet" }
-        if within("zoom.us") || within("zoomgov.com"),
+        if within("zoom.us"),
            ["/j/", "/my/", "/w/"].contains(where: path.hasPrefix) { return "Zoom" }
         if host == "teams.microsoft.com" || host == "teams.live.com",
            ["/l/meetup-join/", "/meet/"].contains(where: path.hasPrefix) { return "Teams" }
-        if within("webex.com"), ["/meet/", "/join/", "/j.php"].contains(where: path.contains) { return "Webex" }
         return nil
     }
 

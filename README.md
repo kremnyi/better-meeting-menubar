@@ -132,7 +132,7 @@ today's remaining meetings under **Upcoming meetings**. The record button on the
 next meeting starts a recording named after the event. Once that meeting is under way
 or starts within five minutes, **Start recording** itself becomes **Record
 "<title>"**. A meeting that appears on two selected calendars is listed once.
-Click a meeting to join its Google Meet, Zoom, Teams, or Webex call in the browser;
+Click a meeting to join its Google Meet, Zoom, or Teams call in the browser;
 meetings without a call link open Calendar.
 Once today is done the menu names the first meeting of tomorrow. With **When a calendar meeting starts** enabled
 under **Suggest recording**, the app also sends a notification when the event starts.

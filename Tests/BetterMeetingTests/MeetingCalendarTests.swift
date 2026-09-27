@@ -454,8 +454,8 @@ final class MeetingCalendarTests: XCTestCase {
                        "https://us02web.zoom.us/j/81234567890?pwd=x")
         let teams = "Need help? https://aka.ms/JoinTeamsMeeting\nhttps://teams.microsoft.com/meetingOptions/?id=1\n"
             + "https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0"
-        XCTAssertEqual(CalendarEvent.joinURL(url: nil, location: nil, notes: teams)?.host, "teams.microsoft.com")
-        XCTAssertEqual(CalendarEvent.joinURL(url: nil, location: nil, notes: teams)?.path.hasPrefix("/l/meetup-join/"), true)
+        XCTAssertEqual(CalendarEvent.joinURL(url: nil, location: nil, notes: teams)?.absoluteString,
+                       "https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0")
         XCTAssertEqual(CalendarEvent.joinURL(url: URL(string: "https://example.com/agenda"),
                                              location: "https://acme.zoom.us/j/1", notes: google)?.absoluteString,
                        "https://acme.zoom.us/j/1", "An unrelated event URL does not hide the location's call link")

@@ -243,8 +243,7 @@ struct UpcomingMeetingView: View {
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(event.title).lineLimit(2).help(event.title)
                                             TimelineView(.periodic(from: .now, by: 60)) { context in
-                                                Text(([event.relativeStart(at: context.date), event.timeRange]
-                                                      + [event.joinService].compactMap { $0 }).joined(separator: " · "))
+                                                Text(event.relativeStart(at: context.date) + " · " + event.timeRange + (event.joinService.map { " · " + $0 } ?? ""))
                                                     .font(.caption).foregroundStyle(.secondary)
                                                     .fixedSize(horizontal: false, vertical: true)
                                                     .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
