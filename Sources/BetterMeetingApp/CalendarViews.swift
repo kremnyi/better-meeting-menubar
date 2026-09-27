@@ -239,11 +239,12 @@ struct UpcomingMeetingView: View {
                         if let event = layout.primary {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(alignment: .top, spacing: 8) {
-                                    Button(action: openCalendar) {
+                                    Button { open(event) } label: {
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(event.title).lineLimit(2).help(event.title)
                                             TimelineView(.periodic(from: .now, by: 60)) { context in
-                                                Text(event.relativeStart(at: context.date) + " · " + event.timeRange)
+                                                Text(([event.relativeStart(at: context.date), event.timeRange]
+                                                      + [event.joinService].compactMap { $0 }).joined(separator: " · "))
                                                     .font(.caption).foregroundStyle(.secondary)
                                                     .fixedSize(horizontal: false, vertical: true)
                                                     .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
@@ -253,8 +254,8 @@ struct UpcomingMeetingView: View {
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
-                                    .help("Open Calendar")
-                                    .accessibilityLabel("Open Calendar for \(event.title), \(event.relativeStart(at: Date())), \(event.timeRange)")
+                                    .help(Self.openLabel(for: event))
+                                    .accessibilityLabel("\(Self.openLabel(for: event)) for \(event.title), \(event.relativeStart(at: Date())), \(event.timeRange)")
                                     Button { record(event) } label: {
                                         Image(systemName: "record.circle")
                                             .font(.system(size: 16))
@@ -272,7 +273,7 @@ struct UpcomingMeetingView: View {
                                             .font(.caption).foregroundStyle(.secondary)
                                         VStack(alignment: .leading, spacing: 4) {
                                             ForEach(layout.compact) { meeting in
-                                                Button(action: openCalendar) {
+                                                Button { open(meeting) } label: {
                                                     HStack(spacing: 8) {
                                                         Text(meeting.timeRange)
                                                             .font(.caption).monospacedDigit().foregroundStyle(.secondary)
@@ -282,8 +283,8 @@ struct UpcomingMeetingView: View {
                                                     .contentShape(Rectangle())
                                                 }
                                                 .buttonStyle(.plain)
-                                                .help("Open Calendar · " + meeting.title)
-                                                .accessibilityLabel("Open Calendar for \(meeting.title), \(meeting.timeRange)")
+                                                .help(Self.openLabel(for: meeting) + " · " + meeting.title)
+                                                .accessibilityLabel("\(Self.openLabel(for: meeting)) for \(meeting.title), \(meeting.timeRange)")
                                             }
                                         }
                                     }
@@ -324,6 +325,15 @@ struct UpcomingMeetingView: View {
 
     private func openCalendar() {
         NSWorkspace.shared.open(URL(string: "ical://")!)
+    }
+
+    /// A meeting with a video-call link joins the call in the browser; others open Calendar.
+    private func open(_ event: CalendarEvent) {
+        if let url = event.joinURL { NSWorkspace.shared.open(url) } else { openCalendar() }
+    }
+
+    private static func openLabel(for event: CalendarEvent) -> String {
+        event.joinService.map { "Join on " + $0 } ?? "Open Calendar"
     }
 }
 

@@ -420,7 +420,8 @@ final class MeetingCalendarTests: XCTestCase {
         calendar.select("fixture-calendar", enabled: true)
         do { _ = try await calendar.eventForRecording(id: "same-title-different-occurrence"); XCTFail("Never guess") }
         catch { XCTAssertTrue(error is CalendarRecordingError) }
-        let selected = try await calendar.eventForRecording(id: event.id)
+        var selected = try await calendar.eventForRecording(id: event.id)
+        selected.joinURL = URL(string: "https://us02web.zoom.us/j/123456789?pwd=secret")
         let actualStart = event.scheduledStart.addingTimeInterval(90)
         try selected.attach(to: root, recordedAt: actualStart)
         let url = root.appendingPathComponent("calendar.json")
@@ -431,12 +432,35 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(link["recordedAtAtLink"] as? String, ISO8601DateFormatter().string(from: actualStart))
         XCTAssertNil(json["match"], "Explicit selection has no matching score")
         XCTAssertEqual((json["event"] as? [String: Any])?["occurrenceId"] as? String, event.id)
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("pwd=secret"), "Join links can carry meeting passwords")
         XCTAssertTrue(MeetingCalendar.searchFields(in: root).contains { $0.localizedStandardContains("EXAMPLE.COM") })
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int, 0o600)
         XCTAssertThrowsError(try selected.attach(to: root, recordedAt: Date()))
         XCTAssertEqual(try Data(contentsOf: url), data)
         try MeetingArtifacts.write(title: event.title, recordedAt: actualStart, duration: 60, segments: [], to: root)
         XCTAssertEqual(try Data(contentsOf: url), data, "Transcription preserves the event snapshot")
+    }
+
+    func testJoinLinkSkipsHelpAndDialInLinksFromTheSameServices() {
+        let google = """
+        Join with Google Meet: https://meet.google.com/abc-defg-hij
+        Join by phone: https://tel.meet/abc-defg-hij?pin=123
+        Learn more about Meet at: https://support.google.com/a/users/answer/9282720
+        """
+        XCTAssertEqual(CalendarEvent.joinURL(url: nil, location: nil, notes: google)?.absoluteString,
+                       "https://meet.google.com/abc-defg-hij")
+        let zoom = "Find your local number: https://us02web.zoom.us/u/kabc\nJoin: https://us02web.zoom.us/j/81234567890?pwd=x"
+        XCTAssertEqual(CalendarEvent.joinURL(url: nil, location: nil, notes: zoom)?.absoluteString,
+                       "https://us02web.zoom.us/j/81234567890?pwd=x")
+        let teams = "Need help? https://aka.ms/JoinTeamsMeeting\nhttps://teams.microsoft.com/meetingOptions/?id=1\n"
+            + "https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0"
+        XCTAssertEqual(CalendarEvent.joinURL(url: nil, location: nil, notes: teams)?.host, "teams.microsoft.com")
+        XCTAssertEqual(CalendarEvent.joinURL(url: nil, location: nil, notes: teams)?.path.hasPrefix("/l/meetup-join/"), true)
+        XCTAssertEqual(CalendarEvent.joinURL(url: URL(string: "https://example.com/agenda"),
+                                             location: "https://acme.zoom.us/j/1", notes: google)?.absoluteString,
+                       "https://acme.zoom.us/j/1", "An unrelated event URL does not hide the location's call link")
+        XCTAssertNil(CalendarEvent.joinURL(url: URL(string: "https://example.com/agenda"), location: "Room 4",
+                                           notes: "Download Zoom: https://zoom.us/download"))
     }
 
     func testEventKitFiltersUnsuitableEventsWithoutRequestingAccess() {
