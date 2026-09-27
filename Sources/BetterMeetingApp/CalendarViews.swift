@@ -253,7 +253,7 @@ struct UpcomingMeetingView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .contentShape(Rectangle())
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(MeetingRowButtonStyle())
                                     .help(Self.openLabel(for: event))
                                     .accessibilityLabel("\(Self.openLabel(for: event)) for \(event.title), \(event.relativeStart(at: Date())), \(event.timeRange)")
                                     Button { record(event) } label: {
@@ -282,7 +282,7 @@ struct UpcomingMeetingView: View {
                                                     }
                                                     .contentShape(Rectangle())
                                                 }
-                                                .buttonStyle(.plain)
+                                                .buttonStyle(MeetingRowButtonStyle())
                                                 .help(Self.openLabel(for: meeting) + " · " + meeting.title)
                                                 .accessibilityLabel("\(Self.openLabel(for: meeting)) for \(meeting.title), \(meeting.timeRange)")
                                             }
@@ -307,9 +307,15 @@ struct UpcomingMeetingView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("No more meetings today.")
                                 if let tomorrow = layout.tomorrowFirst {
-                                    Text("Tomorrow " + tomorrow.scheduledStart.formatted(date: .omitted, time: .shortened) + " · " + tomorrow.title)
-                                        .lineLimit(1)
-                                        .help(tomorrow.title)
+                                    Button { open(tomorrow) } label: {
+                                        Text("Tomorrow " + tomorrow.scheduledStart.formatted(date: .omitted, time: .shortened) + " · " + tomorrow.title)
+                                            .lineLimit(1)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(MeetingRowButtonStyle())
+                                    .help(Self.openLabel(for: tomorrow) + " · " + tomorrow.title)
+                                    .accessibilityLabel("\(Self.openLabel(for: tomorrow)) for \(tomorrow.title), tomorrow \(tomorrow.timeRange)")
                                 }
                             }
                             .font(.caption).foregroundStyle(.secondary)
@@ -334,6 +340,30 @@ struct UpcomingMeetingView: View {
 
     private static func openLabel(for event: CalendarEvent) -> String {
         event.joinService.map { "Join on " + $0 } ?? "Open Calendar"
+    }
+}
+
+/// A plain row button with the same inset hover highlight as recorded meeting rows, so calendar
+/// rows read as clickable. The highlight bleeds past the text without moving it.
+struct MeetingRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { Row(configuration: configuration) }
+
+    private struct Row: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .padding(.horizontal, MeetingHistorySection.hoverInset)
+                .padding(.vertical, 3)
+                .background(
+                    Color.primary.opacity(configuration.isPressed ? 0.1 : hovering ? 0.06 : 0),
+                    in: RoundedRectangle(cornerRadius: 6)
+                )
+                .padding(.horizontal, -MeetingHistorySection.hoverInset)
+                .padding(.vertical, -3)
+                .onHover { hovering = $0 }
+        }
     }
 }
 
