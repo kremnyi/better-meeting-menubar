@@ -12,6 +12,8 @@ struct MeetingHistorySection: View {
     /// snapping to a row never leaves a gap or a cut-off line at the bottom.
     static let rowHeight: CGFloat = 43
     static let visibleRows = 5
+    /// Space between a row's hover highlight and its text, matching the Options page rows.
+    static let hoverInset: CGFloat = 6
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -98,7 +100,9 @@ struct MeetingHistorySection: View {
                                 )
                                 .frame(height: Self.rowHeight)
                                 .overlay(alignment: .top) {
-                                    if item.id != model.transcriptionHistory.first?.id { Divider() }
+                                    if item.id != model.transcriptionHistory.first?.id {
+                                        Divider().padding(.horizontal, Self.hoverInset)
+                                    }
                                 }
                             }
                         }
@@ -106,6 +110,9 @@ struct MeetingHistorySection: View {
                     }
                     .scrollTargetBehavior(.viewAligned)
                     .scrollIndicators(.hidden)
+                    // Rows pad their hover highlight past the text; the list gives that back so titles
+                    // stay aligned with the heading and search field above.
+                    .padding(.horizontal, -Self.hoverInset)
                 }
             }
             .font(.callout)
@@ -229,6 +236,7 @@ struct MeetingHistorySection: View {
             .accessibilityLabel("More actions for \(item.title)")
             .help("Open, copy, rename, re-transcribe, export, or move to Trash")
         }
+        .padding(.horizontal, Self.hoverInset)
         .frame(minHeight: 42)
         .contentShape(Rectangle())
         .background(
@@ -304,7 +312,7 @@ private struct MeetingSearchField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
-        field.placeholderString = "Search meetings"
+        field.placeholderString = placeholder
         field.delegate = context.coordinator
         field.toolTip = "Search titles, transcripts, and calendar attendees (⌘F)"
         field.setAccessibilityLabel("Search all meetings")

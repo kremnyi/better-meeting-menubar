@@ -9,7 +9,7 @@ struct MeetingOptionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Calendar").font(.callout.weight(.medium))
+            Text("Calendar").font(.headline)
             VStack(alignment: .leading, spacing: 4) {
                 Toggle("Use calendar", isOn: Binding(
                     get: { calendar.enabled },
@@ -45,7 +45,7 @@ struct MeetingOptionsView: View {
             .opacity(calendar.enabled ? 1 : 0.5)
 
             Divider()
-            Text("Suggest recording").font(.callout.weight(.medium))
+            Text("Suggest recording").font(.headline)
             CalendarReminderOptionsView(calendar: calendar, reminders: calendar.reminders)
             VStack(alignment: .leading, spacing: 4) {
                 Toggle("Detect meetings automatically", isOn: $detectsMeetings)
@@ -185,6 +185,8 @@ private struct CalendarReminderOptionsView: View {
                     Button("Retry") { Task { await calendar.setNotifyAtStart(true) } }
                         .disabled(reminders.requestingAccess)
                 }
+                // Under the message it answers, not back at the checkbox's edge.
+                .padding(.leading, 18)
             }
         }
     }

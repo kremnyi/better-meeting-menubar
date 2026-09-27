@@ -85,40 +85,46 @@ struct CaptureOptionsView: View {
     }
 
     private var appSettings: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("General").font(.headline)
-            Toggle("Launch at login", isOn: Binding(
-                get: { launchAtLoginStatus == .enabled },
-                set: setLaunchAtLogin
-            ))
-            if launchAtLoginStatus == .requiresApproval || launchAtLoginError != nil {
-                VStack(alignment: .leading, spacing: 4) {
-                    if launchAtLoginStatus == .requiresApproval {
-                        Text("Allow Better Meeting to open at login in System Settings.")
-                    } else if launchAtLoginStatus == .notFound {
-                        Text("Open Better Meeting from Applications and try again.")
-                    } else {
-                        Text("Couldn’t change launch at login. Try again or check Login Items.")
+        // Sections sit further apart than their rows, so each heading reads with the rows below it
+        // in the same height as the even spacing it replaces; the layout tests cap this page.
+        VStack(alignment: .leading, spacing: 13) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("General").font(.headline)
+                Toggle("Launch at login", isOn: Binding(
+                    get: { launchAtLoginStatus == .enabled },
+                    set: setLaunchAtLogin
+                ))
+                if launchAtLoginStatus == .requiresApproval || launchAtLoginError != nil {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if launchAtLoginStatus == .requiresApproval {
+                            Text("Allow Better Meeting to open at login in System Settings.")
+                        } else if launchAtLoginStatus == .notFound {
+                            Text("Open Better Meeting from Applications and try again.")
+                        } else {
+                            Text("Couldn’t change launch at login. Try again or check Login Items.")
+                        }
+                        if launchAtLoginStatus != .notFound {
+                            Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
+                                .buttonStyle(.link)
+                                .foregroundStyle(.tint)
+                        }
                     }
-                    if launchAtLoginStatus != .notFound {
-                        Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
-                            .buttonStyle(.link)
-                            .foregroundStyle(.tint)
-                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 18)
+                    .help(launchAtLoginError ?? "")
                 }
-                .font(.caption).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, 18)
-                .help(launchAtLoginError ?? "")
+                Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
+                    .help("Shows the elapsed time beside the menu bar icon while recording")
             }
-            Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
-                .help("Shows the elapsed time beside the menu bar icon while recording")
-            Text("Updates").font(.headline)
-            Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
-                .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
-            Toggle("Include beta releases", isOn: $model.betaUpdates)
-                .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
-            UpdateOptionsView(updates: model.updates, version: version)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Updates").font(.headline)
+                Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
+                    .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
+                Toggle("Include beta releases", isOn: $model.betaUpdates)
+                    .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
+                UpdateOptionsView(updates: model.updates, version: version)
+            }
             Divider()
             OptionsNavigationRow(title: "About Better Meeting", systemImage: "info.circle",
                                  help: "Version, author, links, and license") {
