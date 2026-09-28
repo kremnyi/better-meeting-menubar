@@ -63,6 +63,8 @@ struct MenuBarStatusIcon: View {
     var processingFrame = 0
     /// Idle work waits: access to grant or a failed transcription.
     var attention = false
+    /// Brightness of the whole icon while capture is live, dot included.
+    var breath: Double = 1
 
     var body: some View {
         Group {
@@ -82,6 +84,7 @@ struct MenuBarStatusIcon: View {
             }
         }
         .frame(width: 18, height: 18)
+        .opacity(state == .recording ? breath : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -128,6 +131,7 @@ struct MenuBarStatusLabel: View {
     @ObservedObject var spinner: MenuBarSpinner
     @ObservedObject var clock: RecordingClock
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let state: AppState
     // Plain values rather than the model, so progress updates don't redraw the menu bar item.
     var processing = false
@@ -142,11 +146,21 @@ struct MenuBarStatusLabel: View {
     // event names are too long to ever fit, so the label states the time only.
     static let previewLeadTime: TimeInterval = 60 * 60
 
+    /// The recording dot dims and brightens every two seconds: slow enough to read as a breath
+    /// rather than a blink, and stepped by the clock's own 1 Hz tick, so a closed menu redraws no
+    /// faster than it already does to show elapsed time.
+    static func recordingBreath(elapsed: TimeInterval, reduceMotion: Bool) -> Double {
+        guard !reduceMotion else { return 1 }
+        return Int(elapsed / 2) % 2 == 0 ? 1 : 0.45
+    }
+
     var body: some View {
+        let breath = Self.recordingBreath(elapsed: clock.elapsed, reduceMotion: reduceMotion)
         if state == .recording, showRecordingTime {
             let elapsed = Timecode.compact(clock.elapsed)
             HStack(spacing: 5) {
-                MenuBarStatusIcon(state: state)
+                MenuBarStatusIcon(state: state, breath: breath)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: breath)
                 Text(elapsed)
                     .monospacedDigit()
             }
@@ -168,7 +182,9 @@ struct MenuBarStatusLabel: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Better Meeting, next meeting \(event.title), \(relative)")
         } else {
-            MenuBarStatusIcon(state: state, processing: processing, processingFrame: spinner.frame, attention: attention)
+            MenuBarStatusIcon(state: state, processing: processing, processingFrame: spinner.frame,
+                              attention: attention, breath: breath)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: breath)
         }
     }
 

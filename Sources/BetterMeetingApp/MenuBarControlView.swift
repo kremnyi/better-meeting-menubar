@@ -156,11 +156,15 @@ struct MenuBarControlView: View {
 
             startControls
 
-            transcriptionFailureStatus
+            // Both panels arrive rather than pop: the list below has to make room for them, and
+            // that shift is what the travel explains. Reduce Motion keeps the arrival, drops it.
+            Group { transcriptionFailureStatus }
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: model.errorMessage)
 
             modelSetupStatus
 
-            completionStatus
+            Group { completionStatus }
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: model.completionMessage)
 
             Divider()
 
@@ -211,6 +215,7 @@ struct MenuBarControlView: View {
                 }
                 .buttonStyle(.bordered)
             }
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
         }
     }
 
@@ -220,6 +225,7 @@ struct MenuBarControlView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(message)
                     .font(.callout)
+                    .contentTransition(reduceMotion ? .identity : .opacity)
                     .fixedSize(horizontal: false, vertical: true)
                 if message.hasPrefix("Transcribed "), !model.unfinishedRecordings.isEmpty {
                     let count = model.unfinishedRecordings.count
@@ -237,6 +243,7 @@ struct MenuBarControlView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
         }
     }
 
@@ -244,13 +251,17 @@ struct MenuBarControlView: View {
     private func completionActions(_ folder: URL) -> some View {
         if model.hasCompletedTranscript {
             Button("Open Transcript") { AppModel.openTranscript(in: folder) }
-            Button(copiedTranscript ? "Copied" : "Copy Transcript") {
+            Button {
                 do {
                     try AppModel.copyTranscript(in: folder)
-                    withAnimation(.easeOut(duration: 0.15)) { copiedTranscript = true }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { copiedTranscript = true }
                 } catch {
                     NSAlert(error: error).runActive()
                 }
+            } label: {
+                // The words swap like a state change, in step with the button losing its width.
+                Text(copiedTranscript ? "Copied" : "Copy Transcript")
+                    .contentTransition(reduceMotion ? .identity : .opacity)
             }
         }
         Button("Show in Finder") {
@@ -497,12 +508,21 @@ struct MenuBarControlView: View {
         Button {
             model.primaryAction()
         } label: {
-            Label(model.primaryButtonTitle, systemImage: model.primaryButtonSymbol)
-                .frame(maxWidth: .infinity)
+            Label {
+                Text(model.primaryButtonTitle)
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+            } icon: {
+                Image(systemName: model.primaryButtonSymbol)
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+            }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .tint(.signalCoral)
+        // The recovery action can change under the same button, "Try again" becoming "Retry
+        // transcription". Its glyph and title hand off in place instead of cutting.
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: model.primaryButtonTitle)
     }
 
     private var captureSummary: some View {
@@ -582,6 +602,9 @@ private struct RecordingElapsed: View {
                 .accessibilityHidden(true)
             Text(Timecode.compact(clock.elapsed))
                 .font(.system(.largeTitle, design: .rounded).weight(.medium).monospacedDigit())
+                // The only live measurement on the panel: each tick rolls its digits instead of swapping them.
+                .contentTransition(reduceMotion ? .identity : .numericText(value: clock.elapsed))
+                .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: clock.elapsed)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Recording time")

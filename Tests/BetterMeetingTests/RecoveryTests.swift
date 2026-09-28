@@ -326,6 +326,19 @@ final class RecoveryTests: XCTestCase {
                 try writePNG(bitmap, to: URL(fileURLWithPath: path).appendingPathComponent("recording-icon-\(scheme).png"))
             }
         }
+        // With the menu closed the icon is the only sign of a live recording, so it dims on the
+        // clock's tick: it must hold each brightness long enough to read as a breath rather than
+        // a blink, and it must not move at all for a reader who asked for no motion.
+        for second in [1, 4, 5, 9] {
+            XCTAssertEqual(MenuBarStatusLabel.recordingBreath(elapsed: Double(second), reduceMotion: false),
+                           MenuBarStatusLabel.recordingBreath(elapsed: 0, reduceMotion: false),
+                           "Every second of a phase holds one brightness, so the icon never blinks")
+            XCTAssertEqual(MenuBarStatusLabel.recordingBreath(elapsed: Double(second), reduceMotion: true), 1,
+                           "Reduce Motion keeps the recording icon at full brightness")
+        }
+        XCTAssertNotEqual(MenuBarStatusLabel.recordingBreath(elapsed: 2, reduceMotion: false),
+                          MenuBarStatusLabel.recordingBreath(elapsed: 0, reduceMotion: false),
+                          "A live recording still breathes while the menu is closed")
     }
 
     @MainActor
