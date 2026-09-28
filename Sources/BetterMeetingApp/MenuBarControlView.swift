@@ -508,7 +508,8 @@ struct MenuBarControlView: View {
     private var captureSummary: some View {
         let notice = model.captureAccessNotice
         return VStack(spacing: 6) {
-            Label(notice.text, systemImage: model.captureAccessSymbol)
+            // The symbol flows inline so a wrapped notice centers every line; a Label keeps its title leading.
+            Text("\(Image(systemName: model.captureAccessSymbol)) \(notice.text)")
                 .font(notice.isSecondary ? .caption : .callout)
                 .foregroundStyle(model.captureAccessNeedsAttention
                     ? (colorScheme == .dark ? Color.orange : Color.attentionOrange)

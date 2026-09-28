@@ -96,9 +96,9 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(event.relativeStart(at: now, calendar: calendar, compact: true), "in 18m")
         XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar, compact: true), "in 1h18m")
         XCTAssertEqual(event.relativeStart(at: event.scheduledStart.addingTimeInterval(-3600), calendar: calendar, compact: true), "in 1h")
-        let inProgress = event.relativeStart(at: event.scheduledStart, calendar: calendar)
-        XCTAssertTrue(inProgress.hasPrefix("until "), "In progress should state the end time")
-        XCTAssertEqual(event.relativeStart(at: event.scheduledStart, calendar: calendar, compact: true), inProgress)
+        // The menu caption already shows the time range; only the menu bar needs the end time spelled out.
+        XCTAssertEqual(event.relativeStart(at: event.scheduledStart, calendar: calendar), "Now")
+        XCTAssertTrue(event.relativeStart(at: event.scheduledStart, calendar: calendar, compact: true).hasPrefix("until "))
         XCTAssertEqual(event.relativeStart(at: event.scheduledEnd, calendar: calendar), "Ended")
         let tomorrowText = event.relativeStart(at: now.addingTimeInterval(-86400), calendar: calendar)
         XCTAssertTrue(tomorrowText.hasPrefix("Tomorrow "), "Tomorrow should include the start time")
@@ -509,7 +509,10 @@ final class MeetingCalendarTests: XCTestCase {
                 calendar.select("fixture-calendar", enabled: true)
                 if state != "notify-empty" {
                     let title = state == "long-title" ? "Portfolio contract and investment discussion with Alexandra and the international product team" : "Portfolio review with Alex"
-                    reader.events = [try calendarEventFixture(title: title), try calendarEventFixture(id: "second-occurrence")]
+                    var first = try calendarEventFixture(title: title)
+                    // The longest caption: a call service joins the countdown and time range.
+                    if state == "long-title" { first.joinURL = URL(string: "https://meet.google.com/abc-defg-hij") }
+                    reader.events = [first, try calendarEventFixture(id: "second-occurrence")]
                 }
             }
             if state == "notify-partial" { notificationCenter.rejectedIDs = [CalendarReminder.prefix + "second-occurrence"] }

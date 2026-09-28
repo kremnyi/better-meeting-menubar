@@ -216,12 +216,12 @@ struct UpcomingMeetingView: View {
                             .help("Calendars and meeting suggestions")
                     }
                     if calendar.authorization != .fullAccess {
-                        Button("Calendar access needed…", action: configure)
+                        Button("Allow calendar access…", action: configure)
                     } else if calendar.isLoading && calendar.events.isEmpty && !calendar.hasLoaded {
                         HStack(alignment: .top, spacing: 8) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Event title").lineLimit(2)
-                                Text("In 5 minutes · 10:00 – 11:00")
+                                Text("Starts in 5 min · 10:00–11:00")
                                     .font(.caption).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -241,20 +241,20 @@ struct UpcomingMeetingView: View {
                                 HStack(alignment: .top, spacing: 8) {
                                     Button { open(event) } label: {
                                         VStack(alignment: .leading, spacing: 3) {
-                                            Text(event.title).lineLimit(2).help(event.title)
+                                            Text(event.title).lineLimit(2)
                                             TimelineView(.periodic(from: .now, by: 60)) { context in
-                                                Text(event.relativeStart(at: context.date) + " · " + event.timeRange + (event.joinService.map { " · " + $0 } ?? ""))
+                                                Text(Self.caption(for: event, at: context.date))
                                                     .font(.caption).foregroundStyle(.secondary)
                                                     .fixedSize(horizontal: false, vertical: true)
-                                                    .help(event.scheduledStart.formatted(date: .complete, time: .shortened))
                                             }
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(MeetingRowButtonStyle())
-                                    .help(Self.openLabel(for: event))
-                                    .accessibilityLabel("\(Self.openLabel(for: event)) for \(event.title), \(event.relativeStart(at: Date())), \(event.timeRange)")
+                                    .help(Self.openLabel(for: event) + " · " + event.title)
+                                    .accessibilityLabel("\(event.title), \(event.relativeStart(at: Date())), \(event.timeRange)")
+                                    .accessibilityHint(Self.openHint(for: event))
                                     Button { record(event) } label: {
                                         Image(systemName: "record.circle")
                                             .font(.system(size: 16))
@@ -283,19 +283,23 @@ struct UpcomingMeetingView: View {
                                                 }
                                                 .buttonStyle(MeetingRowButtonStyle())
                                                 .help(Self.openLabel(for: meeting) + " · " + meeting.title)
-                                                .accessibilityLabel("\(Self.openLabel(for: meeting)) for \(meeting.title), \(meeting.timeRange)")
+                                                .accessibilityLabel("\(meeting.title), \(meeting.timeRange)")
+                                                .accessibilityHint(Self.openHint(for: meeting))
                                             }
                                         }
                                     }
                                 }
                                 if layout.extraTodayCount > 0 {
                                     Button(action: openCalendar) {
-                                        Text(layout.extraTodayCount == 1 ? "1 more today" : "\(layout.extraTodayCount) more today")
+                                        Text(Self.moreToday(layout.extraTodayCount))
                                             .font(.caption).foregroundStyle(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .contentShape(Rectangle())
                                     }
-                                    .buttonStyle(.borderless)
-                                    .help("Show the rest in Calendar")
-                                    .accessibilityLabel("Show \(layout.extraTodayCount) more meetings in Calendar")
+                                    .buttonStyle(MeetingRowButtonStyle())
+                                    .help("Open Calendar")
+                                    .accessibilityLabel(Self.moreToday(layout.extraTodayCount, spoken: true))
+                                    .accessibilityHint("Opens Calendar")
                                 }
                             }
                         } else if !calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) }) {
@@ -314,7 +318,8 @@ struct UpcomingMeetingView: View {
                                     }
                                     .buttonStyle(MeetingRowButtonStyle())
                                     .help(Self.openLabel(for: tomorrow) + " · " + tomorrow.title)
-                                    .accessibilityLabel("\(Self.openLabel(for: tomorrow)) for \(tomorrow.title), tomorrow \(tomorrow.timeRange)")
+                                    .accessibilityLabel("\(tomorrow.title), tomorrow \(tomorrow.timeRange)")
+                                    .accessibilityHint(Self.openHint(for: tomorrow))
                                 }
                             }
                             .font(.caption).foregroundStyle(.secondary)
@@ -339,6 +344,18 @@ struct UpcomingMeetingView: View {
 
     private static func openLabel(for event: CalendarEvent) -> String {
         event.joinService.map { "Join on " + $0 } ?? "Open Calendar"
+    }
+
+    private static func caption(for event: CalendarEvent, at now: Date) -> String {
+        ([event.relativeStart(at: now), event.timeRange] + [event.joinService].compactMap { $0 }).joined(separator: " · ")
+    }
+
+    private static func moreToday(_ count: Int, spoken: Bool = false) -> String {
+        "\(count) more" + (spoken ? (count == 1 ? " meeting" : " meetings") : "") + " today"
+    }
+
+    private static func openHint(for event: CalendarEvent) -> String {
+        event.joinService.map { "Joins the \($0) call in your browser" } ?? "Opens Calendar"
     }
 }
 
@@ -405,7 +422,8 @@ extension CalendarEvent {
     /// `compact` abbreviates the countdown for the menu bar: "in 26m" or "in 1h20m".
     func relativeStart(at now: Date, calendar: Calendar = .current, compact: Bool = false) -> String {
         if scheduledEnd <= now { return "Ended" }
-        if scheduledStart <= now { return "until " + scheduledEnd.formatted(date: .omitted, time: .shortened) }
+        // The menu bar has no time range beside it, so it names the end; the menu's caption already shows it.
+        if scheduledStart <= now { return compact ? "until " + scheduledEnd.formatted(date: .omitted, time: .shortened) : "Now" }
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
                                            to: calendar.startOfDay(for: scheduledStart)).day
         if days == 1 { return "Tomorrow " + scheduledStart.formatted(date: .omitted, time: .shortened) }
