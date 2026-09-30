@@ -553,6 +553,10 @@ final class AppModel: ObservableObject {
 
     func retryTranscription(_ item: MeetingHistoryItem, languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil) {
         guard !isProcessing, !isTranscribingBatch, state == .idle || state == .failed else { return }
+        if let backup = item.recoveryFolder {
+            lastError = MeetingActionError.transcriptRecovery(backup)
+            return
+        }
         prepareSavedTranscription(item)
         enqueue(run(
             for: item, replacing: item.needsTranscription ? nil : item,
@@ -580,9 +584,9 @@ final class AppModel: ObservableObject {
     }
 
     func transcribeAllRecordings(_ process: @escaping (MeetingHistoryItem) async -> Bool) {
-        guard state == .idle, !isProcessing, !isTranscribingBatch, !unfinishedRecordings.isEmpty else { return }
+        let recordings = transcribableRecordings
+        guard state == .idle, !isProcessing, !isTranscribingBatch, !recordings.isEmpty else { return }
         cancelModelUnload()
-        let recordings = unfinishedRecordings
         transcriptionBatchTotal = recordings.count
         transcriptionBatchIndex = 1
         prepareSavedTranscription(recordings[0])
@@ -610,6 +614,22 @@ final class AppModel: ObservableObject {
             refreshHistory()
             processingQueueFinished(succeeded: !cancelled && completed == recordings.count)
         }
+    }
+
+    var transcribableRecordings: [MeetingHistoryItem] {
+        unfinishedRecordings.filter { $0.recoveryFolder == nil }
+    }
+
+    func retryTranscriptRecovery(_ item: MeetingHistoryItem) {
+        do {
+            try MeetingArtifacts.recoverTranscript(in: item.folderURL)
+            lastError = nil
+            if completedFolder?.standardizedFileURL.path == item.folderURL.standardizedFileURL.path {
+                transcriptionError = nil
+            }
+            updateFailedTranscriptionFolders { $0.remove(item.folderURL.standardizedFileURL) }
+        } catch { lastError = error }
+        refreshHistory()
     }
 
     private func run(
@@ -1156,8 +1176,13 @@ final class AppModel: ObservableObject {
         lastTranscriptionOptions = (run.languages, run.hints, run.settings)
         // This job owns its error/retry target, including after an automatic rename.
         var folder = run.folder
+        var replacing = run.replacing
         do {
             try Task.checkCancellation()
+            try MeetingArtifacts.recoverTranscript(in: folder)
+            if let saved = MeetingArtifacts.meeting(in: folder), !saved.needsTranscription {
+                replacing = saved
+            }
             await MeetingNotifications.requestPermission()
             var title = run.title
             let recordedAt = run.recordedAt
@@ -1183,7 +1208,7 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             let duration = Double(audio.length) / audio.fileFormat.sampleRate
             if !isCapturing { elapsed = duration }
-            if run.replacing == nil {
+            if replacing == nil {
                 try MeetingArtifacts.writeMetadata(
                     title: title, recordedAt: recordedAt, duration: duration,
                     titleWasProvided: run.titleWasProvided, speechSettings: run.settings, to: folder
@@ -1238,7 +1263,7 @@ final class AppModel: ObservableObject {
 
             try Task.checkCancellation()
             setProcessingPhase(.writingFiles)
-            if !run.titleWasProvided && run.replacing == nil {
+            if !run.titleWasProvided && replacing == nil {
                 let generatedTitle = await Task.detached(priority: .utility) {
                     MeetingTitle.suggest(from: segments.map(\.text).joined(separator: "\n"))
                 }.value
@@ -1247,11 +1272,11 @@ final class AppModel: ObservableObject {
                     title = generatedTitle
                     processingTitle = generatedTitle
                 }
-            } else if run.replacing == nil, let folderTitle = run.folderTitle, title != folderTitle {
+            } else if replacing == nil, let folderTitle = run.folderTitle, title != folderTitle {
                 // The name changed while recording; the folder still carries the one it started with.
                 folder = try MeetingArtifacts.renameDirectory(folder, title: title, recordedAt: recordedAt)
             }
-            if let replacing = run.replacing {
+            if let replacing {
                 try MeetingArtifacts.replaceTranscript(for: replacing, duration: duration, segments: segments, speechSettings: run.settings)
             } else {
                 try MeetingArtifacts.write(
@@ -1297,7 +1322,7 @@ final class AppModel: ObservableObject {
             let failedFolder = folder
             completedFolder = failedFolder
             if Task.isCancelled {
-                completionMessage = run.replacing == nil
+                completionMessage = replacing == nil
                     ? "Transcription cancelled. Recording kept; transcribe it from the menu to resume."
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
                 refreshHistory()

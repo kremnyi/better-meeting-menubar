@@ -4,8 +4,8 @@ import XCTest
 @testable import BetterMeetingApp
 
 /// Opt-in benchmark: set BETTER_MEETING_ENGINE_CHECK to a disposable recording,
-/// then compare both transcripts, elapsed time, and peak memory before deciding
-/// whether Parakeet should replace Whisper as the default.
+/// plus independently annotated phrases/silence in <recording>.expected.json.
+/// Compare recognition quality, elapsed time, and peak memory for both engines.
 final class EngineComparisonTests: XCTestCase {
     func testCompareEnginesOnRealAudio() async throws {
         guard let path = ProcessInfo.processInfo.environment["BETTER_MEETING_ENGINE_CHECK"] else {
@@ -15,6 +15,15 @@ final class EngineComparisonTests: XCTestCase {
             .appendingPathComponent(".build/engine-check", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = URL(fileURLWithPath: path)
+        let reference = try JSONDecoder().decode([ExpectedAudioWindow].self,
+            from: Data(contentsOf: URL(fileURLWithPath: path + ".expected.json")))
+        guard !reference.isEmpty, reference.allSatisfy({
+            $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end > $0.start
+                && $0.phrases.allSatisfy { !ExpectedAudioWindow.normalize($0).isEmpty }
+        }) else {
+            XCTFail("Provide nonempty reference windows with valid times; use [] for silence, never a blank phrase")
+            return
+        }
         let audio = root.appendingPathComponent("sample-\(source.lastPathComponent)")
         try? FileManager.default.removeItem(at: audio)
         try FileManager.default.copyItem(at: source, to: audio)
@@ -34,6 +43,7 @@ final class EngineComparisonTests: XCTestCase {
             ("whisper-turbo", SpeechSettings(engine: .whisper)),
             ("parakeet-v3", SpeechSettings(engine: .parakeet)),
         ].filter { engines?.contains($0.name) ?? true }
+        XCTAssertFalse(runs.isEmpty, "Engine filter matched no supported engines")
         for run in runs {
             switch run.settings.selectedEngine {
             case .whisper: try await transcriber.prepare(model: run.settings.model, progressHandler: { _ in })
@@ -67,7 +77,56 @@ final class EngineComparisonTests: XCTestCase {
             """
             try report.write(to: root.appendingPathComponent("\(run.name).md"), atomically: true, encoding: .utf8)
             print("ENGINE \(run.name): \(String(format: "%.1f", elapsed)) s, \(segments.count) segments, peak \(String(format: "%.0f", peakMB)) MB")
-            XCTAssertFalse(segments.isEmpty, "\(run.name) returned no transcript")
+            XCTAssertTrue(segments.allSatisfy { $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start },
+                          "\(run.name) returned invalid timestamps")
+            let failures = reference.flatMap { $0.failures(in: segments) }
+            XCTAssertTrue(failures.isEmpty, "\(run.name): " + failures.joined(separator: "; "))
+        }
+    }
+
+    func testQualityReferenceDetectsMissingLanguagesOverlapAndSilenceText() throws {
+        let reference = try JSONDecoder().decode([ExpectedAudioWindow].self, from: Data("""
+        [
+          {"start":0,"end":2,"phrases":["план запуску"]},
+          {"start":2,"end":4,"phrases":["проверим бюджет"]},
+          {"start":4,"end":6,"phrases":[]},
+          {"start":6,"end":8,"phrases":["release Friday","pricing report"]}
+        ]
+        """.utf8))
+        let recognized = [
+            TranscriptSegment(start: 0, end: 2, text: "План запуску.", language: "uk"),
+            TranscriptSegment(start: 2, end: 4, text: "Проверим бюджет!", language: "ru"),
+            TranscriptSegment(start: 6, end: 8, text: "Release Friday; pricing report.", language: "en")
+        ]
+        XCTAssertTrue(reference.flatMap { $0.failures(in: recognized) }.isEmpty)
+        XCTAssertFalse(reference[0].failures(in: Array(recognized.dropFirst())).isEmpty,
+                       "A nonempty transcript can still drop a language")
+        let oneSpeaker = [TranscriptSegment(start: 6, end: 8, text: "Release Friday", language: "en")]
+        XCTAssertFalse(reference[3].failures(in: oneSpeaker).isEmpty, "Both annotated speakers must survive overlap")
+        let hallucination = [TranscriptSegment(start: 4.5, end: 5.5, text: "Thank you", language: "en")]
+        XCTAssertFalse(reference[2].failures(in: hallucination).isEmpty, "Silence must not produce words")
+    }
+
+}
+
+private struct ExpectedAudioWindow: Decodable {
+    let start: Double
+    let end: Double
+    /// Independently chosen phrases; an empty array marks a silent interval.
+    let phrases: [String]
+
+    static func normalize(_ text: String) -> String {
+        text.lowercased().split { !$0.isLetter && !$0.isNumber }.joined(separator: " ")
+    }
+
+    func failures(in segments: [TranscriptSegment]) -> [String] {
+        let text = Self.normalize(segments.filter { $0.start < end && $0.end > start }.map(\.text).joined(separator: " "))
+        if phrases.isEmpty {
+            return text.isEmpty ? [] : ["Unexpected speech in silence at \(start)–\(end)s: \(text)"]
+        }
+        return phrases.compactMap { phrase in
+            (" " + text + " ").contains(" " + Self.normalize(phrase) + " ") ? nil
+                : "Missing ‘\(phrase)’ at \(start)–\(end)s"
         }
     }
 }

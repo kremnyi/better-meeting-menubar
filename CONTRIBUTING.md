@@ -80,7 +80,26 @@ BETTER_MEETING_SPEAKER_CHECK=/path/to/speech.wav swift test --filter testRealSpe
 
 To compare the Whisper and Parakeet engines on a representative recording —
 Ukrainian/Russian switching, English terms and names, silence, and overlapping
-speakers — use disposable audio:
+speakers — use disposable audio. Independently annotate expected phrases and silence
+in `/path/to/meeting.wav.expected.json` before running the check, for example:
+
+```json
+[
+  {"start": 0, "end": 5, "phrases": ["план запуску"]},
+  {"start": 6, "end": 11, "phrases": ["проверим бюджет"]},
+  {"start": 12, "end": 16, "phrases": []},
+  {"start": 17, "end": 24, "phrases": ["release Friday", "pricing report"]}
+]
+```
+
+Times are seconds. Use a phrase from each language and each intelligible speaker
+during overlap. An empty phrases array marks silence; keep silent windows away
+from speech boundaries because segment timestamps can straddle them. Phrase checks
+ignore case, punctuation, and whitespace, but require the annotated words in order.
+Missing phrases, speech during annotated silence, invalid time ranges, and an
+engine filter matching no engine fail the check. A missing reference file also
+fails; a nonempty transcript alone is insufficient. These checks cover annotated
+content, not overall word accuracy. Keep audio and annotations local and disposable.
 
 ```bash
 BETTER_MEETING_ENGINE_CHECK=/path/to/meeting.wav swift test --filter testCompareEnginesOnRealAudio

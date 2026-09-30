@@ -40,7 +40,8 @@ final class MeetingLibrary: Sendable {
             // The folder's date changes when files are added, removed, or replaced atomically.
             let stamps = [Self.stamp(folder), Self.stamp(folder.appendingPathComponent("metadata.json"))]
             let meeting: MeetingHistoryItem?
-            if let cached = cache.withLock({ $0.folders[folder] }), cached.stamps == stamps {
+            if let cached = cache.withLock({ $0.folders[folder] }), cached.stamps == stamps,
+               cached.meeting?.recoveryFolder == nil {
                 meeting = cached.meeting
             } else {
                 meeting = MeetingArtifacts.meeting(in: folder)

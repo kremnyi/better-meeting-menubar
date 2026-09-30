@@ -31,6 +31,12 @@ struct MeetingHistoryItem: Identifiable, Equatable, Sendable {
     let titleWasProvided: Bool
     /// Allocated bytes in the folder, read on scan for the menu's storage readout.
     var totalBytes: Int64 = 0
+    /// A blocked restore retains its backup and must not be treated as a new transcription.
+    var recoveryFolder: URL? = nil
+
+    var recoveryError: String? {
+        recoveryFolder.flatMap { MeetingActionError.transcriptRecovery($0).errorDescription }
+    }
 
     var id: URL { folderURL }
 }
@@ -296,7 +302,10 @@ enum MeetingArtifacts {
         decoder.dateDecodingStrategy = .iso8601
         let values = try? folder.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey])
         guard values?.isDirectory == true else { return nil }
-        let recovered = (try? recoverTranscript(in: folder)) != nil
+        var recoveryFolder: URL?
+        do { try recoverTranscript(in: folder) }
+        catch MeetingActionError.transcriptRecovery(let backup) { recoveryFolder = backup }
+        catch { recoveryFolder = folder }
 
         let metadataURL = folder.appendingPathComponent("metadata.json")
         let manifest = (try? Data(contentsOf: metadataURL)).flatMap {
@@ -305,8 +314,8 @@ enum MeetingArtifacts {
         let hasTranscripts = ["transcript.md", "transcript.json"].allSatisfy {
             FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
         }
-        let complete = recovered && manifest != nil && manifest?.transcriptionComplete != false && hasTranscripts
-        guard complete || hasMedia(in: folder) || !recovered else { return nil }
+        let complete = recoveryFolder == nil && manifest != nil && manifest?.transcriptionComplete != false && hasTranscripts
+        guard complete || hasMedia(in: folder) || recoveryFolder != nil else { return nil }
 
         let nameParts = folder.lastPathComponent.components(separatedBy: " — ")
 
@@ -317,7 +326,8 @@ enum MeetingArtifacts {
             folderURL: folder,
             needsTranscription: !complete,
             titleWasProvided: manifest?.titleWasProvided ?? true,
-            totalBytes: LocalTranscriber.sizeOnDisk(of: folder)
+            totalBytes: LocalTranscriber.sizeOnDisk(of: folder),
+            recoveryFolder: recoveryFolder
         )
     }
 

@@ -17,14 +17,14 @@ struct MeetingHistorySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !model.unfinishedRecordings.isEmpty, model.state == .idle, !model.isProcessing {
-                let count = model.unfinishedRecordings.count
+            if !model.transcribableRecordings.isEmpty, model.state == .idle, !model.isProcessing {
+                let count = model.transcribableRecordings.count
                 HStack(spacing: 8) {
                     Text("\(count) not transcribed")
                         .font(.callout)
                     Spacer(minLength: 0)
                     Menu {
-                        ForEach(model.unfinishedRecordings) { item in
+                        ForEach(model.transcribableRecordings) { item in
                             Button("\(item.title) · \(item.recordedAt.formatted(date: .abbreviated, time: .shortened))") {
                                 model.retryTranscription(item)
                             }
@@ -131,7 +131,7 @@ struct MeetingHistorySection: View {
     static func rowHelp(_ item: MeetingHistoryItem) -> String {
         let action = item.needsTranscription ? "Open meeting folder" : "Open transcript"
         let size = item.totalBytes > 0 ? " · " + ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file) : ""
-        return item.title + "\n" + action + size
+        return item.title + "\n" + (item.recoveryError ?? action) + size
     }
 
     static func dayTitle(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
@@ -159,7 +159,8 @@ struct MeetingHistorySection: View {
     }
 
     func historyRow(_ item: MeetingHistoryItem, isNew: Bool, canEdit: Bool, status: MeetingRowStatus? = nil) -> some View {
-        let badge: MeetingRowStatus? = status ?? (item.needsTranscription ? .notTranscribed : nil)
+        let badge: MeetingRowStatus? = item.recoveryFolder != nil ? .recoveryRequired
+            : status ?? (item.needsTranscription ? .notTranscribed : nil)
         return HStack(spacing: 10) {
             Button {
                 open(item)
@@ -212,7 +213,13 @@ struct MeetingHistorySection: View {
             .accessibilityValue([isNew ? "New" : nil, badge?.text].compactMap { $0 }.joined(separator: ", "))
 
             // Beside the row button, not inside its label, so it stays its own control for VoiceOver.
-            if badge == .failed, canEdit {
+            if item.recoveryFolder != nil, canEdit {
+                Button("Retry recovery") { model.retryTranscriptRecovery(item) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(item.recoveryError ?? "Restore the previous transcript before transcribing")
+                    .accessibilityLabel("Retry transcript recovery for \(item.title)")
+            } else if badge == .failed, canEdit {
                 Button("Retry") { model.retryTranscription(item) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -271,12 +278,13 @@ struct MeetingHistorySection: View {
             do { try AppModel.copyTranscript(in: item.folderURL) }
             catch { NSAlert(error: error).runActive() }
         }
+        .disabled(item.recoveryFolder != nil)
         Button("Rename…") { model.renameMeeting(item) }
-            .disabled(!canEdit)
+            .disabled(!canEdit || item.recoveryFolder != nil)
         Button("Re-transcribe…") { retranscribingMeeting = item }
-            .disabled(!canEdit)
+            .disabled(!canEdit || item.recoveryFolder != nil)
         Button("Export bundle…") { model.exportBundle(item) }
-            .disabled(!canEdit)
+            .disabled(!canEdit || item.recoveryFolder != nil)
         Divider()
         Button("Move to Trash") { model.moveMeetingToTrash(item) }
             .disabled(!canEdit)
@@ -287,6 +295,7 @@ enum MeetingRowStatus: Equatable {
     case working(String)
     case queued
     case notTranscribed
+    case recoveryRequired
     case failed
 
     var text: String {
@@ -294,6 +303,7 @@ enum MeetingRowStatus: Equatable {
         case .working(let text): text
         case .queued: "Queued"
         case .notTranscribed: "Not transcribed"
+        case .recoveryRequired: "Recovery required"
         case .failed: "Failed"
         }
     }

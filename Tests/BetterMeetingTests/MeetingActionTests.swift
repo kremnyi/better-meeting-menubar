@@ -11,11 +11,12 @@ private final class NotificationMenuClicks: NSObject {
 }
 
 final class MeetingActionTests: XCTestCase {
-    func testInterruptedTranscriptReplacementRecoversBeforeHistoryLoads() throws {
+    @MainActor
+    func testInterruptedTranscriptReplacementRecoversBeforeHistoryLoads() async throws {
         let fm = FileManager.default
         for committed in [false, true] {
-            let root = makeTempRoot("TranscriptRecovery")
-            defer { removeTempRoot(root) }
+            let (defaults, suite, root) = try makeTempDefaults("TranscriptRecovery")
+            defer { removeTempDefaults(defaults, suite: suite, root: root) }
             let date = Date()
             let folder = try MeetingArtifacts.createDirectory(in: root, title: "Saved meeting", recordedAt: date)
             try MeetingArtifacts.write(title: "Saved meeting", recordedAt: date, duration: 12,
@@ -23,6 +24,8 @@ final class MeetingActionTests: XCTestCase {
             try "# Saved meeting\n\nManual edits".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
             let names = ["transcript.md", "transcript.json", "metadata.json"]
             let originals = try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }
+            let stale = try XCTUnwrap(MeetingArtifacts.meeting(in: folder))
+            let library = MeetingLibrary()
             let staging = folder.appendingPathComponent(".transcript-interrupted")
             try fm.createDirectory(at: staging, withIntermediateDirectories: false)
             for (name, data) in zip(names, originals) {
@@ -35,14 +38,48 @@ final class MeetingActionTests: XCTestCase {
             } else {
                 try "Partial replacement".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
                 // A blocked restore must keep backups and must not be reported as complete.
-                let metadata = folder.appendingPathComponent("metadata.json")
-                try fm.setAttributes([.immutable: true], ofItemAtPath: metadata.path)
-                defer { try? fm.setAttributes([.immutable: false], ofItemAtPath: metadata.path) }
-                XCTAssertTrue(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).needsTranscription)
+                let blockedFile = folder.appendingPathComponent("transcript.md")
+                try fm.setAttributes([.immutable: true], ofItemAtPath: blockedFile.path)
+                defer { try? fm.setAttributes([.immutable: false], ofItemAtPath: blockedFile.path) }
+                // Settled stamps let the library cache the blocked result; fixing permissions
+                // changes neither stamp, so recovery must be retried rather than using that cache.
+                let settled = Date().addingTimeInterval(-10)
+                try fm.setAttributes([.modificationDate: settled], ofItemAtPath: folder.appendingPathComponent("metadata.json").path)
+                try fm.setAttributes([.modificationDate: settled], ofItemAtPath: folder.path)
+                let blocked = try XCTUnwrap(library.meetings(in: root).first)
+                XCTAssertTrue(blocked.needsTranscription)
+                XCTAssertEqual(blocked.recoveryFolder?.resolvingSymlinksInPath().path, staging.resolvingSymlinksInPath().path)
+                XCTAssertTrue(MeetingHistorySection.rowHelp(blocked).contains("could not be restored"))
+                let model = AppModel(defaults: defaults)
+                await model.historyRefreshTask?.value
+                for scheme: ColorScheme in [.light, .dark] {
+                    let view = hostingView(MenuBarControlView(), model: model, scheme: scheme)
+                    XCTAssertEqual(view.fittingSize.width, 304, "Recovery controls must fit the menu")
+                }
+                model.retryTranscription(blocked)
+                XCTAssertNil(model.processingTask, "Recovery-blocked meetings cannot start transcription")
+                XCTAssertNotNil(model.errorMessage)
+                model.transcribeAllRecordings()
+                XCTAssertNil(model.processingTask, "Bulk transcription must exclude recovery-blocked meetings")
+                let unchanged = try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }
+                // A job enqueued with stale history must also stop before reading media or writing files.
+                model.enqueue(ProcessingRun(folder: folder, recordedAt: date, title: stale.title,
+                                            titleWasProvided: true, replacing: stale, languages: ["en"], hints: "",
+                                            settings: SpeechSettings(engine: .whisper)))
+                await model.processingTask?.value
+                await model.historyRefreshTask?.value
+                XCTAssertTrue(try XCTUnwrap(model.errorMessage).contains("could not be restored"))
+                XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, unchanged)
                 XCTAssertTrue(fm.fileExists(atPath: staging.appendingPathComponent("previous-transcript.md").path))
-                try fm.setAttributes([.immutable: false], ofItemAtPath: metadata.path)
+                try fm.setAttributes([.immutable: false], ofItemAtPath: blockedFile.path)
+                XCTAssertNil(try XCTUnwrap(library.meetings(in: root).first).recoveryFolder,
+                             "Cached recovery failures must be retried after permissions are fixed")
+                model.retryTranscriptRecovery(blocked)
+                await model.historyRefreshTask?.value
+                XCTAssertNil(model.errorMessage)
+                XCTAssertNil(try XCTUnwrap(model.transcriptionHistory.first).recoveryFolder)
             }
-            let item = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
+            let item = try XCTUnwrap(library.meetings(in: root).first)
             XCTAssertFalse(item.needsTranscription)
             if committed {
                 XCTAssertEqual(item.duration, 20)

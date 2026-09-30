@@ -306,7 +306,10 @@ be recovered.
 If the app quits during re-transcription file replacement, the next history scan
 restores the previous complete transcript, including manual edits. A replacement
 that finished saving keeps its new transcript. If restoration is blocked by file
-permissions, the backup stays in the meeting folder and the meeting remains unfinished.
+permissions, the backup stays in the meeting folder and the meeting shows **Recovery
+required**. Fix the folder's permissions, then choose **Retry recovery**. Transcription,
+renaming, and export stay unavailable until restoration succeeds; bulk transcription
+skips these meetings. **Show in Finder** remains available to inspect the saved files.
 
 **Cancel** next to the progress bar stops processing and keeps the recording and completed
 language passes. Use **Transcribe** in the menu to resume later, even after a restart.
