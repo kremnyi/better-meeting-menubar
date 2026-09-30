@@ -180,10 +180,10 @@ final class CalendarIntegration: ObservableObject {
         let currentRevision = revision
         // Coalesce bursts from timers and notifications: wait for the load already
         // running, then load again only if no later call superseded this one.
-        if let loadTask { await loadTask.value }
-        guard revision == currentRevision else { return }
+        let previousTask = loadTask
         let task = Task { @MainActor [weak self] in
-            guard let self else { return }
+            if let previousTask { await previousTask.value }
+            guard let self, self.revision == currentRevision else { return }
             await self.performRefresh(now: now, revision: currentRevision)
         }
         loadTask = task
