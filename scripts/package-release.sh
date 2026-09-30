@@ -43,7 +43,10 @@ if [[ "$channel" == beta ]]; then
         exit 1
     fi
     for stable_archive in "${stable_archives[@]}"; do
-        ln -f "$stable_archive" "$feed_dir/${stable_archive:t}"
+        # The retained stable archive may already be linked here on a local retry.
+        if [[ ! $stable_archive -ef "$feed_dir/${stable_archive:t}" ]]; then
+            ln -f "$stable_archive" "$feed_dir/${stable_archive:t}"
+        fi
     done
 fi
 .build/artifacts/sparkle/Sparkle/bin/generate_appcast \

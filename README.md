@@ -88,6 +88,8 @@ needed. The menu shows progress; you can record during setup, but transcription
 waits until the model is ready. If setup fails, use **Retry setup**.
 If Core ML cannot load the model files, the app clears that model's cache so retrying
 downloads a fresh copy. Other downloaded models and saved meetings are kept.
+If Parakeet's vocabulary is damaged, retry fetches only that small file again,
+keeping the downloaded model files.
 Five minutes after the last transcription, the app releases the model from memory;
 the next transcription loads it again, which takes a few seconds.
 
@@ -301,6 +303,11 @@ When quitting during work, choose **Finish and quit** or **Wait and quit** to le
 saving finish. Force Quit or power loss can leave an unfinished video that cannot
 be recovered.
 
+If the app quits during re-transcription file replacement, the next history scan
+restores the previous complete transcript, including manual edits. A replacement
+that finished saving keeps its new transcript. If restoration is blocked by file
+permissions, the backup stays in the meeting folder and the meeting remains unfinished.
+
 **Cancel** next to the progress bar stops processing and keeps the recording and completed
 language passes. Use **Transcribe** in the menu to resume later, even after a restart.
 
@@ -423,7 +430,8 @@ time it is needed. Deleting one that is in memory releases it first.
 
 Updating from an earlier version moves models stored under
 `~/Documents/huggingface/` to the new location on first launch, so they are not
-downloaded again. Removing the app does not delete saved meetings or downloaded
+downloaded again. Migration fills missing files in partial caches and keeps
+conflicting old files until they have a verified replacement. Removing the app does not delete saved meetings or downloaded
 models. To free the model files, delete them under **Advanced transcription → Models**, or run
 `brew uninstall --zap --cask kremnyi/better-meeting/better-meeting` if you
 installed with Homebrew. Saved meetings are always kept.

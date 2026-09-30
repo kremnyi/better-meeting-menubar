@@ -69,12 +69,20 @@ actor LocalTranscriber {
     private static func move(_ source: URL, to target: URL) {
         let fm = FileManager.default
         guard fm.fileExists(atPath: source.path) else { return }
-        if fm.fileExists(atPath: target.path) {
-            // The model was downloaded again at the new location; the source copy is a duplicate.
-            try? fm.removeItem(at: source)
-        } else {
+        if !fm.fileExists(atPath: target.path) {
             try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? fm.moveItem(at: source, to: target)
+        } else if (try? source.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true,
+                  (try? target.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+            // Merge missing models/files into partial destinations. Conflicting files remain
+            // at the old location until there is a verified replacement for them.
+            guard let children = try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) else { return }
+            for child in children { move(child, to: target.appendingPathComponent(child.lastPathComponent)) }
+            if (try? fm.contentsOfDirectory(atPath: source.path))?.isEmpty == true {
+                try? fm.removeItem(at: source)
+            }
+        } else if fm.contentsEqual(atPath: source.path, andPath: target.path) {
+            try? fm.removeItem(at: source)
         }
     }
 
@@ -89,6 +97,30 @@ actor LocalTranscriber {
 
     static func cachedParakeetModels(in downloadBase: URL = defaultDownloadBase) -> Bool {
         AsrModels.modelsExist(at: parakeetDirectory(in: downloadBase), version: parakeetVersion)
+            && (try? Data(contentsOf: parakeetVocabulary(in: downloadBase))).map(validParakeetVocabulary) == true
+    }
+
+    private static func parakeetVocabulary(in downloadBase: URL) -> URL {
+        parakeetDirectory(in: downloadBase).appendingPathComponent(ModelNames.ASR.vocabularyFile)
+    }
+
+    private static func validParakeetVocabulary(_ data: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: data) else { return false }
+        if let tokens = json as? [String] { return !tokens.isEmpty }
+        guard let tokens = json as? [String: String], !tokens.isEmpty else { return false }
+        return tokens.keys.allSatisfy { Int($0).map { $0 >= 0 } == true }
+    }
+
+    /// Remove only a malformed vocabulary; FluidAudio fetches that file again on download.
+    /// Read failures and cancellation preserve the cache rather than treating it as corrupt.
+    func repairParakeetVocabulary() throws {
+        try Task.checkCancellation()
+        let vocabulary = Self.parakeetVocabulary(in: downloadBase)
+        guard FileManager.default.fileExists(atPath: vocabulary.path) else { return }
+        let data = try Data(contentsOf: vocabulary)
+        guard !Self.validParakeetVocabulary(data) else { return }
+        try Task.checkCancellation()
+        try FileManager.default.removeItem(at: vocabulary)
     }
 
     private static func parakeetDirectory(in downloadBase: URL) -> URL {
@@ -234,6 +266,7 @@ actor LocalTranscriber {
     }
 
     func downloadParakeet(progress: @escaping @Sendable (Double) -> Void) async throws {
+        try repairParakeetVocabulary()
         _ = try await AsrModels.download(
             to: Self.parakeetDirectory(in: downloadBase),
             version: Self.parakeetVersion,
@@ -257,6 +290,7 @@ actor LocalTranscriber {
         await unloadLoadedModels()
         try Task.checkCancellation()
         progressHandler(.preparingModel)
+        try repairParakeetVocabulary()
         let models = try await AsrModels.downloadAndLoad(
             to: Self.parakeetDirectory(in: downloadBase),
             version: Self.parakeetVersion,

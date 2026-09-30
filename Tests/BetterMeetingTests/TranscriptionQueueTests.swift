@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import SwiftUI
 import XCTest
 @testable import BetterMeetingApp
@@ -144,6 +145,67 @@ final class TranscriptionQueueTests: XCTestCase {
             XCTAssertTrue(model.needsAttention, "A failed transcription flags the menu-bar icon")
             XCTAssertNil(model.processingTask)
         }
+    }
+
+    func testRecordingQueueFailureKeepsRenamedRetryTarget() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("RecordingQueueFailure")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let date = Date()
+        let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
+        let first = try MeetingArtifacts.createDirectory(in: root, title: "First meeting", recordedAt: date)
+        let second = try MeetingArtifacts.createDirectory(in: root, title: "Old name", recordedAt: date)
+        let source = root.appendingPathComponent("sample.wav")
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600))
+        buffer.frameLength = buffer.frameCapacity
+        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
+        do { let file = try AVAudioFile(forWriting: source, settings: format.settings); try file.write(from: buffer) }
+        for folder in [first, second] {
+            let audio = folder.appendingPathComponent("audio.m4a")
+            try await AudioExtractor.extract(from: source, to: audio) { _ in }
+            // Cache ordinary Whisper results so the production queue needs no model download.
+            _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["en"], settings: settings, progressHandler: { _ in }) { _, _ in
+                [ScoredSegment(start: 0, end: 0.1,
+                               text: "Microsoft discussed the product launch. Microsoft will prepare the product launch. We will review the product launch next week.",
+                               lang: "en", score: -0.1, nospeech: 0)]
+            }
+        }
+        // A real filesystem error occurs only after the second job has renamed its folder.
+        try FileManager.default.createDirectory(at: second.appendingPathComponent("transcript.json"), withIntermediateDirectories: false)
+        let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
+        model.enqueue(ProcessingRun(folder: first, recordedAt: date, title: "First meeting", titleWasProvided: true,
+                                    replacing: nil, languages: ["en"], hints: "", settings: settings))
+        model.enqueue(ProcessingRun(folder: second, recordedAt: date, title: "Renamed meeting", titleWasProvided: true,
+                                    replacing: nil, languages: ["en"], hints: "", settings: settings, folderTitle: "Old name"))
+        await model.processingTask?.value
+        await model.historyRefreshTask?.value
+        let renamed = try XCTUnwrap(try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            .first { $0.lastPathComponent.hasSuffix(" — Renamed meeting") })
+        XCTAssertEqual(model.completedFolder?.standardizedFileURL, renamed.standardizedFileURL)
+        XCTAssertEqual(model.failedTranscriptionMeeting?.folderURL.standardizedFileURL, renamed.standardizedFileURL)
+        XCTAssertEqual(model.failedTranscriptionFolders, [renamed.standardizedFileURL])
+        XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meeting(in: first)).needsTranscription,
+                       "A later job's failure must not mark the successful meeting failed")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: second.path))
+        model.retryFailedTranscription()
+        await model.processingTask?.value
+        XCTAssertEqual(model.completedFolder?.standardizedFileURL, renamed.standardizedFileURL, "Retry must use the failed job's actual folder")
+
+        // Once saving is unblocked, the batch must keep the folder's new automatic name too.
+        try FileManager.default.removeItem(at: renamed.appendingPathComponent("transcript.json"))
+        try MeetingArtifacts.writeMetadata(title: "Renamed meeting", recordedAt: date, duration: 0.1,
+                                           titleWasProvided: false, speechSettings: settings, to: renamed)
+        model.transcriptionLanguages = ["en"]
+        model.refreshHistory()
+        await model.historyRefreshTask?.value
+        model.transcribeAllRecordings()
+        await model.processingTask?.value
+        await model.historyRefreshTask?.value
+        XCTAssertFalse(FileManager.default.fileExists(atPath: renamed.path), "The unnamed meeting must receive an automatic title")
+        let finished = try XCTUnwrap(model.transcriptionHistory.first { $0.folderURL.standardizedFileURL != first.standardizedFileURL })
+        XCTAssertFalse(finished.needsTranscription)
+        XCTAssertEqual(model.completedFolder?.standardizedFileURL, finished.folderURL.standardizedFileURL)
     }
 
     func testEmptyQueueAndNativeQueueLayouts() async throws {

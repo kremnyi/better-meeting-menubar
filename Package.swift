@@ -15,8 +15,8 @@ let package = Package(
             url: "https://github.com/argmaxinc/argmax-oss-swift.git",
             exact: "1.1.0"
         ),
-        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.7"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.4"),
     ],
     targets: [
         .executableTarget(

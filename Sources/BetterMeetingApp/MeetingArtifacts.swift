@@ -36,6 +36,9 @@ struct MeetingHistoryItem: Identifiable, Equatable, Sendable {
 }
 
 enum MeetingArtifacts {
+    private static let transcriptLock = NSRecursiveLock()
+    private static let transcriptFiles = ["transcript.md", "transcript.json", "metadata.json"]
+
     static func createDirectory(in root: URL, title: String, recordedAt: Date) throws -> URL {
         try FileManager.default.createDirectory(
             at: root,
@@ -62,6 +65,9 @@ enum MeetingArtifacts {
     }
 
     static func renameMeeting(_ meeting: MeetingHistoryItem, to title: String) throws -> URL {
+        transcriptLock.lock()
+        defer { transcriptLock.unlock() }
+        try recoverTranscript(in: meeting.folderURL)
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw MeetingActionError.emptyTitle
         }
@@ -183,8 +189,11 @@ enum MeetingArtifacts {
         for meeting: MeetingHistoryItem, duration: TimeInterval, segments: [TranscriptSegment],
         speechSettings: SpeechSettings? = nil
     ) throws {
+        transcriptLock.lock()
+        defer { transcriptLock.unlock() }
+        try recoverTranscript(in: meeting.folderURL)
         let fm = FileManager.default
-        let names = ["transcript.md", "transcript.json", "metadata.json"]
+        let names = transcriptFiles
         let originals = try names.map { try Data(contentsOf: meeting.folderURL.appendingPathComponent($0)) }
         let staging = meeting.folderURL.appendingPathComponent(".transcript-\(UUID().uuidString)")
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
@@ -206,6 +215,8 @@ enum MeetingArtifacts {
                 try data.write(to: meeting.folderURL.appendingPathComponent(name), options: .atomic)
                 replaced.append(index)
             }
+            // A crash after this marker must keep the new, complete set of files.
+            try Data().write(to: staging.appendingPathComponent("committed"), options: .atomic)
         } catch {
             do {
                 for index in replaced {
@@ -218,6 +229,44 @@ enum MeetingArtifacts {
             throw error
         }
         try? fm.removeItem(at: staging)
+    }
+
+    /// Restore a complete backup set before reading or replacing a transcript left by
+    /// an interrupted process. Serialize with live replacements so history cannot undo one.
+    static func recoverTranscript(in folder: URL) throws {
+        transcriptLock.lock()
+        defer { transcriptLock.unlock() }
+        let fm = FileManager.default
+        let stages = try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            .filter {
+                let values = try? $0.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                return $0.lastPathComponent.hasPrefix(".transcript-")
+                    && values?.isDirectory == true && values?.isSymbolicLink != true
+            }
+        let pending = stages.filter { staging in
+            !fm.fileExists(atPath: staging.appendingPathComponent("committed").path)
+                && transcriptFiles.allSatisfy { fm.fileExists(atPath: staging.appendingPathComponent("previous-" + $0).path) }
+        }
+        // Multiple abandoned attempts from older builds need manual recovery; retain every backup.
+        guard pending.count <= 1 else { throw MeetingActionError.transcriptRecovery(pending[0]) }
+        for staging in stages {
+            if !fm.fileExists(atPath: staging.appendingPathComponent("committed").path) {
+                let backups = transcriptFiles.map { staging.appendingPathComponent("previous-" + $0) }
+                // No destination is changed until every backup has been written.
+                guard backups.allSatisfy({ fm.fileExists(atPath: $0.path) }) else { continue }
+                do {
+                    let originals = try backups.map { try Data(contentsOf: $0) }
+                    for (name, data) in zip(transcriptFiles, originals) {
+                        try data.write(to: folder.appendingPathComponent(name), options: .atomic)
+                    }
+                } catch {
+                    throw MeetingActionError.transcriptRecovery(staging)
+                }
+            }
+            // Treat cleanup failure as pending recovery, so a later edit cannot be rolled back.
+            do { try fm.removeItem(at: staging) }
+            catch { throw MeetingActionError.transcriptRecovery(staging) }
+        }
     }
 
     static func speechSettings(in folder: URL) -> SpeechSettings? {
@@ -241,10 +290,13 @@ enum MeetingArtifacts {
     }
 
     static func meeting(in folder: URL) -> MeetingHistoryItem? {
+        transcriptLock.lock()
+        defer { transcriptLock.unlock() }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let values = try? folder.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey])
         guard values?.isDirectory == true else { return nil }
+        let recovered = (try? recoverTranscript(in: folder)) != nil
 
         let metadataURL = folder.appendingPathComponent("metadata.json")
         let manifest = (try? Data(contentsOf: metadataURL)).flatMap {
@@ -253,8 +305,8 @@ enum MeetingArtifacts {
         let hasTranscripts = ["transcript.md", "transcript.json"].allSatisfy {
             FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
         }
-        let complete = manifest != nil && manifest?.transcriptionComplete != false && hasTranscripts
-        guard complete || hasMedia(in: folder) else { return nil }
+        let complete = recovered && manifest != nil && manifest?.transcriptionComplete != false && hasTranscripts
+        guard complete || hasMedia(in: folder) || !recovered else { return nil }
 
         let nameParts = folder.lastPathComponent.components(separatedBy: " — ")
 

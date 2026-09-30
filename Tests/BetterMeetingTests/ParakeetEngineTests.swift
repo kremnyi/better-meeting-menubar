@@ -3,6 +3,39 @@ import XCTest
 @testable import BetterMeetingApp
 
 final class ParakeetEngineTests: XCTestCase {
+    func testMalformedVocabularyIsNotReadyAndRepairKeepsModels() async throws {
+        let root = makeTempRoot("ParakeetVocabulary")
+        defer { removeTempRoot(root) }
+        let folder = root.appendingPathComponent("models/parakeet-tdt-0.6b-v3")
+        let fm = FileManager.default
+        // FluidAudio's cache check accepts these paths; the app must also validate the vocabulary.
+        for name in ["Preprocessor.mlmodelc", "Encoder.mlmodelc", "Decoder.mlmodelc", "JointDecisionv3.mlmodelc"] {
+            try fm.createDirectory(at: folder.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        let vocabulary = folder.appendingPathComponent("parakeet_vocab.json")
+        let valid = Data("{\"0\":\"<blank>\",\"1\":\"hello\"}".utf8)
+        try valid.write(to: vocabulary)
+        XCTAssertTrue(AsrModels.modelsExist(at: folder, version: .v3), "Fixture must reach the vocabulary check")
+        XCTAssertTrue(LocalTranscriber.cachedParakeetModels(in: root))
+        let transcriber = LocalTranscriber(downloadBase: root)
+        try await transcriber.repairParakeetVocabulary()
+        XCTAssertEqual(try Data(contentsOf: vocabulary), valid)
+        for invalid in ["{broken", "{}", "{\"word\":\"hello\"}"] {
+            try Data(invalid.utf8).write(to: vocabulary)
+            XCTAssertFalse(LocalTranscriber.cachedParakeetModels(in: root))
+            let cancelled = Task {
+                withUnsafeCurrentTask { $0?.cancel() }
+                try await transcriber.repairParakeetVocabulary()
+            }
+            if case .success = await cancelled.result { XCTFail("Cancellation must stop repair") }
+            XCTAssertTrue(fm.fileExists(atPath: vocabulary.path), "Cancellation must preserve every cached file")
+            try await transcriber.repairParakeetVocabulary()
+            XCTAssertFalse(fm.fileExists(atPath: vocabulary.path), "The next download must fetch a fresh vocabulary")
+            XCTAssertTrue(fm.fileExists(atPath: folder.appendingPathComponent("Encoder.mlmodelc").path),
+                          "Repair must keep the large model files")
+        }
+    }
+
     func testSegmentsSplitOnSentencesAndPauses() throws {
         let timings = [
             TokenTiming(token: "Hello", tokenId: 1, startTime: 0, endTime: 0.5, confidence: 0),

@@ -4,7 +4,7 @@ import Combine
 import CoreGraphics
 import Foundation
 
-private struct ProcessingRun {
+struct ProcessingRun {
     let folder: URL
     let recordedAt: Date
     let title: String
@@ -595,7 +595,6 @@ final class AppModel: ObservableObject {
                 if index > 0 { prepareSavedTranscription(item) }
                 guard await process(item) else { break }
                 completed += 1
-                completedFolder = item.folderURL
             }
             let cancelled = Task.isCancelled
             if errorMessage == nil {
@@ -1076,7 +1075,7 @@ final class AppModel: ObservableObject {
         queuedFolders = batchRemaining + pendingRuns.map(\.folder)
     }
 
-    private func enqueue(_ run: ProcessingRun) {
+    func enqueue(_ run: ProcessingRun) {
         cancelModelUnload()
         pendingRuns.append(run)
         guard processingTask == nil else { return }
@@ -1155,10 +1154,11 @@ final class AppModel: ObservableObject {
     @discardableResult
     private func finishRecording(_ run: ProcessingRun, inBatch: Bool = false) async -> Bool {
         lastTranscriptionOptions = (run.languages, run.hints, run.settings)
+        // This job owns its error/retry target, including after an automatic rename.
+        var folder = run.folder
         do {
             try Task.checkCancellation()
             await MeetingNotifications.requestPermission()
-            var folder = run.folder
             var title = run.title
             let recordedAt = run.recordedAt
 
@@ -1294,7 +1294,7 @@ final class AppModel: ObservableObject {
             )
             return true
         } catch {
-            let failedFolder = completedFolder ?? run.folder
+            let failedFolder = folder
             completedFolder = failedFolder
             if Task.isCancelled {
                 completionMessage = run.replacing == nil
@@ -1435,6 +1435,7 @@ extension NSAlert {
     /// A menu-bar app is not active when its menu opens a dialog; without activation the
     /// alert never becomes key, so its text field ignores mouse selection.
     @MainActor
+    @discardableResult
     func runActive() -> NSApplication.ModalResponse {
         NSApp.activate(ignoringOtherApps: true)
         return runModal()

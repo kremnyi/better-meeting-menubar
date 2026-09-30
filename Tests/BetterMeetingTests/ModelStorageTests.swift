@@ -33,19 +33,34 @@ final class ModelStorageTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("other/file.txt").path))
     }
 
-    func testModelStorageMigrationKeepsDestinationAndDropsDuplicate() throws {
+    func testModelStorageMigrationMergesPartialDestinationsAndPreservesConflicts() throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
         let legacy = root.appendingPathComponent("legacy")
         let destination = root.appendingPathComponent("current")
         try write("old", to: legacy.appendingPathComponent("models/openai/tokenizer.json"))
         try write("new", to: destination.appendingPathComponent("models/openai/tokenizer.json"))
+        try write("same", to: legacy.appendingPathComponent("models/openai/duplicate.json"))
+        try write("same", to: destination.appendingPathComponent("models/openai/duplicate.json"))
+        let small = "models/argmaxinc/whisperkit-coreml/openai_whisper-small/model.bin"
+        let large = "models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3/model.bin"
+        try write("small", to: legacy.appendingPathComponent(small))
+        try write("large", to: legacy.appendingPathComponent(large))
+        try FileManager.default.createDirectory(
+            at: destination.appendingPathComponent(small).deletingLastPathComponent(), withIntermediateDirectories: true
+        )
 
         LocalTranscriber.prepareModelStorage(legacy: legacy, destination: destination)
 
         let tokenizer = destination.appendingPathComponent("models/openai/tokenizer.json")
         XCTAssertEqual(try String(contentsOf: tokenizer), "new")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("models/openai").path))
+        XCTAssertEqual(try String(contentsOf: legacy.appendingPathComponent("models/openai/tokenizer.json")), "old",
+                       "An unverified conflicting file must survive migration")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("models/openai/duplicate.json").path))
+        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent(small)), "small")
+        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent(large)), "large",
+                       "A partial destination must not discard another installed model")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("models/argmaxinc/whisperkit-coreml").path))
     }
 
     func testPrepareModelStorageRelocatesStrayParakeetFolder() throws {

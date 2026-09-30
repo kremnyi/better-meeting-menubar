@@ -1,3 +1,4 @@
+import FluidAudio
 import SwiftUI
 import UserNotifications
 
@@ -9,6 +10,8 @@ struct BetterMeetingApp: App {
     @StateObject private var model: AppModel
 
     init() {
+        AppLogger.minimumLevel = .warning
+        AppLogger.mirrorsToConsole = false
         LocalTranscriber.prepareModelStorage()
         let model = AppModel()
         _model = StateObject(wrappedValue: model)

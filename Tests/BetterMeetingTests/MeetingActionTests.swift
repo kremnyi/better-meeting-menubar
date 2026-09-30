@@ -11,6 +11,50 @@ private final class NotificationMenuClicks: NSObject {
 }
 
 final class MeetingActionTests: XCTestCase {
+    func testInterruptedTranscriptReplacementRecoversBeforeHistoryLoads() throws {
+        let fm = FileManager.default
+        for committed in [false, true] {
+            let root = makeTempRoot("TranscriptRecovery")
+            defer { removeTempRoot(root) }
+            let date = Date()
+            let folder = try MeetingArtifacts.createDirectory(in: root, title: "Saved meeting", recordedAt: date)
+            try MeetingArtifacts.write(title: "Saved meeting", recordedAt: date, duration: 12,
+                                       segments: [TranscriptSegment(start: 0, end: 1, text: "Original", language: "en")], to: folder)
+            try "# Saved meeting\n\nManual edits".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
+            let names = ["transcript.md", "transcript.json", "metadata.json"]
+            let originals = try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }
+            let staging = folder.appendingPathComponent(".transcript-interrupted")
+            try fm.createDirectory(at: staging, withIntermediateDirectories: false)
+            for (name, data) in zip(names, originals) {
+                try data.write(to: staging.appendingPathComponent("previous-" + name))
+            }
+            if committed {
+                try MeetingArtifacts.write(title: "Saved meeting", recordedAt: date, duration: 20,
+                                           segments: [TranscriptSegment(start: 0, end: 1, text: "New result", language: "en")], to: folder)
+                try Data().write(to: staging.appendingPathComponent("committed"))
+            } else {
+                try "Partial replacement".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
+                // A blocked restore must keep backups and must not be reported as complete.
+                let metadata = folder.appendingPathComponent("metadata.json")
+                try fm.setAttributes([.immutable: true], ofItemAtPath: metadata.path)
+                defer { try? fm.setAttributes([.immutable: false], ofItemAtPath: metadata.path) }
+                XCTAssertTrue(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).needsTranscription)
+                XCTAssertTrue(fm.fileExists(atPath: staging.appendingPathComponent("previous-transcript.md").path))
+                try fm.setAttributes([.immutable: false], ofItemAtPath: metadata.path)
+            }
+            let item = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
+            XCTAssertFalse(item.needsTranscription)
+            if committed {
+                XCTAssertEqual(item.duration, 20)
+                XCTAssertTrue(try String(contentsOf: folder.appendingPathComponent("transcript.md")).contains("New result"))
+            } else {
+                XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, originals,
+                               "Recovery must restore the whole saved set, including manual edits")
+            }
+            XCTAssertFalse(fm.fileExists(atPath: staging.path))
+        }
+    }
+
     @MainActor
     func testRetranscriptionPreservesSavedFilesOnCancellationAndFailure() async throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingReplace")
