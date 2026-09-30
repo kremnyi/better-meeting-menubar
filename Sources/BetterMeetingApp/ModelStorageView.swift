@@ -51,12 +51,12 @@ struct ModelStorageView: View {
             .accessibilityLabel("Confirm delete \(item.title)")
             // System red fails AA on white in light mode; darken there, keep it in dark mode.
             .foregroundStyle(colorScheme == .dark ? Color.red : Color(red: 0.70, green: 0.13, blue: 0.12))
-        } else if let fraction = model.modelDownloads[item.id] {
-            ProgressView(value: fraction)
+        } else if let download = model.modelDownload, download.id == item.id {
+            ProgressView(value: download.fraction)
                 .progressViewStyle(.linear)
                 .frame(width: 70)
                 .accessibilityLabel("Downloading \(item.title)")
-            Text(fraction.formatted(.percent.precision(.fractionLength(0))))
+            Text(download.fraction.formatted(.percent.precision(.fractionLength(0))))
                 .font(.caption).foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         } else if item.installed {

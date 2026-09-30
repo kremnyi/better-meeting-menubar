@@ -522,7 +522,7 @@ final class MeetingCalendarTests: XCTestCase {
             await calendar.reminders.task?.value
             for scheme: ColorScheme in [.light, .dark] {
                 let panels: [(String, AnyView)] = [
-                    ("options", AnyView(CaptureOptionsView(meetingsPresented: true))),
+                    ("options", AnyView(CaptureOptionsView(page: .meetings))),
                     ("menu", AnyView(MenuBarControlView()))
                 ]
                 for (name, content) in panels {

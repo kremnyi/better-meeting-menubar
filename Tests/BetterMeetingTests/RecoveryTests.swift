@@ -9,6 +9,30 @@ import XCTest
 @testable import BetterMeetingApp
 
 final class RecoveryTests: XCTestCase {
+    func testSharedAudioCacheSurvivesReadersUntilDiscard() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let url = root.appendingPathComponent("shared.wav")
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600))
+        buffer.frameLength = buffer.frameCapacity
+        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0.25, count: Int(buffer.frameLength))
+        do {
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            try file.write(from: buffer)
+        }
+        let audio = MeetingAudio(url: url)
+        let expected = [Float](repeating: 0.25, count: 1_600)
+        try await withThrowingTaskGroup(of: [Float].self) { group in
+            for _ in 0..<4 { group.addTask { try audio.load() } }
+            for try await samples in group { XCTAssertEqual(samples, expected) }
+        }
+        try FileManager.default.removeItem(at: url)
+        XCTAssertEqual(try audio.load(), expected, "Readers must reuse the decoded audio")
+        audio.discard()
+        XCTAssertThrowsError(try audio.load(), "Discard must release the decoded audio")
+    }
+
     func testUnfinishedAndLegacyRecordingsSurviveReload() throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
@@ -518,19 +542,19 @@ final class RecoveryTests: XCTestCase {
             ("options-current", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .current),
             ("options-checking", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .checking),
             ("options-ready", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .ready("0.3.24")),
-            ("options-app", AnyView(CaptureOptionsView(appSettingsPresented: true, version: "0.3.23")), 360, .unchecked),
-            ("options-about", AnyView(CaptureOptionsView(appSettingsPresented: true, aboutPresented: true, version: "0.3.23")), 360, .unchecked),
-            ("options-about-dark", AnyView(CaptureOptionsView(appSettingsPresented: true, aboutPresented: true, version: "0.3.23")), 360, .unchecked),
-            ("options-login-enabled", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .enabled, version: "0.3.23")), 360, .unchecked),
-            ("options-login-approval", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .requiresApproval, version: "0.3.23")), 360, .unchecked),
-            ("options-login-error", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23")), 360, .unchecked),
-            ("options-login-missing", AnyView(CaptureOptionsView(appSettingsPresented: true, launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.", version: "0.3.23")), 360, .unchecked),
+            ("options-app", AnyView(CaptureOptionsView(page: .appSettings, version: "0.3.23")), 360, .unchecked),
+            ("options-about", AnyView(CaptureOptionsView(page: .about, version: "0.3.23")), 360, .unchecked),
+            ("options-about-dark", AnyView(CaptureOptionsView(page: .about, version: "0.3.23")), 360, .unchecked),
+            ("options-login-enabled", AnyView(CaptureOptionsView(page: .appSettings, launchAtLoginStatus: .enabled, version: "0.3.23")), 360, .unchecked),
+            ("options-login-approval", AnyView(CaptureOptionsView(page: .appSettings, launchAtLoginStatus: .requiresApproval, version: "0.3.23")), 360, .unchecked),
+            ("options-login-error", AnyView(CaptureOptionsView(page: .appSettings, launchAtLoginStatus: .notRegistered, launchAtLoginError: "The operation was denied.", version: "0.3.23")), 360, .unchecked),
+            ("options-login-missing", AnyView(CaptureOptionsView(page: .appSettings, launchAtLoginStatus: .notFound, launchAtLoginError: "Service not found.", version: "0.3.23")), 360, .unchecked),
             ("options-enabled", AnyView(CaptureOptionsView(version: "0.3.23")), 360, .unchecked),
-            ("options-single-language", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
-            ("options-many-languages", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("options-single-language", AnyView(CaptureOptionsView(page: .advanced, version: "0.3.23")), 360, .unchecked),
+            ("options-many-languages", AnyView(CaptureOptionsView(page: .advanced, version: "0.3.23")), 360, .unchecked),
             ("language-picker", AnyView(TranscriptionLanguagePicker(languages: .constant(["uk", "ru", "en"]))), 300, .unchecked),
             ("language-picker-dark", AnyView(TranscriptionLanguagePicker(languages: .constant(["uk", "ru", "en"]))), 300, .unchecked),
-            ("advanced", AnyView(CaptureOptionsView(advancedPresented: true, version: "0.3.23")), 360, .unchecked),
+            ("advanced", AnyView(CaptureOptionsView(page: .advanced, version: "0.3.23")), 360, .unchecked),
             ("advanced-models", AnyView(AdvancedTranscriptionView(
                 settings: .constant(SpeechSettings()), languages: .constant(["uk", "ru", "en"]), hints: .constant("")
             ).frame(width: 328)), 328, .unchecked),
@@ -561,7 +585,7 @@ final class RecoveryTests: XCTestCase {
         panels.append(("updates-development", AnyView(UpdateOptionsView(
             updates: model.updates, version: nil
         ).frame(width: 328)), 328, .unchecked))
-        panels.append(("options-update-error", AnyView(CaptureOptionsView(appSettingsPresented: true, version: "0.3.23")), 360, .failed))
+        panels.append(("options-update-error", AnyView(CaptureOptionsView(page: .appSettings, version: "0.3.23")), 360, .failed))
         var optionsHeight: CGFloat?
         var appHeight: CGFloat?
         var updatesHeight: CGFloat?

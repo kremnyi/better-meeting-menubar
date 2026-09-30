@@ -7,8 +7,7 @@ struct MenuBarControlView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State var captureOptionsPresented = false
-    @State private var meetingOptionsPresented = false
-    @State private var appSettingsPresented = false
+    @State private var optionsPage: CaptureOptionsView.Page = .options
     @State private var retranscribingMeeting: MeetingHistoryItem?
     @State private var copiedTranscript = false
 
@@ -34,15 +33,11 @@ struct MenuBarControlView: View {
                 // Attached to the menu's side: below the footer a tall page runs out of
                 // screen, and AppKit flips the popover to the top like a second window.
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .trailing) {
-                    CaptureOptionsView(
-                        meetingsPresented: meetingOptionsPresented,
-                        appSettingsPresented: appSettingsPresented
-                    )
+                    CaptureOptionsView(page: optionsPage)
                 }
                 .onChange(of: captureOptionsPresented) { _, presented in
                     if !presented {
-                        meetingOptionsPresented = false
-                        appSettingsPresented = false
+                        optionsPage = .options
                     }
                 }
 
@@ -113,7 +108,7 @@ struct MenuBarControlView: View {
                     : "Install the update and relaunch Better Meeting")
         case .failed:
             Button {
-                appSettingsPresented = true
+                optionsPage = .appSettings
                 captureOptionsPresented = true
             } label: {
                 Label {
@@ -169,7 +164,7 @@ struct MenuBarControlView: View {
             Divider()
 
             UpcomingMeetingView(calendar: model.calendar) {
-                meetingOptionsPresented = true
+                optionsPage = .meetings
                 captureOptionsPresented = true
             } record: { event in
                 model.startCalendarRecording(event)

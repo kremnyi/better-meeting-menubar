@@ -421,9 +421,8 @@ enum Timecode {
 
     static func string(_ interval: TimeInterval) -> String {
         let seconds = max(0, Int(interval.rounded(.down)))
-        let hours = seconds / 3_600
-        let minutes = (seconds % 3_600) / 60
-        let remainder = seconds % 60
-        return String(format: "%02d:%02d:%02d", hours, minutes, remainder)
+        return Duration.seconds(seconds).formatted(
+            .time(pattern: .hourMinuteSecond(padHourToLength: 2)).locale(Locale(identifier: "en_US_POSIX"))
+        )
     }
 }

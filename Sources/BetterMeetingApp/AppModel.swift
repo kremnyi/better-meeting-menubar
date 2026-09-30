@@ -128,7 +128,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var modelSetupFraction: Double?
     @Published private(set) var modelSetupError: String?
     @Published private(set) var storedModels: [StoredModelInfo] = []
-    @Published private(set) var modelDownloads: [String: Double] = [:]
+    @Published private(set) var modelDownload: (id: String, fraction: Double)?
     @Published private(set) var modelDownloadError: String?
     private(set) var modelPreparationTask: Task<Void, Error>?
     private var modelPreparationToken = 0
@@ -504,14 +504,17 @@ final class AppModel: ObservableObject {
     func downloadStoredModel(_ item: StoredModelInfo) {
         guard modelDownloadTask == nil, modelPreparationTask == nil, !isProcessing else { return }
         modelDownloadError = nil
-        modelDownloads[item.id] = 0
+        modelDownload = (item.id, 0)
         modelDownloadTask = Task {
-            defer { modelDownloadTask = nil }
+            defer {
+                modelDownload = nil
+                modelDownloadTask = nil
+            }
             let report: @Sendable (Double) -> Void = { [weak self] fraction in
                 Task { @MainActor [weak self] in
-                    guard let self, let shown = self.modelDownloads[item.id],
-                          Self.shownPercent(fraction) != Self.shownPercent(shown) else { return }
-                    self.modelDownloads[item.id] = fraction
+                    guard let self, let shown = self.modelDownload, shown.id == item.id,
+                          Self.shownPercent(fraction) != Self.shownPercent(shown.fraction) else { return }
+                    self.modelDownload = (item.id, fraction)
                 }
             }
             do {
@@ -523,11 +526,10 @@ final class AppModel: ObservableObject {
                 case .speakerLabels:
                     try await transcriber.downloadSpeakerModels()
                 }
-                modelDownloads[item.id] = nil
+                modelDownload = nil
                 modelReady = Self.modelIsCached(speechSettings)
                 await refreshStoredModels()
             } catch {
-                modelDownloads[item.id] = nil
                 modelDownloadError = "Couldn’t download \(item.title): \(error.localizedDescription)"
             }
         }

@@ -2,6 +2,10 @@ import ServiceManagement
 import SwiftUI
 
 struct CaptureOptionsView: View {
+    enum Page {
+        case options, meetings, advanced, appSettings, about
+    }
+
     /// The login item status as last read. SwiftUI rebuilds this view on every menu redraw and each read
     /// is a round trip to the login items service, so it is read when the menu opens and after changes.
     private(set) static var knownLaunchAtLoginStatus = SMAppService.mainApp.status
@@ -19,33 +23,31 @@ struct CaptureOptionsView: View {
     }
 
     @EnvironmentObject private var model: AppModel
-    @State var advancedPresented = false
-    @State var meetingsPresented = false
-    @State var appSettingsPresented = false
-    @State var aboutPresented = false
+    @State var page: Page = .options
     @State var launchAtLoginStatus = Self.knownLaunchAtLoginStatus
     @State var launchAtLoginError: String?
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if meetingsPresented {
-                OptionsPageHeader(title: "Meetings") { meetingsPresented = false }
+            switch page {
+            case .meetings:
+                OptionsPageHeader(title: "Meetings") { page = .options }
                 MeetingOptionsView(calendar: model.calendar, detectsMeetings: $model.detectsMeetings)
-            } else if advancedPresented {
-                OptionsPageHeader(title: "Advanced transcription") { advancedPresented = false }
+            case .advanced:
+                OptionsPageHeader(title: "Advanced transcription") { page = .options }
                 AdvancedTranscriptionView(
                     settings: $model.speechSettings, languages: $model.transcriptionLanguages, hints: $model.transcriptionHints,
                     modelSelectionDisabled: model.modelPreparationTask != nil
                 )
                 .disabled(model.isProcessing)
-            } else if appSettingsPresented && aboutPresented {
-                OptionsPageHeader(title: "About", backTo: "App & updates") { aboutPresented = false }
+            case .about:
+                OptionsPageHeader(title: "About", backTo: "App & updates") { page = .appSettings }
                 AboutView(version: version)
-            } else if appSettingsPresented {
-                OptionsPageHeader(title: "App & updates") { appSettingsPresented = false }
+            case .appSettings:
+                OptionsPageHeader(title: "App & updates") { page = .options }
                 appSettings
-            } else {
+            case .options:
                 basicOptions
                 if let notice = model.settingsLockNotice {
                     Text(notice)
@@ -56,15 +58,15 @@ struct CaptureOptionsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     OptionsNavigationRow(title: "Meetings", systemImage: "calendar.badge.clock",
                                          help: "Calendars, and when to suggest a recording") {
-                        meetingsPresented = true
+                        page = .meetings
                     }
                     OptionsNavigationRow(title: "Advanced transcription", systemImage: "waveform",
                                          help: "Engine, languages, speaker labels, model, vocabulary, decoding, and downloaded models") {
-                        advancedPresented = true
+                        page = .advanced
                     }
                     OptionsNavigationRow(title: "App & updates", systemImage: "gearshape",
                                          help: "Launch at login, menu bar recording time, updates, and the installed version") {
-                        appSettingsPresented = true
+                        page = .appSettings
                     }
                 }
                 // Hover highlights extend past the content edge while titles stay aligned with the rows above.
@@ -128,7 +130,7 @@ struct CaptureOptionsView: View {
             Divider()
             OptionsNavigationRow(title: "About Better Meeting", systemImage: "info.circle",
                                  help: "Version, author, links, and license") {
-                aboutPresented = true
+                page = .about
             }
             .padding(.horizontal, -6)
         }

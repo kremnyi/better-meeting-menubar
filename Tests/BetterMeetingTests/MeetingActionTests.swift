@@ -365,6 +365,12 @@ final class MeetingActionTests: XCTestCase {
 
     @MainActor
     func testListTimesAndDayGroupsReadNaturally() throws {
+        XCTAssertEqual(Timecode.string(-0.5), "00:00:00")
+        XCTAssertEqual(Timecode.string(0), "00:00:00")
+        XCTAssertEqual(Timecode.string(5.9), "00:00:05")
+        XCTAssertEqual(Timecode.string(245), "00:04:05")
+        XCTAssertEqual(Timecode.string(3_753), "01:02:33")
+        XCTAssertEqual(Timecode.string(360_000), "100:00:00")
         XCTAssertEqual(Timecode.compact(0), "0:00")
         XCTAssertEqual(Timecode.compact(245), "4:05")
         XCTAssertEqual(Timecode.compact(3_753), "1:02:33")
