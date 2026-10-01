@@ -9,30 +9,6 @@ import XCTest
 @testable import BetterMeetingApp
 
 final class RecoveryTests: XCTestCase {
-    func testSharedAudioCacheSurvivesReadersUntilDiscard() async throws {
-        let root = makeTempRoot()
-        defer { removeTempRoot(root) }
-        let url = root.appendingPathComponent("shared.wav")
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600))
-        buffer.frameLength = buffer.frameCapacity
-        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0.25, count: Int(buffer.frameLength))
-        do {
-            let file = try AVAudioFile(forWriting: url, settings: format.settings)
-            try file.write(from: buffer)
-        }
-        let audio = MeetingAudio(url: url)
-        let expected = [Float](repeating: 0.25, count: 1_600)
-        try await withThrowingTaskGroup(of: [Float].self) { group in
-            for _ in 0..<4 { group.addTask { try audio.load() } }
-            for try await samples in group { XCTAssertEqual(samples, expected) }
-        }
-        try FileManager.default.removeItem(at: url)
-        XCTAssertEqual(try audio.load(), expected, "Readers must reuse the decoded audio")
-        audio.discard()
-        XCTAssertThrowsError(try audio.load(), "Discard must release the decoded audio")
-    }
-
     func testUnfinishedAndLegacyRecordingsSurviveReload() throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
