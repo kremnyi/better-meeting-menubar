@@ -155,6 +155,7 @@ code, pre { font-family: var(--mono); }
 .nav-links a { text-decoration: none; color: var(--ink-2); }
 .nav-links a:hover { color: var(--ink); }
 .nav-links .btn { height: 38px; padding: 0 16px; font-size: 14.5px; color: var(--on-ink); }
+.nav-links .btn:hover { color: var(--on-ink); }
 @media (max-width: 760px) { .nav-links .text-link { display: none; } }
 
 /* Hero */
@@ -906,7 +907,7 @@ are ready for review.</pre>
     <div class="wrap">
       <div class="section-head reveal">
         <span class="eyebrow">In the details</span>
-        <h2>Built so a recording is never lost.</h2>
+        <h2>Keep the recording. Recover the transcript.</h2>
       </div>
       <div class="features reveal">
         <div class="feature">
@@ -927,7 +928,7 @@ are ready for review.</pre>
         <div class="feature">
           <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.7M20 4v4.7h-4.7M20 12a8 8 0 0 1-13.7 5.6L4 15.3M4 20v-4.7h4.7"/></svg>
           <h3>Resumable</h3>
-          <p>Finished transcription passes are cached. If processing fails or you quit, pick up from the saved recording, even after a restart.</p>
+          <p>Whisper reuses finished language passes. Parakeet restarts its single pass. Both can retry from a saved recording after a restart; force quit or power loss can leave an unreadable video.</p>
         </div>
         <div class="feature">
           <svg viewBox="0 0 24 24"><path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5V7M12 4v16M8.5 20h7"/></svg>
@@ -1011,7 +1012,7 @@ are ready for review.</pre>
           <ul class="req">
             <li><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2.5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>Apple silicon Mac</li>
             <li><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>macOS 15 Sequoia or later</li>
-            <li><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg>~470 MB–2 GB for speech models</li>
+            <li><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.8"/><path d="M4.5 6v12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8V6M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg>~470 MB for Parakeet; Whisper models range from ~490 MB to 3.1 GB. Installed models add up.</li>
           </ul>
           <div class="gate">
             <p>The app is self-signed and not notarized by Apple. If macOS blocks the first launch, open <strong>System Settings → Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>. Managed Macs may not allow this.</p>

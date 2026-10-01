@@ -4,6 +4,16 @@ struct UpdateOptionsView: View {
     @ObservedObject var updates: AppUpdater
     var version: String?
 
+    private var releaseNotesURL: URL {
+        let notesVersion: String?
+        switch updates.status {
+        case .available(let offered), .downloaded(let offered), .ready(let offered): notesVersion = offered
+        default: notesVersion = version
+        }
+        guard let notesVersion, !notesVersion.isEmpty else { return AppUpdater.releaseURL }
+        return URL(string: "https://github.com/kremnyi/better-meeting-menubar/releases/tag/v\(notesVersion)") ?? AppUpdater.releaseURL
+    }
+
     private var updateInProgress: Bool {
         [.checking, .downloading, .preparing, .installing].contains(updates.status)
     }
@@ -45,7 +55,7 @@ struct UpdateOptionsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
-                Link("Release notes", destination: AppUpdater.releaseURL)
+                Link("Release notes", destination: releaseNotesURL)
             }
             .font(.caption)
         }

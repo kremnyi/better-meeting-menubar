@@ -80,24 +80,32 @@ enum MeetingArtifacts {
         let title = sanitizedTitle(title)
         let markdownURL = meeting.folderURL.appendingPathComponent("transcript.md")
         let metadataURL = meeting.folderURL.appendingPathComponent("metadata.json")
-        let originalMarkdown = try Data(contentsOf: markdownURL)
+        let fm = FileManager.default
+        let originalMarkdown = fm.fileExists(atPath: markdownURL.path) ? try Data(contentsOf: markdownURL) : nil
+        if !fm.fileExists(atPath: metadataURL.path) {
+            try writeMetadata(title: meeting.title, recordedAt: meeting.recordedAt, duration: meeting.duration,
+                              titleWasProvided: meeting.titleWasProvided, to: meeting.folderURL)
+        }
         let originalMetadata = try Data(contentsOf: metadataURL)
-        guard let markdown = String(data: originalMarkdown, encoding: .utf8),
-              var metadata = try JSONSerialization.jsonObject(with: originalMetadata) as? [String: Any] else {
+        guard var metadata = try JSONSerialization.jsonObject(with: originalMetadata) as? [String: Any] else {
             throw MeetingActionError.invalidMeeting
         }
-        let updatedMarkdown = markdown.hasPrefix("# ")
-            ? "# \(title)" + markdown.drop(while: { !$0.isNewline })
-            : "# \(title)\n\n" + markdown
+        var updatedMarkdown: String?
+        if let originalMarkdown {
+            guard let markdown = String(data: originalMarkdown, encoding: .utf8) else { throw MeetingActionError.invalidMeeting }
+            updatedMarkdown = markdown.hasPrefix("# ")
+                ? "# \(title)" + markdown.drop(while: { !$0.isNewline })
+                : "# \(title)\n\n" + markdown
+        }
         metadata["title"] = title
         metadata["titleWasProvided"] = true
         let updatedMetadata = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
         do {
-            try updatedMarkdown.write(to: markdownURL, atomically: true, encoding: .utf8)
+            try updatedMarkdown?.write(to: markdownURL, atomically: true, encoding: .utf8)
             try updatedMetadata.write(to: metadataURL, options: .atomic)
             return try renameDirectory(meeting.folderURL, title: title, recordedAt: meeting.recordedAt)
         } catch {
-            try originalMarkdown.write(to: markdownURL, options: .atomic)
+            try originalMarkdown?.write(to: markdownURL, options: .atomic)
             try originalMetadata.write(to: metadataURL, options: .atomic)
             throw error
         }

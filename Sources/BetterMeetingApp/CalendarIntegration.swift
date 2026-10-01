@@ -239,7 +239,7 @@ final class CalendarIntegration: ObservableObject {
             await loadTask.value
             await Task.yield()
         }
-        guard enabled, authorization == .fullAccess, !isLoading,
+        guard enabled, authorization == .fullAccess, !isLoading, !isStale, errorMessage == nil,
               let event = events.first(where: { $0.id == id && selectedIDs.contains($0.providerCalendarId) }),
               event.scheduledEnd > Date() else { throw CalendarRecordingError.eventUnavailable }
         return event
@@ -250,6 +250,6 @@ enum CalendarRecordingError: LocalizedError {
     case eventUnavailable
 
     var errorDescription: String? {
-        "This calendar event is no longer available. Check your selected calendars, or start a manual recording."
+        "This calendar event could not be verified. Refresh your selected calendars and try again, or start a manual recording."
     }
 }

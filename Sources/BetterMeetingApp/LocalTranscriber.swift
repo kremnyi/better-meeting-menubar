@@ -32,6 +32,7 @@ struct StoredModelInfo: Identifiable, Sendable {
     let installed: Bool
     let sizeBytes: Int64
     let downloadBytes: Int64
+    var existsOnDisk: Bool = false
 
     var id: String { url.path }
 }
@@ -171,7 +172,8 @@ actor LocalTranscriber {
     ) -> StoredModelInfo {
         StoredModelInfo(
             title: title, kind: kind, url: url,
-            installed: installed, sizeBytes: installed && sizes ? sizeOnDisk(of: url) : 0, downloadBytes: downloadBytes
+            installed: installed, sizeBytes: sizes ? sizeOnDisk(of: url) : 0, downloadBytes: downloadBytes,
+            existsOnDisk: FileManager.default.fileExists(atPath: url.path)
         )
     }
 
@@ -248,9 +250,9 @@ actor LocalTranscriber {
         if let loadedParakeet { await loadedParakeet.cleanup() }
     }
 
-    func deleteStoredModel(at url: URL) async {
+    func deleteStoredModel(at url: URL) async throws {
         await unloadLoadedModels()
-        try? FileManager.default.removeItem(at: url)
+        try FileManager.default.removeItem(at: url)
     }
 
     @discardableResult

@@ -4,6 +4,7 @@ enum AppState: Equatable {
     case idle
     case preparing
     case recording
+    case stopping
     case failed
 }
 

@@ -66,8 +66,9 @@ for real audio.
   choice, not a temporary state.
 - Not sandboxed, no cloud services, no built-in LLM. Recording, transcription,
   OCR, and naming stay on the Mac.
-- Models total roughly 2 GB across engines; deleted models download again when
-  needed.
+- Parakeet uses about 470 MB; each Whisper model uses about 490 MB to 3.1 GB.
+  Installed model sizes add together, including optional speaker models; deleted
+  models download again when needed.
 - Fork of GivenFLY/better-meeting (Apache-2.0); attribution, NOTICE, and
   third-party licenses must be preserved, including CC-BY-4.0 NVIDIA weights.
 
@@ -85,15 +86,18 @@ release, and the website; `site/` is the public landing page;
 `docs/calendar-data.md` the calendar data model; `appcast.xml` and
 `dist/` hold live release artifacts; `ThirdPartyNotices.md` and `NOTICE` carry
 licenses. The test suite includes opt-in checks against real audio and models.
-There are no testimonials, customers, benchmarks, or press — future work must
-not fabricate them.
+CONTRIBUTING.md records a limited comparison on Russian and Ukrainian audio,
+including transcription time after model preparation. It is not a general quality
+or speed benchmark. There are no testimonials, customer claims, or press to cite;
+future work must not fabricate them.
 
 ## Product Principles
 
 1. Local by default: a meeting never leaves the Mac unless the user moves it.
 2. Plain files, no lock-in: every meeting is a folder of open formats.
-3. One-click reliability first: capture must start fast and never lose a
-   recording, even when processing or downloads fail.
+3. One-click reliability first: capture must start fast and keep saved recordings
+   when processing or downloads fail. Force Quit or power loss can leave an
+   unfinished video unreadable.
 4. Keep the original's transcription semantics in the Whisper engine. Other
    engines may be the default, but must not change how meetings already
    transcribed with Whisper are retried or re-transcribed.

@@ -14,7 +14,7 @@ final class RecoveryTests: XCTestCase {
         defer { removeTempRoot(root) }
         let date = Date(timeIntervalSince1970: 1_788_530_400)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Product / sync", recordedAt: date)
-        XCTAssertTrue(MeetingLibrary().meetings(in: root).isEmpty, "A failed start with no recording is not recoverable")
+        XCTAssertTrue(try MeetingLibrary().meetings(in: root).isEmpty, "A failed start with no recording is not recoverable")
         try Data([1]).write(to: folder.appendingPathComponent("recording.mp4"))
         let pending = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertTrue(pending.needsTranscription)
@@ -999,6 +999,20 @@ final class RecoveryTests: XCTestCase {
         release.signal()
         await oldScan.value
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["New meeting"], "An old scan must not replace the new folder")
+
+        let disconnected = root.appendingPathComponent("disconnected")
+        try FileManager.default.moveItem(at: newRoot, to: disconnected)
+        model.refreshHistory()
+        await model.historyRefreshTask?.value
+        await model.historySearchTask?.value
+        XCTAssertEqual(model.transcriptionHistory.map(\.title), ["New meeting"], "An unavailable folder must not look like an empty library")
+        XCTAssertNotNil(model.historyError)
+        try FileManager.default.moveItem(at: disconnected, to: newRoot)
+        model.refreshHistory()
+        await model.historyRefreshTask?.value
+        await model.historySearchTask?.value
+        XCTAssertEqual(model.transcriptionHistory.map(\.title), ["New meeting"])
+        XCTAssertNil(model.historyError)
     }
 
     func testModelPreparationAcrossColdLaunches() async throws {

@@ -299,6 +299,13 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertTrue(calendar.isStale)
         XCTAssertTrue(calendar.diagnosticSummary.contains("last refresh failed"))
 
+        do {
+            _ = try await calendar.eventForRecording(id: firstEvent.id)
+            XCTFail("A failed refresh must not attach a stale event to a recording")
+        } catch {
+            XCTAssertTrue(error is CalendarRecordingError)
+        }
+
         reader.loadError = nil
         let secondEvent = try calendarEventFixture(id: "second")
         reader.events = [secondEvent]

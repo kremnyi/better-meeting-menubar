@@ -96,6 +96,7 @@ struct MenuBarStatusIcon: View {
         case .idle: "Better Meeting"
         case .preparing: "Better Meeting, preparing to record"
         case .recording: "Better Meeting, recording"
+        case .stopping: "Better Meeting, stopping recording"
         case .failed: "Better Meeting, needs attention"
         }
     }

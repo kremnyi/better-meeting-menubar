@@ -17,6 +17,17 @@ struct MeetingHistorySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let error = model.historyError {
+                ErrorPanel(message: model.hasMeetings
+                           ? "Meetings folder unavailable. Showing the last available list."
+                           : "Meetings folder unavailable. Your recordings are kept.", details: error)
+                HStack {
+                    Button("Retry") { model.refreshHistory() }
+                    Button("Choose folder…") { model.chooseOutputFolder() }
+                        .disabled(model.fileSettingsLocked)
+                }
+                .buttonStyle(.bordered)
+            }
             if !model.transcribableRecordings.isEmpty, model.state == .idle, !model.isProcessing {
                 let count = model.transcribableRecordings.count
                 HStack(spacing: 8) {
@@ -95,7 +106,7 @@ struct MeetingHistorySection: View {
                                     item,
                                     isNew: item.folderURL == model.completedFolder
                                         && !model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL),
-                                    canEdit: model.state == .idle && !model.isProcessing,
+                                    canEdit: model.state == .idle && !model.isProcessing && model.historyError == nil,
                                     status: rowStatus(item)
                                 )
                                 .frame(height: Self.rowHeight)
@@ -278,13 +289,14 @@ struct MeetingHistorySection: View {
             do { try AppModel.copyTranscript(in: item.folderURL) }
             catch { NSAlert(error: error).runActive() }
         }
-        .disabled(item.recoveryFolder != nil)
+        .disabled(item.recoveryFolder != nil
+                  || !FileManager.default.fileExists(atPath: item.folderURL.appendingPathComponent("transcript.md").path))
         Button("Rename…") { model.renameMeeting(item) }
             .disabled(!canEdit || item.recoveryFolder != nil)
-        Button("Re-transcribe…") { retranscribingMeeting = item }
+        Button(item.needsTranscription ? "Transcribe…" : "Re-transcribe…") { retranscribingMeeting = item }
             .disabled(!canEdit || item.recoveryFolder != nil)
         Button("Export bundle…") { model.exportBundle(item) }
-            .disabled(!canEdit || item.recoveryFolder != nil)
+            .disabled(!canEdit || item.needsTranscription || item.recoveryFolder != nil)
         Divider()
         Button("Move to Trash") { model.moveMeetingToTrash(item) }
             .disabled(!canEdit)

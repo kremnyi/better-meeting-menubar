@@ -38,7 +38,7 @@ struct CaptureOptionsView: View {
                 OptionsPageHeader(title: "Advanced transcription") { page = .options }
                 AdvancedTranscriptionView(
                     settings: $model.speechSettings, languages: $model.transcriptionLanguages, hints: $model.transcriptionHints,
-                    modelSelectionDisabled: model.modelPreparationTask != nil
+                    modelSelectionDisabled: model.modelPreparationTask != nil || model.modelDownloadTask != nil
                 )
                 .disabled(model.isProcessing)
             case .about:
@@ -397,13 +397,13 @@ struct RetranscriptionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if advancedPresented {
-                OptionsPageHeader(title: "Advanced transcription", backTo: "Re-transcribe meeting") {
+                OptionsPageHeader(title: "Advanced transcription", backTo: meeting.needsTranscription ? "Transcribe meeting" : "Re-transcribe meeting") {
                     advancedPresented = false
                 }
                 AdvancedTranscriptionView(settings: $settings, languages: $languages, hints: $hints)
             } else {
                 HStack {
-                    Text("Re-transcribe meeting").font(.headline)
+                    Text(meeting.needsTranscription ? "Transcribe meeting" : "Re-transcribe meeting").font(.headline)
                     Spacer()
                     Button { advancedPresented = true } label: {
                         Label("Advanced…", systemImage: "waveform")
@@ -415,14 +415,16 @@ struct RetranscriptionView: View {
                 Text(meeting.title).lineLimit(2)
                 Text(summary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Replaces the saved transcript, including edits, only after processing succeeds. The meeting name stays the same.")
+                Text(meeting.needsTranscription
+                     ? "Creates a transcript from the saved recording. The meeting name stays the same."
+                     : "Replaces the saved transcript, including edits, only after processing succeeds. The meeting name stays the same.")
                     .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Re-transcribe") {
+                Button(meeting.needsTranscription ? "Transcribe" : "Re-transcribe") {
                     dismiss()
                     start(languages, hints, settings)
                 }

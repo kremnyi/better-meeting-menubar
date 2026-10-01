@@ -110,9 +110,12 @@ reuse models the app already downloaded, copy them there as APFS clones, for exa
 `cp -Rc ~/Library/Application\ Support/BetterMeeting/models/parakeet-tdt-0.6b-v3 .build/engine-check/models/`.
 Narrow a run with `BETTER_MEETING_ENGINE_CHECK_ENGINES` (`whisper-turbo`,
 `parakeet-v3`) and `BETTER_MEETING_ENGINE_CHECK_LANGUAGES` (for example `ru`). The
-check prints elapsed time and peak memory per engine and writes
+check prints transcription time and peak memory per engine and writes
 `.build/engine-check/whisper-turbo.md` and `.build/engine-check/parakeet-v3.md`
-for transcript comparison. Parakeet became the default after this check: on a
+for transcript comparison. Timing starts after model download and preparation;
+it measures transcription with a loaded model, not cold-start or download time.
+These samples are a limited comparison, not a general performance benchmark.
+Parakeet became the default after this check: on a
 30-minute Russian call it kept speech Whisper had dropped and finished in 27 seconds,
 and on a Ukrainian sample both engines were accurate.
 

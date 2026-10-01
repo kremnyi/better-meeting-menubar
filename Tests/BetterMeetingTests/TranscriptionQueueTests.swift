@@ -6,6 +6,60 @@ import XCTest
 
 @MainActor
 final class TranscriptionQueueTests: XCTestCase {
+    func testStopRecordingWaitsForCaptureBeforeProcessingOrRestart() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("CaptureStopQueue")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let date = Date()
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Still saving", recordedAt: date)
+        let recording = folder.appendingPathComponent("recording.mp4")
+        let bytes = Data([1, 2, 3])
+        try bytes.write(to: recording)
+        let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
+        let source = root.appendingPathComponent("sample.wav")
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600))
+        buffer.frameLength = buffer.frameCapacity
+        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
+        do { let file = try AVAudioFile(forWriting: source, settings: format.settings); try file.write(from: buffer) }
+        let audio = folder.appendingPathComponent("audio.m4a")
+        try await AudioExtractor.extract(from: source, to: audio) { _ in }
+        _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["en"], settings: settings, progressHandler: { _ in }) { _, _ in
+            [ScoredSegment(start: 0, end: 0.1, text: "The recording finished saving.", lang: "en", score: -0.1, nospeech: 0)]
+        }
+        let model = AppModel(defaults: defaults)
+        model.speechSettings = settings
+        model.transcriptionLanguages = ["en"]
+        model.meetingTitle = "Still saving"
+        model.activeFolder = folder
+        model.recordingDidStart(at: date)
+        let stopping = expectation(description: "capture stop requested")
+        var finishStop: CheckedContinuation<Void, Never>?
+        model.stopCapture = {
+            await withCheckedContinuation { continuation in
+                finishStop = continuation
+                stopping.fulfill()
+            }
+        }
+        model.primaryAction()
+        XCTAssertEqual(model.state, .stopping)
+        XCTAssertTrue(model.isCapturing)
+        XCTAssertTrue(model.updates.isBusy())
+        model.startRecording()
+        XCTAssertEqual(model.state, .stopping)
+        let processing = try XCTUnwrap(model.processingTask)
+        await fulfillment(of: [stopping], timeout: 5)
+        XCTAssertEqual(model.processingPhase, .finalizingRecording)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path),
+                       "Transcription must wait until capture finishes")
+        XCTAssertFalse(model.canCancelTranscription, "Saving capture must finish before processing can be cancelled")
+        try XCTUnwrap(finishStop).resume()
+        await processing.value
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertFalse(model.isProcessing)
+        XCTAssertEqual(try Data(contentsOf: recording), bytes)
+        XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meeting(in: folder)).needsTranscription)
+    }
+
     private func withMeetings(
         count: Int = 3, _ check: (AppModel) async throws -> Void
     ) async throws {

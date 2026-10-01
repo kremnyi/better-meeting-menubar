@@ -136,7 +136,7 @@ struct MenuBarControlView: View {
             } else {
                 idleContent
             }
-        case .preparing:
+        case .preparing, .stopping:
             preparingContent
         case .recording:
             recordingContent

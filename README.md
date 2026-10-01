@@ -41,6 +41,8 @@ Open **Options → App & updates** to see the installed version, release notes, 
 **Check for Updates** below the automatic-download setting. Update progress and
 errors stay on that page, without separate update dialogs. Sparkle verifies updates
 with a separate signing key before extraction.
+**Release notes** opens the offered update's version, or the installed version
+when no update is offered, including beta releases.
 
 Enable **Download updates automatically** there to check GitHub on each launch and
 periodically while the app is open, preparing updates in the background. This is off
@@ -107,7 +109,8 @@ the recording status. With the menu closed, the app also sends one notification;
 click it to open the recording controls. Recording continues. The warning clears
 when either source detects audio, and later pauses do not trigger another warning.
 
-The menu-bar icon spins during processing, or stays still with Reduce Motion enabled.
+While recording, the menu-bar icon dims and brightens every two seconds; it spins
+during processing. With Reduce Motion enabled it stays still in both states.
 A warning icon appears if recording or transcription fails, or if screen or microphone
 access needs attention, and stays until you retry, dismiss the error, or grant access.
 Recordings that are only waiting to be transcribed don't raise it. Search, Finder, and **Copy Transcript** remain available during
@@ -136,7 +139,12 @@ or starts within five minutes, **Start recording** itself becomes **Record
 "<title>"**. A meeting that appears on two selected calendars is listed once.
 Click a meeting to join its Google Meet, Zoom, or Teams call in the browser;
 meetings without a call link open Calendar.
-Once today is done the menu names the first meeting of tomorrow. With **When a calendar meeting starts** enabled
+Once today is done the menu names the first meeting of tomorrow.
+**Show next meeting in the menu bar**, on by default once calendar access is granted,
+adds the next meeting's timing beside the menu-bar icon once it starts within the
+hour, such as `in 15m`, or `until 11:00` while it runs. The preview shows no title
+and steps aside while you record, while processing runs, or when the icon shows a
+warning. With **When a calendar meeting starts** enabled
 under **Suggest recording**, the app also sends a notification when the event starts.
 
 The integration is off by default, reads events only, and never edits them.
@@ -156,15 +164,19 @@ recorded until you click it. macOS reports only that some app is recording, neve
 what it records, so this needs no extra permission and reads nothing from the other
 app. Dictation, Voice Memos, and other short microphone use can still trigger it.
 The option is off by default.
+Detection watches the default macOS input device. A call using another microphone
+can be missed; start that recording manually or from its calendar event.
 
 ## Recording settings
 
-Options groups settings under **Recording**, **Transcription**, and **Files**.
+Options groups settings under **Recording** and **Files**.
 Rows below them open the **Meetings**, **Advanced transcription**, and **App &
 updates** pages; the arrow beside each page title returns to Options. Settings stay
-available after an error. Display, microphone, and video quality lock only while
-recording. Transcription settings, including **Advanced transcription**, lock only
-while a transcription runs; changes made during a recording apply when it stops.
+available after an error. Display, microphone, and video quality lock while
+capture starts, records, or stops. **Advanced transcription** opens engine, language,
+and decoding settings, which lock while transcription runs. Engine and model choices
+also lock during model preparation or download. Changes made during a recording
+apply when it stops.
 The save folder and automatic export lock during either. Meetings and App &
 updates never lock, so a prepared update can install as soon as the meeting finishes.
 The **Video** menu under Recording sets **Resolution** and **Frame rate**, which default
@@ -255,8 +267,9 @@ shows the error. Cancellation keeps completed passes for a later retry.
 
 The menu lists all completed meetings, most recent first, with each meeting's day,
 start time, and length. It shows five at a time; scroll or search (the field states how
-many meetings it searches) to reach older ones. The folder button
-beside **Recorded meetings** opens the meetings folder. Search finds matching titles
+many meetings it searches) to reach older ones. **Recorded meetings** shows the disk
+space all meetings use, and hovering a row shows its full title and folder size. The
+folder button beside **Recorded meetings** opens the meetings folder. Search finds matching titles
 and saved transcript text across all completed meetings in the selected folder,
 including older meetings and manual Markdown edits. Search runs locally. While the
 menu is open, ⌘F searches, ⌘, opens Options, and ⌘Q quits.
@@ -302,6 +315,10 @@ menu; see [Transcribe all unfinished recordings](#transcribe-all-unfinished-reco
 When quitting during work, choose **Finish and quit** or **Wait and quit** to let
 saving finish. Force Quit or power loss can leave an unfinished video that cannot
 be recovered.
+The menu shows **Stopping…** until capture has finished saving; another recording
+and updates wait for that completion. Cancelling also waits for capture to stop
+before moving its folder to the Trash. A stop or Trash failure is shown and keeps
+the remaining files available for recovery.
 
 If the app quits during re-transcription file replacement, the next history scan
 restores the previous complete transcript, including manual edits. A replacement
@@ -321,6 +338,11 @@ the affected cache. Parakeet runs one pass without a cache, so a cancelled or fa
 Parakeet run starts over. Finished transcripts are not regenerated automatically.
 
 ## Meeting files and titles
+
+Unfinished recordings can be renamed before transcription. **Copy Transcript**
+and **Export bundle** become available when the transcript exists. If the meetings
+folder becomes unreadable or disconnects, the menu reports the error and keeps the
+last available list. Use **Retry** after reconnecting it, or **Choose folder…**.
 
 ```text
 2026-09-04 14.30.00 — Product sync/
@@ -425,11 +447,15 @@ and releases its models after each run. Its memory
 use also includes the decoded recording, so longer meetings need more memory.
 
 **Advanced transcription → Models** lists every model. Downloaded ones show
-their size with a **Delete** button; models that are missing show their
-approximate download size with a **Download** button, so they can be fetched
-ahead of time. Progress appears on the row during a download, **Show models
+their size with a **Delete…** button, which asks for confirmation on the row; models
+that are missing show their approximate download size with a **Download** button, so
+they can be fetched ahead of time. An interrupted download shows **Partial download**
+with both buttons: download to finish it, or delete the partial files. Progress appears on the row during a download, **Show models
 folder** opens the whole folder, and a deleted model downloads again the next
 time it is needed. Deleting one that is in memory releases it first.
+A deletion failure appears on the Models page. Model sizes add together:
+Parakeet is about 470 MB, and each Whisper model is about 490 MB to 3.1 GB,
+depending on the selection, plus optional speaker models.
 
 Updating from an earlier version moves models stored under
 `~/Documents/huggingface/` to the new location on first launch, so they are not

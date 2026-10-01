@@ -49,6 +49,7 @@ struct ModelStorageView: View {
                 Task { await model.deleteStoredModel(item) }
             }
             .accessibilityLabel("Confirm delete \(item.title)")
+            .disabled(busy)
             // System red fails AA on white in light mode; darken there, keep it in dark mode.
             .foregroundStyle(colorScheme == .dark ? Color.red : Color(red: 0.70, green: 0.13, blue: 0.12))
         } else if let download = model.modelDownload, download.id == item.id {
@@ -59,22 +60,30 @@ struct ModelStorageView: View {
             Text(download.fraction.formatted(.percent.precision(.fractionLength(0))))
                 .font(.caption).foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-        } else if item.installed {
-            Button("Delete…") { pendingDelete = item }
-                .disabled(busy)
-                .accessibilityLabel("Delete \(item.title)")
-                .help("Deletes the downloaded files and frees their disk space. They download again when next needed.")
         } else {
-            Button("Download") { model.downloadStoredModel(item) }
-                .disabled(busy)
-                .accessibilityLabel("Download \(item.title)")
-                .help("Downloads now so transcription does not wait later")
+            if item.existsOnDisk {
+                Button("Delete…") { pendingDelete = item }
+                    .disabled(busy)
+                    .accessibilityLabel("Delete \(item.title)")
+                    .help("Deletes the downloaded files and frees their disk space. They download again when next needed.")
+            }
+            if !item.installed {
+                Button("Download") { model.downloadStoredModel(item) }
+                    .disabled(busy)
+                    .accessibilityLabel("Download \(item.title)")
+                    .help("Downloads now so transcription does not wait later")
+            }
         }
     }
 
     /// A downloaded model reads "Downloaded" until the first refresh measures it.
     private func size(_ item: StoredModelInfo) -> String {
-        guard item.installed else { return "Not downloaded · about \(ByteCountFormatter.string(fromByteCount: item.downloadBytes, countStyle: .file))" }
+        guard item.installed else {
+            if item.existsOnDisk {
+                return "Partial download · " + ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file)
+            }
+            return "Not downloaded · about \(ByteCountFormatter.string(fromByteCount: item.downloadBytes, countStyle: .file))"
+        }
         return item.sizeBytes > 0 ? ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file) : "Downloaded"
     }
 }

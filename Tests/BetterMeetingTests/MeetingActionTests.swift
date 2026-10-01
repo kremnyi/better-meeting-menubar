@@ -196,6 +196,23 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertEqual(updated["title"] as? String, "Pricing Review")
         XCTAssertEqual(updated["titleWasProvided"] as? Bool, true)
         XCTAssertEqual(updated["customField"] as? String, "Keep this")
+
+        for legacy in [false, true] {
+            let pending = root.appendingPathComponent(legacy ? "Legacy capture" : "Pending capture")
+            try FileManager.default.createDirectory(at: pending, withIntermediateDirectories: false)
+            try media.write(to: pending.appendingPathComponent("recording.mp4"))
+            if !legacy {
+                try MeetingArtifacts.writeMetadata(title: "Pending capture", recordedAt: date, duration: 8, to: pending)
+            }
+            let unfinished = try XCTUnwrap(MeetingArtifacts.meeting(in: pending))
+            let renamedPending = try MeetingArtifacts.renameMeeting(unfinished, to: "Named before transcription")
+            let reloaded = try XCTUnwrap(MeetingArtifacts.meeting(in: renamedPending))
+            XCTAssertEqual(reloaded.title, "Named before transcription")
+            XCTAssertTrue(reloaded.needsTranscription)
+            XCTAssertTrue(reloaded.titleWasProvided)
+            XCTAssertEqual(try Data(contentsOf: renamedPending.appendingPathComponent("recording.mp4")), media)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: renamedPending.appendingPathComponent("transcript.md").path))
+        }
     }
 
     func testNotificationFollowsRenamedFolder() throws {
@@ -342,6 +359,14 @@ final class MeetingActionTests: XCTestCase {
         let model = AppModel(defaults: defaults)
         model.activeFolder = active
         model.recordingDidStart(at: date)
+        let stopping = expectation(description: "capture stop requested")
+        var finishStop: CheckedContinuation<Void, Never>?
+        model.stopCapture = {
+            await withCheckedContinuation { continuation in
+                finishStop = continuation
+                stopping.fulfill()
+            }
+        }
         var trashed: [URL] = []
         let done = expectation(description: "trashed")
         // Tests must not fill the real Trash; removing the folder stands in for it.
@@ -356,11 +381,39 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertTrue(trashed.isEmpty)
 
         model.cancelRecording(confirm: { _ in .alertSecondButtonReturn }, trash: trash)
-        XCTAssertEqual(model.state, .idle)
+        XCTAssertEqual(model.state, .stopping)
+        model.primaryAction()
+        model.startRecording()
+        XCTAssertEqual(model.state, .stopping, "Capture shutdown must finish before another recording can start")
+        XCTAssertTrue(model.fileSettingsLocked)
+        XCTAssertTrue(model.updates.isBusy())
+        XCTAssertEqual(model.terminationReply(confirm: { _ in .alertFirstButtonReturn }), .terminateCancel)
+        var quitRequests = 0
+        model.completeTermination(true) { quitRequests += 1 }
+        XCTAssertEqual(quitRequests, 1, "Quit while stopping must wait for completion")
+        model.completeTermination(false) // Keep the test runner open after checking deferred quit.
+        await fulfillment(of: [stopping], timeout: 5)
+        XCTAssertTrue(trashed.isEmpty, "Do not trash a recording that capture still owns")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: active.path))
+        try XCTUnwrap(finishStop).resume()
         await fulfillment(of: [done], timeout: 5)
+        XCTAssertEqual(model.state, .idle)
         XCTAssertEqual(trashed, [active])
         XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path), "Other meetings must stay")
         XCTAssertFalse(model.isProcessing, "A canceled recording must not be transcribed")
+
+        // A failed stop keeps the original files and reports the failure instead of trashing them.
+        model.activeFolder = kept
+        model.recordingDidStart(at: date)
+        model.stopCapture = { throw URLError(.cannotWriteToFile) }
+        let failed = expectation(description: "stop failure shown")
+        let observation = model.$state.sink { if $0 == .failed { failed.fulfill() } }
+        defer { observation.cancel() }
+        model.cancelRecording(confirm: { _ in .alertSecondButtonReturn }, trash: trash)
+        await fulfillment(of: [failed], timeout: 5)
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertEqual(trashed, [active])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path))
     }
 
     @MainActor
@@ -404,7 +457,7 @@ final class MeetingActionTests: XCTestCase {
         }
         try settle()
         let library = MeetingLibrary()
-        let meetings = library.meetings(in: root)
+        let meetings = try library.meetings(in: root)
         XCTAssertEqual(meetings.map(\.title), ["Alpha"])
         XCTAssertTrue(library.search(meetings, query: "pricing").isEmpty)
 
@@ -412,9 +465,9 @@ final class MeetingActionTests: XCTestCase {
         let edited = try String(contentsOf: metadata, encoding: .utf8).replacingOccurrences(of: "Alpha", with: "Omega")
         try edited.write(to: metadata, atomically: false, encoding: .utf8)
         try settle()
-        XCTAssertEqual(library.meetings(in: root).map(\.title), ["Alpha"])
+        XCTAssertEqual(try library.meetings(in: root).map(\.title), ["Alpha"])
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-60)], ofItemAtPath: metadata.path)
-        XCTAssertEqual(library.meetings(in: root).map(\.title), ["Omega"], "A changed date reads the folder again")
+        XCTAssertEqual(try library.meetings(in: root).map(\.title), ["Omega"], "A changed date reads the folder again")
 
         try "# Alpha\n\nPricing notes\n".write(to: transcript, atomically: false, encoding: .utf8)
         XCTAssertEqual(library.search(meetings, query: "pricing"), meetings, "An edited transcript is searched again")

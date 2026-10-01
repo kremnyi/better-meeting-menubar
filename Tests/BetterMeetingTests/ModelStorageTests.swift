@@ -85,6 +85,8 @@ final class ModelStorageTests: XCTestCase {
             try write(Data(repeating: 0, count: 1024), to: whisper.appendingPathComponent("\(name).mlmodelc/coremldata.bin"))
         }
         try write("speaker", to: base.appendingPathComponent("models/argmaxinc/speakerkit-coreml/model.bin"))
+        try write(Data(repeating: 1, count: 8192), to: base.appendingPathComponent("models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930/AudioEncoder.mlmodelc/partial.bin"))
+        try write(Data(repeating: 1, count: 8192), to: base.appendingPathComponent("models/parakeet-tdt-0.6b-v3/Encoder.mlmodelc/partial.bin"))
 
         let models = LocalTranscriber.storedModels(in: base)
 
@@ -98,9 +100,11 @@ final class ModelStorageTests: XCTestCase {
         guard case .whisper(.small) = small.kind else { return XCTFail("Expected Whisper Small") }
         let turbo = try XCTUnwrap(models.first { $0.title.contains("Turbo") })
         XCTAssertFalse(turbo.installed)
-        XCTAssertEqual(turbo.sizeBytes, 0)
+        XCTAssertGreaterThan(turbo.sizeBytes, 0, "An incomplete download still occupies disk space")
         let parakeet = try XCTUnwrap(models.first { $0.title == "Parakeet v3" })
         XCTAssertEqual(parakeet.url.deletingLastPathComponent().lastPathComponent, "models")
+        XCTAssertFalse(parakeet.installed)
+        XCTAssertGreaterThan(parakeet.sizeBytes, 0)
         XCTAssertTrue(try XCTUnwrap(models.last).installed)
     }
 
@@ -113,10 +117,21 @@ final class ModelStorageTests: XCTestCase {
         try write("keep", to: other)
 
         let transcriber = LocalTranscriber(downloadBase: base)
-        await transcriber.deleteStoredModel(at: folder)
+        try await transcriber.deleteStoredModel(at: folder)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
         XCTAssertEqual(try String(contentsOf: other), "keep", "Deleting one model must leave the others")
+
+        let locked = folder.appendingPathComponent("locked.bin")
+        try write("keep until deletion succeeds", to: locked)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: locked.path) }
+        do {
+            try await transcriber.deleteStoredModel(at: folder)
+            XCTFail("A failed model deletion must report its error")
+        } catch {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: locked.path))
+        }
     }
 
     private func write(_ contents: String, to url: URL) throws {

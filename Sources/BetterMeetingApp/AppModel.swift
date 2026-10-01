@@ -98,6 +98,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var processingStatusText = ""
     @Published private(set) var processingTitle = ""
     @Published private(set) var transcriptionHistory: [MeetingHistoryItem] = []
+    @Published private(set) var historyError: String?
     /// Every meeting, whatever the search shows.
     private(set) var allMeetingCount = 0
     @Published private(set) var failedTranscriptionFolders: Set<URL> = []
@@ -112,7 +113,7 @@ final class AppModel: ObservableObject {
     var isTranscribingBatch: Bool { transcriptionBatchTotal > 0 }
     var transcriptionBatchWaiting: Int { max(0, transcriptionBatchTotal - transcriptionBatchIndex) }
     var isProcessing: Bool { processingPhase != nil }
-    var isCapturing: Bool { state == .preparing || state == .recording }
+    var isCapturing: Bool { state == .preparing || state == .recording || state == .stopping }
     /// The save folder and automatic export stay in use until the last job finishes.
     var fileSettingsLocked: Bool { isCapturing || isProcessing }
     var settingsLockNotice: String? {
@@ -161,7 +162,7 @@ final class AppModel: ObservableObject {
     lazy var calendar = CalendarIntegration(defaults: defaults)
     lazy var updates = AppUpdater { [weak self] in
         guard let self else { return true }
-        return state == .preparing || state == .recording || isProcessing
+        return isCapturing || isProcessing
     }
     @Published var automaticUpdateChecks: Bool {
         didSet { defaults.set(automaticUpdateChecks, forKey: "checkUpdatesOnLaunch") }
@@ -207,6 +208,8 @@ final class AppModel: ObservableObject {
 
     private let defaults: UserDefaults
     private let recorder = MeetingRecorder()
+    /// Production waits for ScreenCaptureKit's completion; tests can hold that completion pending.
+    lazy var stopCapture: () async throws -> Void = { [recorder] in try await recorder.stop() }
     private let transcriber = LocalTranscriber()
     private let library = MeetingLibrary()
     private(set) var modelUnloadTask: Task<Void, Never>?
@@ -242,6 +245,10 @@ final class AppModel: ObservableObject {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         outputRoot = defaults.url(forKey: "outputFolder")
             ?? documents.appendingPathComponent("Better Meetings", isDirectory: true)
+        if defaults.url(forKey: "outputFolder") == nil {
+            try? FileManager.default.createDirectory(at: documents.appendingPathComponent("Better Meetings", isDirectory: true),
+                                                     withIntermediateDirectories: true)
+        }
         selectedDisplayID = CGDirectDisplayID(clamping: defaults.integer(forKey: "displayID"))
         selectedMicrophoneID = defaults.string(forKey: "microphoneID") ?? ""
         captureResolution = CaptureResolution(rawValue: defaults.integer(forKey: "captureResolution")) ?? .pixels1440
@@ -309,6 +316,7 @@ final class AppModel: ObservableObject {
         switch state {
         case .recording: "Stop recording"
         case .preparing: "Preparing…"
+        case .stopping: "Stopping…"
         case .idle: "Start recording"
         case .failed:
             if privacyPermission == .screenRecording {
@@ -325,7 +333,7 @@ final class AppModel: ObservableObject {
         switch state {
         case .recording: "stop.fill"
         case .failed: "arrow.clockwise"
-        case .idle, .preparing: "record.circle"
+        case .idle, .preparing, .stopping: "record.circle"
         }
     }
 
@@ -491,7 +499,13 @@ final class AppModel: ObservableObject {
     }
 
     func deleteStoredModel(_ item: StoredModelInfo) async {
-        await transcriber.deleteStoredModel(at: item.url)
+        guard !isCapturing, !isProcessing, modelPreparationTask == nil, modelDownloadTask == nil else { return }
+        modelDownloadError = nil
+        do {
+            try await transcriber.deleteStoredModel(at: item.url)
+        } catch {
+            modelDownloadError = "Couldn’t delete \(item.title): \(error.localizedDescription)"
+        }
         modelReady = Self.modelIsCached(speechSettings)
         if !modelReady {
             modelSetupError = nil
@@ -619,7 +633,7 @@ final class AppModel: ObservableObject {
     }
 
     var transcribableRecordings: [MeetingHistoryItem] {
-        unfinishedRecordings.filter { $0.recoveryFolder == nil }
+        historyError == nil ? unfinishedRecordings.filter { $0.recoveryFolder == nil } : []
     }
 
     func retryTranscriptRecovery(_ item: MeetingHistoryItem) {
@@ -736,7 +750,7 @@ final class AppModel: ObservableObject {
     func terminationReply(
         confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runActive() }
     ) -> NSApplication.TerminateReply {
-        guard state == .recording || isProcessing || state == .preparing else {
+        guard isCapturing || isProcessing else {
             return .terminateNow
         }
         quitWhenFinished = false
@@ -755,15 +769,17 @@ final class AppModel: ObservableObject {
         if state == .recording && isProcessing { alert.messageText = "Finish this recording, then quit when transcription finishes?" }
         if isTranscribingBatch { alert.messageText = "Quit when all queued transcriptions finish?" }
         if isExportingBundle { alert.messageText = "Quit when export finishes?" }
+        if state == .stopping { alert.messageText = "Quit when the recording finishes stopping?" }
         alert.informativeText = isExportingBundle
             ? "Better Meeting will stay open until the export bundle is saved."
             : "Better Meeting will stay open until the recording and transcript are saved."
         if isTranscribingBatch { alert.informativeText = "Better Meeting will stay open until the queue finishes. An error or cancellation will keep the app open." }
+        if state == .stopping { alert.informativeText = "Better Meeting will stay open until capture stops and the recording is saved or moved to the Trash." }
         alert.addButton(withTitle: state == .recording ? "Finish and quit" : "Wait and quit")
         alert.addButton(withTitle: "Keep open")
         guard confirm(alert) == .alertFirstButtonReturn else { return .terminateCancel }
         // Processing may finish while the native confirmation is open.
-        guard state == .recording || isProcessing else {
+        guard state == .recording || state == .stopping || isProcessing else {
             return state == .idle ? .terminateNow : .terminateCancel
         }
         quitWhenFinished = true
@@ -774,6 +790,7 @@ final class AppModel: ObservableObject {
 
     func setOutputFolder(_ url: URL) {
         outputRoot = url
+        historyError = nil
         defaults.set(url, forKey: "outputFolder")
         updateFailedTranscriptionFolders { $0.removeAll() }
         completedMeetings = []
@@ -806,18 +823,28 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshHistory(scan: (@Sendable (URL) -> [MeetingHistoryItem])? = nil) {
+    func refreshHistory(scan: (@Sendable (URL) throws -> [MeetingHistoryItem])? = nil) {
         historyRefreshTask?.cancel()
         let root = outputRoot
-        let scan = scan ?? { [library] in library.meetings(in: $0) }
+        let scan = scan ?? { [library] in try library.meetings(in: $0) }
         historyRefreshTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let meetings = scan(root)
-            await self?.showHistory(meetings)
+            do {
+                let meetings = try scan(root)
+                await self?.showHistory(meetings)
+            } catch {
+                await self?.showHistoryError(error, root: root)
+            }
         }
+    }
+
+    private func showHistoryError(_ error: Error, root: URL) {
+        guard !Task.isCancelled, outputRoot == root else { return }
+        historyError = error.localizedDescription
     }
 
     private func showHistory(_ meetings: [MeetingHistoryItem]) {
         guard !Task.isCancelled else { return }
+        historyError = nil
         completedMeetings = meetings.filter { !$0.needsTranscription }
         unfinishedRecordings = meetings.filter(\.needsTranscription)
         let currentFolders = Set(meetings.map { $0.folderURL.standardizedFileURL })
@@ -989,10 +1016,8 @@ final class AppModel: ObservableObject {
                     recordedAt: startedAt
                 )
                 let recordingURL = folder.appendingPathComponent("recording.mp4")
-                try event?.attach(to: folder, recordedAt: startedAt)
-
                 activeFolder = folder
-                recordedAt = startedAt
+                try event?.attach(to: folder, recordedAt: startedAt)
                 try await recorder.start(
                     to: recordingURL, displayID: selectedDisplayID, microphoneID: selectedMicrophoneID,
                     resolution: captureResolution, quality: captureQuality
@@ -1022,17 +1047,24 @@ final class AppModel: ObservableObject {
         guard confirm(alert) == .alertSecondButtonReturn, state == .recording else { return }
         stopTimer()
         let folder = activeFolder
-        activeFolder = nil
-        recordedAt = nil
-        elapsed = 0
-        meetingTitle = ""
-        state = .idle
-        accessibilityAnnouncement("Recording cancelled.")
+        state = .stopping
+        statusText = "Stopping the recording before moving it to the Trash…"
         Task {
-            try? await recorder.stop()
-            guard let folder else { return }
-            do { try trash(folder) } catch { NSAlert(error: error).runActive() }
-            refreshHistory()
+            do {
+                try await stopCapture()
+                guard let folder else { throw AppError.missingRecording }
+                try trash(folder)
+                activeFolder = nil
+                recordedAt = nil
+                elapsed = 0
+                meetingTitle = ""
+                state = .idle
+                accessibilityAnnouncement("Recording cancelled.")
+                refreshHistory()
+                if !isProcessing { completeTermination(true) }
+            } catch {
+                fail(error)
+            }
         }
     }
 
@@ -1064,12 +1096,21 @@ final class AppModel: ObservableObject {
             fail(AppError.missingRecording)
             return
         }
-        state = .idle
+        state = stopCapture ? .stopping : .idle
+        if stopCapture { statusText = "Stopping the recording…" }
         accessibilityAnnouncement("Recording stopped. Transcription started.")
         processingFolder = run.folder
         if !isProcessing { setProcessingPhase(.finalizingRecording) }
         if stopCapture {
-            run.stopTask = Task { try await recorder.stop() }
+            run.stopTask = Task {
+                do {
+                    try await self.stopCapture()
+                    if state == .stopping { state = .idle }
+                } catch {
+                    fail(error)
+                    throw error
+                }
+            }
         }
         enqueue(run)
     }
@@ -1112,7 +1153,6 @@ final class AppModel: ObservableObject {
                 do {
                     try await stopTask.value
                 } catch {
-                    fail(error)
                     succeeded = false
                     pendingRuns.removeAll()
                     break
@@ -1138,7 +1178,7 @@ final class AppModel: ObservableObject {
         processingTask = nil
         cancellingTranscription = false
         scheduleModelUnload()
-        if !isCapturing { completeTermination(succeeded) }
+        if !succeeded || !isCapturing { completeTermination(succeeded) }
     }
 
     private func cancelModelUnload() {
@@ -1344,6 +1384,7 @@ final class AppModel: ObservableObject {
 
     func recordingDidStart(at startDate: Date) {
         stopTimer()
+        recordedAt = startDate
         completionMessage = nil
         let recordingID = UUID()
         self.recordingID = recordingID

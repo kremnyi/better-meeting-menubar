@@ -28,12 +28,12 @@ final class MeetingLibrary: Sendable {
 
     private let cache = OSAllocatedUnfairLock(initialState: Cache())
 
-    func meetings(in root: URL) -> [MeetingHistoryItem] {
-        let folders = (try? FileManager.default.contentsOfDirectory(
+    func meetings(in root: URL) throws -> [MeetingHistoryItem] {
+        let folders = try FileManager.default.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
-        )) ?? []
+        )
         var scanned: [URL: Folder] = [:]
         let meetings = folders.compactMap { folder -> MeetingHistoryItem? in
             guard !Task.isCancelled else { return nil }
