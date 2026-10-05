@@ -137,6 +137,7 @@ enum MeetingArtifacts {
         segments: [TranscriptSegment],
         titleWasProvided: Bool? = nil,
         speechSettings: SpeechSettings? = nil,
+        recordingFilename: String? = nil,
         to folder: URL
     ) throws {
         let resolvedTitle = resolvedTitle(title, recordedAt: recordedAt)
@@ -144,7 +145,8 @@ enum MeetingArtifacts {
             title: resolvedTitle,
             recordedAt: recordedAt,
             duration: duration,
-            segments: segments
+            segments: segments,
+            recordingFilename: recordingFilename ?? recordingURL(in: folder).lastPathComponent
         )
         try transcript.write(
             to: folder.appendingPathComponent("transcript.md"),
@@ -213,7 +215,8 @@ enum MeetingArtifacts {
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
         do {
             try write(title: meeting.title, recordedAt: meeting.recordedAt, duration: duration,
-                      segments: segments, titleWasProvided: meeting.titleWasProvided, speechSettings: speechSettings, to: staging)
+                      segments: segments, titleWasProvided: meeting.titleWasProvided, speechSettings: speechSettings,
+                      recordingFilename: recordingURL(in: meeting.folderURL).lastPathComponent, to: staging)
             // Keep durable backups until all replacements succeed, including across an interrupted write.
             for (name, original) in zip(names, originals) {
                 try original.write(to: staging.appendingPathComponent("previous-" + name), options: .atomic)
@@ -294,7 +297,14 @@ enum MeetingArtifacts {
     }
 
     private static func hasMedia(in folder: URL) -> Bool {
-        ["recording.mp4", "audio.m4a"].contains { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
+        FileManager.default.fileExists(atPath: recordingURL(in: folder).path)
+    }
+
+    static func recordingURL(in folder: URL) -> URL {
+        let filename = ["recording.mp4", "recording.mov", "audio.m4a"].first {
+            FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
+        } ?? "recording.mp4"
+        return folder.appendingPathComponent(filename)
     }
 
     // A folder without media holds nothing recoverable; drop it after a failed start.
@@ -343,7 +353,8 @@ enum MeetingArtifacts {
         title: String,
         recordedAt: Date,
         duration: TimeInterval,
-        segments: [TranscriptSegment]
+        segments: [TranscriptSegment],
+        recordingFilename: String = "recording.mp4"
     ) -> String {
         let date = DateFormatter.localizedString(from: recordedAt, dateStyle: .long, timeStyle: .short)
         var lines = [
@@ -351,7 +362,7 @@ enum MeetingArtifacts {
             "",
             "- Recorded: \(date)",
             "- Duration: \(Timecode.string(duration))",
-            "- Recording: [recording.mp4](recording.mp4)",
+            "- Recording: [\(recordingFilename)](\(recordingFilename))",
             "",
             "## Transcript",
             "",

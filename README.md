@@ -77,7 +77,9 @@ updates. Uninstalling the app keeps saved meetings and downloaded models; see
 3. Open **Options** in the bottom-left corner to choose a display, microphone, and save folder.
    The app remembers these choices. Defaults are the main display, system
    microphone, and `~/Documents/Better Meetings`.
-4. Start recording and grant **Screen & System Audio Recording** and
+4. Click **Start recording** for display video, or the smaller **Record audio-only**
+   link underneath for system audio and microphone without screen video.
+   Both modes require **Screen & System Audio Recording** and
    **Microphone** access. If access is blocked, click **Open System Settings** to enable it,
    then use **Restart Better Meeting** for screen access or **Try again** for microphone access.
 5. Stop recording and wait for transcription. Click the finished meeting to
@@ -107,7 +109,17 @@ hide it.
 If neither source has detected audio after 30 seconds, an amber warning replaces
 the recording status. With the menu closed, the app also sends one notification;
 click it to open the recording controls. Recording continues. The warning clears
-when either source detects audio, and later pauses do not trigger another warning.
+when either source detects audio. After the first 30 seconds, the app also warns
+if either source stops delivering buffers for ten seconds or the selected microphone
+disconnects. Silent buffers count as healthy; if a source sends no buffers during
+a quiet period, check it only if sound is expected. These warnings clear when data resumes.
+
+The app checks available capacity on the recording drive before capture. Below
+250 MB it asks you to free space or choose another save folder before retrying.
+Below 2 GB it shows a low-space warning, rechecking every ten seconds while
+recording. A notification also appears when the menu is closed. The warning clears
+after space is freed; recording continues until you stop it or a write fails.
+Free-space estimates do not guarantee that a long recording will fit.
 
 While recording, the menu-bar icon dims and brightens every two seconds; it spins
 during processing. With Reduce Motion enabled it stays still in both states.
@@ -117,7 +129,7 @@ Recordings that are only waiting to be transcribed don't raise it. Search, Finde
 transcription and export; renaming and starting another job wait until processing finishes.
 
 Before your first recording or retry, the app asks permission to send notifications
-for missing audio and transcription results. Click an audio warning to open the
+for recording warnings and transcription results. Click a recording warning to open the
 recording controls. Click **Transcript ready** to open the transcript, or use its
 **Copy Transcript** and **Show in Finder** actions; a notification about a failed
 transcription opens the meeting's folder.
@@ -356,9 +368,14 @@ last available list. Use **Retry** after reconnecting it, or **Choose folder…*
 └── metadata.json
 ```
 
-`transcript.md` has timestamps and a link to the video. `transcript.json` stores
+Audio-only meetings have `recording.mov` with system-audio and microphone tracks
+instead of `recording.mp4`; it contains no video. Processing mixes those tracks
+into `audio.m4a` for playback and transcription. Both modes support history,
+recovery, re-transcription, and export; audio-only exports have empty screen files.
+
+`transcript.md` has timestamps and a link to the recording. `transcript.json` stores
 segment times, text, language tags, and optional speaker IDs. `metadata.json` stores the title,
-recording date, duration, file names, and transcription status.
+recording date, duration, speech settings, and transcription status.
 `pass_<language>.json` files are Whisper's per-language transcription caches, reused when the
 same recording is transcribed again; they are safe to delete. Meetings with speaker labels
 also keep `speaker_turns.json`, and meetings started from a calendar event keep
@@ -472,13 +489,13 @@ for building, testing, signing, publishing releases, and updating the website.
 
 ## Limits
 
-- Captures one whole display; window-only and audio-only modes are not available.
+- Video capture records one whole display; audio-only captures system audio and microphone. Window-only capture is not available.
 - Transcription and export run one at a time; a recording can start while transcription finishes in the background.
 - Speaker labels may need correction; automatic speaker naming is not available.
 - Whisper can produce text during silence; the no-speech filter does not catch every case.
 - Parakeet v3 covers 25 European languages; choose Whisper for other languages.
 - File import, live captions, and meeting summaries are not included.
-- The selected display and microphone must be connected when recording starts.
+- The selected microphone must be connected when recording starts; video capture also requires the selected display.
 
 ## Project origin and license
 

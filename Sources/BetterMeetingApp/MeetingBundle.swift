@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 struct LanguageShare: Codable, Equatable {
@@ -22,7 +23,7 @@ enum MeetingBundle {
             throw MeetingActionError.invalidMeeting
         }
         let markdown = try String(contentsOf: folder.appendingPathComponent("transcript.md"), encoding: .utf8)
-        let recording = folder.appendingPathComponent("recording.mp4")
+        let recording = MeetingArtifacts.recordingURL(in: folder)
         guard fm.fileExists(atPath: recording.path) else {
             throw ScreenExtractionError.missingRecording
         }
@@ -30,15 +31,28 @@ enum MeetingBundle {
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? fm.removeItem(at: staging) }
         let languages = Array(Set(segments.compactMap(\.language))).sorted()
-        let screens = try await ScreenExtractor.extract(
-            video: recording, to: staging,
-            languages: languages.isEmpty ? TranscriptionLanguage.defaultCandidates : languages,
-            progress: progress
-        )
+        let asset = AVURLAsset(url: recording)
+        let hasVideo = try await !asset.loadTracks(withMediaType: .video).isEmpty
+        let screens: [ScreenEvent]
+        if hasVideo {
+            screens = try await ScreenExtractor.extract(
+                video: recording, to: staging,
+                languages: languages.isEmpty ? TranscriptionLanguage.defaultCandidates : languages,
+                progress: progress
+            )
+        } else {
+            guard try await !asset.loadTracks(withMediaType: .audio).isEmpty else {
+                throw ScreenExtractionError.missingRecording
+            }
+            screens = []
+            try fm.createDirectory(at: staging.appendingPathComponent("screens"), withIntermediateDirectories: false)
+            try JSONEncoder().encode(screens).write(to: staging.appendingPathComponent("screen.json"), options: .atomic)
+            progress(1)
+        }
         try Task.checkCancellation()
         // Preserve manual transcript edits. Media stays outside the portable bundle.
         let exportedMarkdown = markdown.replacingOccurrences(
-            of: "- Recording: [recording.mp4](recording.mp4)",
+            of: "- Recording: [\(recording.lastPathComponent)](\(recording.lastPathComponent))",
             with: "- Recording: retained in the meeting folder; not included in this bundle."
         )
         try exportedMarkdown.write(to: staging.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
@@ -80,6 +94,8 @@ enum MeetingBundle {
         - `screen.json` contains screen events; `screens_index.md` links to the selected screenshots.
         - `screens/` contains up to 30 screenshots sampled from screen changes.
         - `languages.json` contains speech durations and language shares from zero to one.
+
+        \(hasVideo ? "" : "This is an audio-only meeting. Screen files are empty because no screen video was saved.")
 
         All files were generated locally. Audio and video are kept in the meeting folder.
         To use an external assistant, attach these files yourself with `PROMPT.md`.

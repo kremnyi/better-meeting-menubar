@@ -6,6 +6,24 @@ import Foundation
 import os
 import ScreenCaptureKit
 
+enum CaptureMode {
+    case screen, audioOnly
+    var filename: String { self == .screen ? "recording.mp4" : "recording.mov" }
+}
+
+struct RecordingAudioHealth {
+    let microphoneMissing: Bool
+    let systemMissing: Bool
+    var warning: String? {
+        switch (microphoneMissing, systemMissing) {
+        case (true, true): "Audio sources stopped sending data"
+        case (true, false): "Microphone stopped sending audio"
+        case (false, true): "System audio stopped sending data"
+        case (false, false): nil
+        }
+    }
+}
+
 @MainActor
 final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelegate, SCStreamOutput {
     private struct MeterState: Sendable {
@@ -24,6 +42,9 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
 
     private var stream: SCStream?
     private var recordingOutput: SCRecordingOutput?
+    private nonisolated let audioRecording = OSAllocatedUnfairLock<AudioOnlyRecording?>(initialState: nil)
+    private var finalizingAudio = false
+    private var microphone: AVCaptureDevice?
     private var startContinuation: CheckedContinuation<Void, Error>?
     private var stopContinuation: CheckedContinuation<Void, Error>?
     private var startCaptureTask: Task<Void, Never>?
@@ -39,6 +60,19 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         return level.value
     }
 
+    func audioHealth(at date: Date = Date()) -> RecordingAudioHealth {
+        let health = meter.withLock { state in
+            RecordingAudioHealth(
+                microphoneMissing: state.levels[.microphone].map { date.timeIntervalSince($0.time) >= 10 } ?? true,
+                systemMissing: state.levels[.audio].map { date.timeIntervalSince($0.time) >= 10 } ?? true
+            )
+        }
+        return RecordingAudioHealth(
+            microphoneMissing: health.microphoneMissing || microphone?.isConnected == false,
+            systemMissing: health.systemMissing
+        )
+    }
+
     func requestPermissions() async throws {
         guard CGPreflightScreenCaptureAccess() else {
             _ = CGRequestScreenCaptureAccess()
@@ -52,7 +86,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
 
     func start(
         to outputURL: URL, displayID: CGDirectDisplayID, microphoneID: String,
-        resolution: CaptureResolution, quality: CaptureQuality
+        resolution: CaptureResolution, quality: CaptureQuality, mode: CaptureMode = .screen
     ) async throws {
         guard stream == nil else { throw RecorderError.alreadyRecording }
         meter.withLock { $0 = MeterState() }
@@ -65,7 +99,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             false,
             onScreenWindowsOnly: false
         )
-        let captureDisplayID = displayID == 0 ? CGMainDisplayID() : displayID
+        let captureDisplayID = mode == .audioOnly || displayID == 0 ? CGMainDisplayID() : displayID
         guard let display = content.displays.first(where: { $0.displayID == captureDisplayID }) else {
             throw RecorderError.noDisplay
         }
@@ -100,30 +134,44 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         configuration.captureMicrophone = true
         configuration.microphoneCaptureDeviceID = microphone.uniqueID
 
-        let outputConfiguration = SCRecordingOutputConfiguration()
-        outputConfiguration.outputURL = outputURL
-        outputConfiguration.outputFileType = .mp4
-        outputConfiguration.videoCodecType = .h264
-
-        let recordingOutput = SCRecordingOutput(
-            configuration: outputConfiguration,
-            delegate: self
-        )
+        if mode == .audioOnly {
+            configuration.width = 2
+            configuration.height = 2
+            configuration.minimumFrameInterval = CMTime(seconds: 1, preferredTimescale: 1)
+        }
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
         let streamID = ObjectIdentifier(stream)
         meter.withLock { $0.stream = streamID }
         try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
         try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: audioQueue)
-        try stream.addRecordingOutput(recordingOutput)
+        if mode == .screen {
+            let outputConfiguration = SCRecordingOutputConfiguration()
+            outputConfiguration.outputURL = outputURL
+            outputConfiguration.outputFileType = .mp4
+            outputConfiguration.videoCodecType = .h264
+            let output = SCRecordingOutput(configuration: outputConfiguration, delegate: self)
+            try stream.addRecordingOutput(output)
+            recordingOutput = output
+        } else {
+            let recording = try AudioOnlyRecording(to: outputURL) { [weak self] error in
+                Task { @MainActor [weak self] in
+                    guard self?.stream.map(ObjectIdentifier.init) == streamID else { return }
+                    self?.finish(failing: error)
+                }
+            }
+            audioRecording.withLock { $0 = recording }
+        }
 
         self.stream = stream
-        self.recordingOutput = recordingOutput
+        self.microphone = microphone
+        finalizingAudio = false
 
         try await withCheckedThrowingContinuation { continuation in
             startContinuation = continuation
             startCaptureTask = Task {
                 do {
                     try await stream.startCapture()
+                    if mode == .audioOnly { finishStart(with: .success(())) }
                 } catch {
                     finishStart(with: .failure(error))
                 }
@@ -152,6 +200,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             Task {
                 do {
                     try await stream.stopCapture()
+                    if audioRecording.withLock({ $0 != nil }) { finalizeAudio(error: nil) }
                 } catch {
                     finishStop(with: .failure(error))
                 }
@@ -171,11 +220,11 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         guard type == .audio || type == .microphone else { return }
         let streamID = ObjectIdentifier(stream)
         let now = Date()
-        let due = meter.withLock { state in
-            state.stream == streamID && now.timeIntervalSince(state.levels[type]?.time ?? .distantPast) >= 0.1
-        }
-        guard due, sampleBuffer.isValid, CMSampleBufferDataIsReady(sampleBuffer),
+        guard meter.withLock({ $0.stream == streamID }),
+              sampleBuffer.isValid, CMSampleBufferDataIsReady(sampleBuffer),
               let description = sampleBuffer.formatDescription else { return }
+        audioRecording.withLock { $0 }?.append(sampleBuffer, type: type)
+        guard meter.withLock({ now.timeIntervalSince($0.levels[type]?.time ?? .distantPast) >= 0.1 }) else { return }
         let format = AVAudioFormat(cmAudioFormatDescription: description)
         let frames = sampleBuffer.numSamples
         guard frames > 0, frames <= Int(Int32.max),
@@ -253,7 +302,13 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             // screen-sharing menu may never deliver it, so hand the recording off now;
             // processing waits until the MP4 is readable.
             if wasStoppedIntentionally, startContinuation == nil {
-                if stopContinuation == nil { finishUnexpectedStop(with: nil) }
+                if stopContinuation == nil {
+                    if audioRecording.withLock({ $0 != nil }) {
+                        finalizeAudio(error: nil)
+                    } else {
+                        finishUnexpectedStop(with: nil)
+                    }
+                }
                 return
             }
             finish(failing: error)
@@ -264,10 +319,31 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private func finish(failing error: Error) {
         if startContinuation != nil {
             finishStart(with: .failure(error))
+        } else if audioRecording.withLock({ $0 != nil }) {
+            finalizeAudio(error: error)
         } else if stopContinuation != nil {
             finishStop(with: .failure(error))
         } else {
             finishUnexpectedStop(with: error)
+        }
+    }
+
+    private func finalizeAudio(error: Error?) {
+        guard !finalizingAudio, let recording = audioRecording.withLock({ $0 }) else { return }
+        finalizingAudio = true
+        Task {
+            if error != nil { try? await stream?.stopCapture() }
+            // The capture queue can still hold its last buffers when capture ends.
+            await withCheckedContinuation { continuation in
+                audioQueue.async { continuation.resume() }
+            }
+            var failure = error
+            do { try await recording.finish() } catch { failure = failure ?? error }
+            if stopContinuation != nil {
+                finishStop(with: failure.map { .failure($0) } ?? .success(()))
+            } else {
+                finishUnexpectedStop(with: failure)
+            }
         }
     }
 
@@ -297,6 +373,12 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         let previousStream = stream
         stream = nil
         recordingOutput = nil
+        microphone = nil
+        let recording = audioRecording.withLock { recording -> AudioOnlyRecording? in
+            defer { recording = nil }
+            return recording
+        }
+        recording?.cancel()
         meter.withLock { state in
             state.stream = nil
             state.levels.removeAll()

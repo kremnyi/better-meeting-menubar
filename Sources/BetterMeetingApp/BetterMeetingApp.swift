@@ -71,6 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if notification.request.content.categoryIdentifier == MeetingNotifications.audioWarningCategory {
             return await shouldPresentAudioWarning(notification.request) ? [.banner, .list] : []
         }
+        if notification.request.content.categoryIdentifier == MeetingNotifications.diskWarningCategory {
+            return await shouldPresentDiskWarning(notification.request) ? [.banner, .list] : []
+        }
         if notification.request.content.categoryIdentifier == MicrophoneMeeting.categoryID {
             return await shouldPresentMicrophoneMeeting() ? [.banner, .list, .sound] : []
         }
@@ -94,6 +97,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func shouldPresentAudioWarning(_ request: UNNotificationRequest) -> Bool {
         model?.audioWarning == true && model?.recordingID?.uuidString == request.identifier
             && model?.menuWindow?.isVisible != true
+    }
+
+    func shouldPresentDiskWarning(_ request: UNNotificationRequest) -> Bool {
+        guard let model, model.state == .recording, let id = model.recordingID else { return false }
+        return model.recordingDiskSpace?.isLow == true && request.identifier == id.uuidString + "-disk"
+            && model.menuWindow?.isVisible != true
     }
 
     func userNotificationCenter(
@@ -159,9 +168,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func openNotification(_ request: UNNotificationRequest, action: String = UNNotificationDefaultActionIdentifier) {
-        if request.content.categoryIdentifier == MeetingNotifications.audioWarningCategory {
+        if [MeetingNotifications.audioWarningCategory, MeetingNotifications.diskWarningCategory].contains(request.content.categoryIdentifier) {
             guard action == UNNotificationDefaultActionIdentifier else { return }
-            guard model?.state == .recording, model?.recordingID?.uuidString == request.identifier else { return }
+            guard model?.state == .recording, let id = model?.recordingID else { return }
+            let identifier = id.uuidString + (request.content.categoryIdentifier == MeetingNotifications.diskWarningCategory ? "-disk" : "")
+            guard identifier == request.identifier else { return }
             showMenu()
             return
         }

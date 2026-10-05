@@ -3,6 +3,7 @@ import UserNotifications
 
 enum MeetingNotifications {
     static let audioWarningCategory = "recording-audio-warning"
+    static let diskWarningCategory = "recording-disk-warning"
     static let transcriptReadyCategory = "transcript-ready"
     static let openTranscriptAction = "open-transcript"
     static let copyTranscriptAction = "copy-transcript"
@@ -35,19 +36,27 @@ enum MeetingNotifications {
     static func post(_ request: UNNotificationRequest) async {
         guard let center else { return }
         let status = await center.notificationSettings().authorizationStatus
-        let isAudioWarning = request.content.categoryIdentifier == audioWarningCategory
+        let isRecordingWarning = [audioWarningCategory, diskWarningCategory].contains(request.content.categoryIdentifier)
         guard status == .authorized || status == .provisional,
-              !isAudioWarning || !Task.isCancelled else { return }
+              !isRecordingWarning || !Task.isCancelled else { return }
         try? await center.add(request)
-        if isAudioWarning && Task.isCancelled { remove(request.identifier) }
+        if isRecordingWarning && Task.isCancelled { remove(request.identifier) }
     }
 
-    static func audioWarning(recordingID: UUID) -> UNNotificationRequest {
+    static func audioWarning(recordingID: UUID, message: String = "No audio detected in this recording yet. Check your microphone and meeting audio.") -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = "Check your recording"
-        content.body = "No audio detected in this recording yet. Check your microphone and meeting audio."
+        content.body = message
         content.categoryIdentifier = audioWarningCategory
         return UNNotificationRequest(identifier: recordingID.uuidString, content: content, trigger: nil)
+    }
+
+    static func diskWarning(recordingID: UUID, message: String) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = "Low recording disk space"
+        content.body = message
+        content.categoryIdentifier = diskWarningCategory
+        return UNNotificationRequest(identifier: recordingID.uuidString + "-disk", content: content, trigger: nil)
     }
 
     static func remove(_ identifier: String) {

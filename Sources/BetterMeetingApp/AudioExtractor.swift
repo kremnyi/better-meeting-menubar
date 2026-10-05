@@ -41,6 +41,15 @@ enum AudioExtractor {
         }
 
         exporter.shouldOptimizeForNetworkUse = false
+        if recordingURL.pathExtension == "mov", audioTracks.count > 1 {
+            let mix = AVMutableAudioMix()
+            mix.inputParameters = audioTracks.map { track in
+                let parameters = AVMutableAudioMixInputParameters(track: track)
+                parameters.setVolume(1 / Float(audioTracks.count), at: .zero)
+                return parameters
+            }
+            exporter.audioMix = mix
+        }
         progressHandler(0)
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {

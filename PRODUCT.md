@@ -51,7 +51,7 @@ for real audio.
 
 ## Capabilities and Constraints
 
-- Captures one whole display; window-only and audio-only modes do not exist.
+- Captures one whole display, or system audio and microphone without video through **Record audio-only**. Window-only capture is not available.
 - Two local engines: Parakeet v3 (FluidAudio, the default; one pass without a
   cache, 25 European languages) and Whisper (WhisperKit; one pass per language,
   merged by confidence). Meetings transcribed with Whisper keep it when retried

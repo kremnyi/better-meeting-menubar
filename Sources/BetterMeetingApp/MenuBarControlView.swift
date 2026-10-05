@@ -178,19 +178,26 @@ struct MenuBarControlView: View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Meeting name (optional)", text: $model.meetingTitle)
                 .textFieldStyle(.roundedBorder)
-                .onSubmit(startFromMenu)
+                .onSubmit { startFromMenu() }
                 .help("Press Return to start recording")
-            StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle, start: startFromMenu)
+            VStack(spacing: 6) {
+                StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle, start: { startFromMenu() })
+                Button("Record audio-only") { startFromMenu(mode: .audioOnly) }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity)
+                    .help("Record system audio and microphone without saving screen video")
+            }
         }
     }
 
     /// Records the meeting on the calendar when one is under way or about to start and no other
     /// name was typed, so the one Start button also carries the event's details.
-    private func startFromMenu() {
+    private func startFromMenu(mode: CaptureMode = .screen) {
         if let event = StartRecordingButton.imminentEvent(in: model.calendar, title: model.meetingTitle, at: Date()) {
-            model.startCalendarRecording(event)
+            model.startCalendarRecording(event, mode: mode)
         } else {
-            model.primaryAction()
+            model.startRecording(mode: mode)
         }
     }
 
@@ -300,6 +307,7 @@ struct MenuBarControlView: View {
                 .foregroundStyle(.secondary)
             processingIndicator
                 .accessibilityLabel(model.statusText)
+            diskSpaceWarning
         }
         .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
     }
@@ -322,12 +330,12 @@ struct MenuBarControlView: View {
                     .accessibilityHidden(model.audioWarning)
                 VStack(alignment: .leading, spacing: 2) {
                     Label {
-                        Text("No audio detected yet").fontWeight(.medium)
+                        Text(model.audioWarningTitle).fontWeight(.medium)
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
                     }
-                    Text("Check your microphone and meeting audio.")
+                    Text(model.audioWarningDetail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -337,6 +345,8 @@ struct MenuBarControlView: View {
             }
             .font(.callout)
             .animation(.easeInOut(duration: 0.2), value: model.audioWarning)
+
+            diskSpaceWarning
 
             primaryActionButton
 
@@ -350,6 +360,21 @@ struct MenuBarControlView: View {
 
             if model.isProcessing {
                 Text("Transcribing \(model.processingTitle.isEmpty ? "the previous meeting" : model.processingTitle) in the background…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var diskSpaceWarning: some View {
+        if let space = model.recordingDiskSpace, space.isLow {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Low recording disk space", systemImage: "externaldrive.badge.exclamationmark")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
+                Text(space.warning)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -907,6 +907,77 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
+    func testRecordingHealthDetectsLostSourcesAndRecoveryDuringSilence() throws {
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingSourceHealth")
+        let model = AppModel(defaults: defaults)
+        defer {
+            model.fail(AppError.missingRecording)
+            removeTempDefaults(defaults, suite: suite, root: root)
+        }
+        let recorder = MeetingRecorder()
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 100))
+        buffer.frameLength = 100
+        let samples = try XCTUnwrap(buffer.floatChannelData)[0]
+        let date = Date()
+        samples.update(repeating: 0.1, count: 100)
+        for source: SCStreamOutputType in [.microphone, .audio] {
+            recorder.updateAudioLevel(buffer, type: source, at: date)
+        }
+        model.recordingDidStart(at: date)
+        let initialSize = hostingView(MenuBarControlView(), model: model).fittingSize
+        samples.update(repeating: 0, count: 100)
+        recorder.updateAudioLevel(buffer, type: .audio, at: date.addingTimeInterval(30))
+        model.checkRecordingAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
+                                  health: recorder.audioHealth(at: date.addingTimeInterval(30)))
+        XCTAssertTrue(model.audioWarning, "Audio heard earlier must not hide a disconnected microphone")
+        XCTAssertEqual(model.audioWarningTitle, "Microphone stopped sending audio")
+        XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
+        recorder.updateAudioLevel(buffer, type: .microphone, at: date.addingTimeInterval(30))
+        model.checkRecordingAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
+                                  health: recorder.audioHealth(at: date.addingTimeInterval(30)))
+        XCTAssertFalse(model.audioWarning, "Silent buffers prove the sources recovered")
+        recorder.updateAudioLevel(buffer, type: .microphone, at: date.addingTimeInterval(41))
+        model.checkRecordingAudio(elapsed: 41, audioDetected: recorder.hasDetectedAudio,
+                                  health: recorder.audioHealth(at: date.addingTimeInterval(41)))
+        XCTAssertEqual(model.audioWarningTitle, "System audio stopped sending data")
+        model.checkRecordingAudio(elapsed: 60, audioDetected: recorder.hasDetectedAudio,
+                                  health: recorder.audioHealth(at: date.addingTimeInterval(60)))
+        XCTAssertEqual(model.audioWarningTitle, "Audio sources stopped sending data")
+        XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
+        XCTAssertEqual(model.state, .recording)
+    }
+
+    @MainActor
+    func testRecordingDiskPreflightAndWarningRecovery() throws {
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingDiskSpace")
+        let model = AppModel(defaults: defaults)
+        defer {
+            model.fail(AppError.missingRecording)
+            removeTempDefaults(defaults, suite: suite, root: root)
+        }
+        XCTAssertThrowsError(try RecordingDiskSpace(availableBytes: 249_999_999).preflight())
+        XCTAssertNoThrow(try RecordingDiskSpace(availableBytes: 250_000_000).preflight())
+        XCTAssertNotNil(RecordingDiskSpace.read(at: root.appendingPathComponent("not-created/yet")))
+        model.recordingDidStart(at: Date())
+        var announcements: [String] = []
+        model.accessibilityAnnouncement = { announcements.append($0) }
+        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 1_900_000_000))
+        XCTAssertTrue(try XCTUnwrap(model.recordingDiskSpace).isLow)
+        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 1_800_000_000))
+        XCTAssertEqual(announcements.count, 1, "Changing capacity must not repeat the same warning")
+        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 2_000_000_000))
+        XCTAssertFalse(try XCTUnwrap(model.recordingDiskSpace).isLow)
+        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 1_900_000_000))
+        XCTAssertEqual(announcements.count, 2, "A new low-space episode must warn again")
+        XCTAssertEqual(model.state, .recording)
+        model.fail(AppError.missingRecording)
+        XCTAssertNil(model.recordingDiskSpace)
+        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 0))
+        XCTAssertNil(model.recordingDiskSpace, "Late callbacks must not warn after capture ends")
+    }
+
+    @MainActor
     func testAudioMeterHandlesSilenceStereoAndClipping() throws {
         for interleaved in [false, true] {
             let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: interleaved))

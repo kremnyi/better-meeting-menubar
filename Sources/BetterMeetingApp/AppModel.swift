@@ -51,6 +51,14 @@ final class AppModel: ObservableObject {
     }
     let meters = AudioMeters()
     @Published private(set) var audioWarning = false
+    @Published private(set) var audioWarningTitle = "No audio detected yet"
+    var audioWarningDetail: String {
+        audioWarningTitle == "No audio detected yet"
+            ? "Check your microphone and meeting audio."
+            : "Check the source if audio is expected."
+    }
+    @Published private(set) var recordingDiskSpace: RecordingDiskSpace?
+    private(set) var captureMode: CaptureMode = .screen
     private(set) var recordingID: UUID?
     weak var menuWindow: NSWindow?
     @Published private(set) var statusText = "Ready to record your display and audio."
@@ -219,6 +227,8 @@ final class AppModel: ObservableObject {
     private var recordingFolderTitle = ""
     private var timer: Timer?
     private var audioWarningTask: Task<Void, Never>?
+    private var diskWarningTask: Task<Void, Never>?
+    private var lastDiskCheck = Date.distantPast
     private var quitWhenFinished = false
     private var startTask: Task<Void, Never>?
     private(set) var processingTask: Task<Void, Never>?
@@ -398,7 +408,7 @@ final class AppModel: ObservableObject {
         } else if state == .failed, retryableMeeting != nil {
             retryFailedTranscription()
         } else if state == .idle || state == .failed {
-            startRecording()
+            startRecording(mode: state == .failed ? captureMode : .screen)
         }
     }
 
@@ -972,16 +982,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func startCalendarRecording(_ event: CalendarEvent) {
+    func startCalendarRecording(_ event: CalendarEvent, mode: CaptureMode = .screen) {
         guard state == .idle || state == .failed else { return }
-        startRecording(calendarEvent: event)
+        startRecording(calendarEvent: event, mode: mode)
     }
 
-    func startRecording(calendarEvent: CalendarEvent? = nil) {
+    func startRecording(calendarEvent: CalendarEvent? = nil, mode: CaptureMode = .screen) {
         guard state == .idle || state == .failed else { return }
         stopTimer()
         elapsed = 0
         state = .preparing
+        captureMode = mode
         statusText = "Checking screen and microphone access…"
         lastError = nil
         transcriptionError = nil
@@ -995,6 +1006,9 @@ final class AppModel: ObservableObject {
             defer { startTask = nil }
             do {
                 try Task.checkCancellation()
+                let space = RecordingDiskSpace.read(at: outputRoot)
+                checkRecordingDiskSpace(space)
+                try space?.preflight()
                 try await recorder.requestPermissions()
                 await MeetingNotifications.requestPermission()
 
@@ -1015,12 +1029,12 @@ final class AppModel: ObservableObject {
                     title: title,
                     recordedAt: startedAt
                 )
-                let recordingURL = folder.appendingPathComponent("recording.mp4")
+                let recordingURL = folder.appendingPathComponent(mode.filename)
                 activeFolder = folder
                 try event?.attach(to: folder, recordedAt: startedAt)
                 try await recorder.start(
                     to: recordingURL, displayID: selectedDisplayID, microphoneID: selectedMicrophoneID,
-                    resolution: captureResolution, quality: captureQuality
+                    resolution: captureResolution, quality: captureQuality, mode: mode
                 )
                 recordingDidStart(at: startedAt)
             } catch {
@@ -1229,7 +1243,7 @@ final class AppModel: ObservableObject {
             var title = run.title
             let recordedAt = run.recordedAt
 
-            let recordingURL = folder.appendingPathComponent("recording.mp4")
+            let recordingURL = MeetingArtifacts.recordingURL(in: folder)
             let audioURL = folder.appendingPathComponent("audio.m4a")
             let needsAudio = ((try? AVAudioFile(forReading: audioURL).length) ?? 0) == 0
             // Only a capture that just ended can still be finishing its MP4.
@@ -1390,8 +1404,12 @@ final class AppModel: ObservableObject {
         self.recordingID = recordingID
         elapsed = 0
         state = .recording
-        statusText = "Recording the selected display, system audio, and microphone."
+        statusText = captureMode == .audioOnly
+            ? "Recording system audio and microphone. No screen video is saved."
+            : "Recording the selected display, system audio, and microphone."
         accessibilityAnnouncement("Recording started.")
+        lastDiskCheck = Date()
+        checkRecordingDiskSpace(RecordingDiskSpace.read(at: activeFolder ?? outputRoot))
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.state == .recording, self.recordingID == recordingID else { return }
@@ -1402,26 +1420,60 @@ final class AppModel: ObservableObject {
                     microphone: self.recorder.audioLevel(microphone: true),
                     system: self.recorder.audioLevel(microphone: false)
                 )
-                self.checkRecordingAudio(elapsed: elapsed, audioDetected: self.recorder.hasDetectedAudio)
+                self.checkRecordingAudio(elapsed: elapsed, audioDetected: self.recorder.hasDetectedAudio,
+                                         health: self.recorder.audioHealth())
+                if Date().timeIntervalSince(self.lastDiskCheck) >= 10 {
+                    self.lastDiskCheck = Date()
+                    self.checkRecordingDiskSpace(RecordingDiskSpace.read(at: self.activeFolder ?? self.outputRoot))
+                }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
 
-    func checkRecordingAudio(elapsed: TimeInterval, audioDetected: Bool) {
+    func checkRecordingAudio(elapsed: TimeInterval, audioDetected: Bool, health: RecordingAudioHealth? = nil) {
         guard state == .recording else { return }
-        let warning = elapsed >= 30 && !audioDetected
-        guard audioWarning != warning else { return }
+        let title: String? = elapsed < 30 ? nil
+            : (!audioDetected ? "No audio detected yet" : health?.warning)
+        let warning = title != nil
+        guard audioWarning != warning || (warning && audioWarningTitle != title) else { return }
+        if let title { audioWarningTitle = title }
         audioWarning = warning
-        if warning { accessibilityAnnouncement("No audio detected yet. Check your microphone and meeting audio.") }
+        let message = "\(audioWarningTitle). \(audioWarningDetail)"
+        if warning { accessibilityAnnouncement(message) }
+        let previousWarning = audioWarningTask
+        clearAudioWarning()
         if warning, menuWindow?.isVisible != true, let recordingID {
             audioWarningTask = Task {
-                await MeetingNotifications.post(MeetingNotifications.audioWarning(recordingID: recordingID))
+                _ = await previousWarning?.value
+                guard !Task.isCancelled else { return }
+                await MeetingNotifications.post(MeetingNotifications.audioWarning(recordingID: recordingID, message: message))
             }
-        } else if !warning {
-            clearAudioWarning()
         }
+    }
+
+    func checkRecordingDiskSpace(_ space: RecordingDiskSpace?) {
+        guard state == .recording || state == .preparing else { return }
+        let wasLow = recordingDiskSpace?.isLow == true
+        recordingDiskSpace = space
+        guard let space, space.isLow else {
+            clearDiskWarning()
+            return
+        }
+        guard !wasLow else { return }
+        accessibilityAnnouncement("Low recording disk space. \(space.warning)")
+        if menuWindow?.isVisible != true, let recordingID {
+            diskWarningTask = Task {
+                await MeetingNotifications.post(MeetingNotifications.diskWarning(recordingID: recordingID, message: space.warning))
+            }
+        }
+    }
+
+    private func clearDiskWarning() {
+        diskWarningTask?.cancel()
+        diskWarningTask = nil
+        if let recordingID { MeetingNotifications.remove(recordingID.uuidString + "-disk") }
     }
 
     private func clearAudioWarning() {
@@ -1434,7 +1486,10 @@ final class AppModel: ObservableObject {
         timer?.invalidate()
         timer = nil
         clearAudioWarning()
+        clearDiskWarning()
         audioWarning = false
+        audioWarningTitle = "No audio detected yet"
+        recordingDiskSpace = nil
         recordingID = nil
         meters.update(microphone: 0, system: 0)
     }
