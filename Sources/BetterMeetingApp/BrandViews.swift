@@ -212,6 +212,8 @@ struct MenuBarStatusLabel: View {
 extension Color {
     /// WCAG AA (≥4.5:1) with white button labels and on light backgrounds.
     static let signalCoral = Color(red: 0.85, green: 0.16, blue: 0.13)
+    /// A slightly deeper shade for native recording-button hover feedback.
+    static let signalCoralHover = Color(red: 0.78, green: 0.13, blue: 0.10)
     /// The original bright coral; AA on the dark menu bar (5.66:1) but not on light chrome.
     static let signalCoralBright = Color(red: 0.96, green: 0.25, blue: 0.22)
     /// Attention icons: ≥3:1 non-text contrast on light backgrounds; system orange on dark (7.6:1).

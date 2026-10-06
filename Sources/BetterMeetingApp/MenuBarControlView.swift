@@ -182,17 +182,7 @@ struct MenuBarControlView: View {
                 .help("Press Return to start recording")
             VStack(spacing: 6) {
                 StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle, start: { startFromMenu() })
-                Button { startFromMenu(mode: .audioOnly) } label: {
-                    Text("Record audio-only")
-                        .font(.caption)
-                        .foregroundStyle(.tint)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 3)
-                        .contentShape(RoundedRectangle(cornerRadius: 6))
-                }
-                    .buttonStyle(.plain)
-                    .modifier(RecordingActionHover(prominent: false))
-                    .help("Record system audio and microphone without saving screen video")
+                AudioOnlyRecordingButton(start: { startFromMenu(mode: .audioOnly) })
             }
         }
     }
@@ -573,33 +563,27 @@ struct MenuBarControlView: View {
     }
 }
 
-/// A quiet hover cue that leaves native button clicks and keyboard activation intact.
-/// Overlays do not change layout or intercept the recording action.
-private struct RecordingActionHover: ViewModifier {
-    let prominent: Bool
+/// A compact native link: only the text gains an underline, never a full-width box.
+private struct AudioOnlyRecordingButton: View {
+    let start: () -> Void
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
 
-    func body(content: Content) -> some View {
-        let highlighted = hovering && isEnabled
-        let color: Color = prominent ? .white : .signalCoral
-        content
-            .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(color.opacity(highlighted ? 0.1 : 0))
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(color.opacity(highlighted ? 0.25 : 0), lineWidth: 1)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted)
-            .onHover { hovering = $0 }
-            .onDisappear { hovering = false }
+    var body: some View {
+        Button(action: start) {
+            Text("Record audio-only")
+                .underline(hovering && isEnabled)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.link)
+        .font(.caption)
+        .onHover { hovering = $0 }
+        .onDisappear { hovering = false }
+        // Center the link without turning the empty row into a hover or click target.
+        .frame(maxWidth: .infinity)
+        .help("Record system audio and microphone without saving screen video")
     }
 }
 
@@ -609,6 +593,9 @@ private struct StartRecordingButton: View {
     @ObservedObject var calendar: CalendarIntegration
     let meetingTitle: String
     let start: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovering = false
 
     static func imminentEvent(in calendar: CalendarIntegration, title: String, at now: Date) -> CalendarEvent? {
         guard title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -633,8 +620,10 @@ private struct StartRecordingButton: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .tint(.signalCoral)
-            .modifier(RecordingActionHover(prominent: true))
+            .tint(hovering && isEnabled ? .signalCoralHover : .signalCoral)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering && isEnabled)
+            .onHover { hovering = $0 }
+            .onDisappear { hovering = false }
             .help(event == nil ? "Start recording (Return in the name field)"
                 : "Records with this meeting’s calendar details. Type a name above to record something else.")
             .accessibilityLabel(event.map { "Record \($0.title)" } ?? "Start recording")
