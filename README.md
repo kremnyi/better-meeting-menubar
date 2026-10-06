@@ -77,8 +77,11 @@ updates. Uninstalling the app keeps saved meetings and downloaded models; see
 3. Open **Options** in the bottom-left corner to choose a display, microphone, and save folder.
    The app remembers these choices. Defaults are the main display, system
    microphone, and `~/Documents/Better Meetings`.
-4. Click **Start recording** for display video, or the smaller **Record audio-only**
-   link underneath for system audio and microphone without screen video.
+4. Click the main **Start recording** area for screen video and audio. To capture
+   system audio and microphone without screen video, open the arrow on the right
+   side of the button and choose **Record audio-only**. That starts immediately
+   using the same meeting name or calendar details. Screen recording remains the
+   default for the main action; choosing audio-only does not change it.
    Both modes require **Screen & System Audio Recording** and
    **Microphone** access. If access is blocked, click **Open System Settings** to enable it,
    then use **Restart Better Meeting** for screen access or **Try again** for microphone access.

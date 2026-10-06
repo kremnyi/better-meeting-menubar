@@ -180,9 +180,8 @@ struct MenuBarControlView: View {
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { startFromMenu() }
                 .help("Press Return to start recording")
-            VStack(spacing: 6) {
-                StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle, start: { startFromMenu() })
-                AudioOnlyRecordingButton(start: { startFromMenu(mode: .audioOnly) })
+            StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle) { mode in
+                startFromMenu(mode: mode)
             }
         }
     }
@@ -563,40 +562,30 @@ struct MenuBarControlView: View {
     }
 }
 
-/// A compact neutral text action: only the text gains an underline, never a full-width box.
-private struct AudioOnlyRecordingButton: View {
-    let start: () -> Void
-    @Environment(\.isEnabled) private var isEnabled
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: start) {
-            Text("Record audio-only")
-                .underline(hovering && isEnabled)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .onHover { hovering = $0 }
-        .onDisappear { hovering = false }
-        // Center the link without turning the empty row into a hover or click target.
-        .frame(maxWidth: .infinity)
-        .help("Record system audio and microphone without saving screen video")
-    }
-}
-
-/// The menu's Start button. When a calendar meeting is under way or about to start and no other
+/// The menu's split Start button. Its primary action always captures screen and audio;
+/// the native arrow menu starts audio-only without changing the next recording's default.
+/// When a calendar meeting is under way or about to start and no other
 /// name was typed, it records that meeting, so the menu never offers two competing record buttons.
 private struct StartRecordingButton: View {
     @ObservedObject var calendar: CalendarIntegration
     let meetingTitle: String
-    let start: () -> Void
+    let start: (CaptureMode) -> Void
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
+
+    // Native menus otherwise retint SF Symbols to black in light appearance.
+    // Render a non-template white image for the coral button in either appearance.
+    private static let menuChevron: NSImage = {
+        let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
+        guard let symbol = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) else { return NSImage() }
+        return NSImage(size: symbol.size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            return true
+        }
+    }()
 
     static func imminentEvent(in calendar: CalendarIntegration, title: String, at now: Date) -> CalendarEvent? {
         guard title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -610,12 +599,21 @@ private struct StartRecordingButton: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             let event = Self.imminentEvent(in: calendar, title: meetingTitle, at: context.date)
-            Button(action: start) {
-                Label {
-                    Text(event.map { "Record “\($0.title)”" } ?? "Start recording")
-                        .lineLimit(1)
-                } icon: {
-                    Image(systemName: "record.circle")
+            Button { start(.screen) } label: {
+                HStack(spacing: 0) {
+                    Label {
+                        Text(event.map { "Record “\($0.title)”" } ?? "Start recording")
+                            .lineLimit(1)
+                    } icon: {
+                        Image(systemName: "record.circle")
+                    }
+                    .frame(maxWidth: .infinity)
+                    Color.white.opacity(0.25)
+                        .frame(width: 1, height: 14)
+                        .accessibilityHidden(true)
+                    // Reserve the native menu's hit area without nesting it in this button.
+                    Color.clear.frame(width: 32, height: 14)
+                        .accessibilityHidden(true)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -625,9 +623,26 @@ private struct StartRecordingButton: View {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering && isEnabled)
             .onHover { hovering = $0 }
             .onDisappear { hovering = false }
-            .help(event == nil ? "Start recording (Return in the name field)"
-                : "Records with this meeting’s calendar details. Type a name above to record something else.")
+            .help(event == nil ? "Record screen and audio. Use the arrow for audio-only."
+                : "Records with this meeting’s calendar details. Use the arrow for audio-only, or type a name above to record something else.")
             .accessibilityLabel(event.map { "Record \($0.title)" } ?? "Start recording")
+            .overlay(alignment: .trailing) {
+                // A sibling control: opening its menu must never trigger screen capture.
+                Menu {
+                    Button("Record audio-only") { start(.audioOnly) }
+                        .help("Record system audio and microphone without saving screen video")
+                } label: {
+                    Image(nsImage: Self.menuChevron)
+                        .renderingMode(.original)
+                        .frame(width: 32, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .frame(width: 32, height: 28)
+                .help("Recording options")
+                .accessibilityLabel("Recording options")
+            }
         }
     }
 }
