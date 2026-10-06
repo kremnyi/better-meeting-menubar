@@ -77,7 +77,7 @@ enum MeetingArtifacts {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw MeetingActionError.emptyTitle
         }
-        let title = sanitizedTitle(title)
+        let title = normalizedTitle(title)
         let markdownURL = meeting.folderURL.appendingPathComponent("transcript.md")
         let metadataURL = meeting.folderURL.appendingPathComponent("metadata.json")
         let fm = FileManager.default
@@ -382,20 +382,24 @@ enum MeetingArtifacts {
         return lines.joined(separator: "\n")
     }
 
+    /// Only filesystem names are shortened; saved titles are not length-limited.
     static func sanitizedTitle(_ title: String) -> String {
+        String(normalizedTitle(title).prefix(80))
+    }
+
+    private static func normalizedTitle(_ title: String) -> String {
         let invalid = CharacterSet(charactersIn: "/:\n\r\t")
         let parts = title.components(separatedBy: invalid)
         let collapsed = parts
             .joined(separator: " ")
             .split(whereSeparator: \Character.isWhitespace)
             .joined(separator: " ")
-        let resolved = collapsed.isEmpty ? "Meeting" : collapsed
-        return String(resolved.prefix(80))
+        return collapsed.isEmpty ? "Meeting" : collapsed
     }
 
     private static func resolvedTitle(_ title: String, recordedAt: Date) -> String {
         title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? folderDateFormatter.string(from: recordedAt) : sanitizedTitle(title)
+            ? folderDateFormatter.string(from: recordedAt) : normalizedTitle(title)
     }
 
     private static let folderDateFormatter: DateFormatter = {

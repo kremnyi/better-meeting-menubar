@@ -24,15 +24,18 @@ enum MeetingBundle {
         }
         let markdown = try String(contentsOf: folder.appendingPathComponent("transcript.md"), encoding: .utf8)
         let recording = MeetingArtifacts.recordingURL(in: folder)
-        guard fm.fileExists(atPath: recording.path) else {
-            throw ScreenExtractionError.missingRecording
-        }
+        let hasRecording = fm.fileExists(atPath: recording.path)
         let staging = folder.appendingPathComponent(".artifacts-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? fm.removeItem(at: staging) }
         let languages = Array(Set(segments.compactMap(\.language))).sorted()
         let asset = AVURLAsset(url: recording)
-        let hasVideo = try await !asset.loadTracks(withMediaType: .video).isEmpty
+        let hasVideo: Bool
+        if hasRecording {
+            hasVideo = try await !asset.loadTracks(withMediaType: .video).isEmpty
+        } else {
+            hasVideo = false
+        }
         let screens: [ScreenEvent]
         if hasVideo {
             screens = try await ScreenExtractor.extract(
@@ -41,7 +44,7 @@ enum MeetingBundle {
                 progress: progress
             )
         } else {
-            guard try await !asset.loadTracks(withMediaType: .audio).isEmpty else {
+            if hasRecording, try await asset.loadTracks(withMediaType: .audio).isEmpty {
                 throw ScreenExtractionError.missingRecording
             }
             screens = []
@@ -51,10 +54,18 @@ enum MeetingBundle {
         }
         try Task.checkCancellation()
         // Preserve manual transcript edits. Media stays outside the portable bundle.
-        let exportedMarkdown = markdown.replacingOccurrences(
-            of: "- Recording: [\(recording.lastPathComponent)](\(recording.lastPathComponent))",
-            with: "- Recording: retained in the meeting folder; not included in this bundle."
-        )
+        let recordingNotice = hasRecording
+            ? "- Recording: available media is retained in the meeting folder; not included in this bundle."
+            : "- Recording: the original recording is unavailable; this bundle contains transcript data only."
+        // The Markdown can still link to deleted video even when audio.m4a remains.
+        let exportedMarkdown = ["recording.mp4", "recording.mov", "audio.m4a"].reduce(markdown) { text, filename in
+            text.replacingOccurrences(of: "- Recording: [\(filename)](\(filename))", with: recordingNotice)
+        }
+        let screenNotice = hasVideo ? "" : !hasRecording
+            ? "This is a transcript-only export. The original recording is unavailable, so screen files are empty."
+            : recording.lastPathComponent == "audio.m4a"
+                ? "Screen video is unavailable. Screen files are empty; the saved audio remains in the meeting folder."
+                : "This is an audio-only meeting. Screen files are empty because no screen video was saved."
         try exportedMarkdown.write(to: staging.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
         try transcriptData.write(to: staging.appendingPathComponent("transcript.json"), options: .atomic)
         try timeline(segments: segments, screens: screens).write(to: staging.appendingPathComponent("timeline.md"), atomically: true, encoding: .utf8)
@@ -95,9 +106,9 @@ enum MeetingBundle {
         - `screens/` contains up to 30 screenshots sampled from screen changes.
         - `languages.json` contains speech durations and language shares from zero to one.
 
-        \(hasVideo ? "" : "This is an audio-only meeting. Screen files are empty because no screen video was saved.")
+        \(screenNotice)
 
-        All files were generated locally. Audio and video are kept in the meeting folder.
+        All files were generated locally. Any available audio and video stay in the meeting folder.
         To use an external assistant, attach these files yourself with `PROMPT.md`.
         Automatic speech and screen text can contain errors; verify important details against the recording.
         Regenerating the bundle replaces this folder using the latest saved transcript.

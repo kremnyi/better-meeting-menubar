@@ -1,4 +1,5 @@
 import AVFoundation
+import os
 import ScreenCaptureKit
 import XCTest
 @testable import BetterMeetingApp
@@ -10,13 +11,18 @@ final class AudioOnlyRecordingTests: XCTestCase {
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Audio meeting", recordedAt: date)
         let recording = folder.appendingPathComponent("recording.mov")
-        let writer = try AudioOnlyRecording(to: recording) { _ in }
-        // Real PCM buffers at capture cadence: system sound first, then the microphone.
+        // Delay readiness, not the resulting audio: the real writer must preserve
+        // both signals and timestamps after the encoder becomes available again.
+        let readyAt = ContinuousClock.now.advanced(by: .seconds(1))
+        let writer = try AudioOnlyRecording(to: recording,
+            isReady: { ContinuousClock.now >= readyAt && $0.isReadyForMoreMediaData }) { _ in }
+        // Burst delivery exercises encoder pressure at startup and stop;
+        // the middle runs at capture cadence, with system sound before the mic.
         for index in 0..<75 {
             let time = Double(index) * 0.02
             if index < 60 { writer.append(try sample(at: time, frequency: 440, channels: 2), type: .audio) }
             if index >= 15 { writer.append(try sample(at: time, frequency: 880, channels: 1, rate: 44_100), type: .microphone) }
-            try await Task.sleep(for: .milliseconds(20))
+            if (35..<60).contains(index) { try await Task.sleep(for: .milliseconds(20)) }
         }
         try await writer.finish()
         let asset = AVURLAsset(url: recording)
@@ -52,6 +58,42 @@ final class AudioOnlyRecordingTests: XCTestCase {
         let exported = try String(contentsOf: bundle.appendingPathComponent("transcript.md"), encoding: .utf8)
         XCTAssertFalse(exported.contains("](recording.mov)"))
         XCTAssertTrue(exported.contains("Audio meeting"))
+        try FileManager.default.removeItem(at: recording)
+        let audioBundle = try await MeetingBundle.build(for: meeting) { _ in }
+        let audioExport = try String(contentsOf: audioBundle.appendingPathComponent("transcript.md"), encoding: .utf8)
+        XCTAssertFalse(audioExport.contains("](recording.mov)"), "Remaining mixed audio must not leave a broken video link")
+        let audioGuide = try String(contentsOf: audioBundle.appendingPathComponent("HOW-TO.md"), encoding: .utf8)
+        XCTAssertTrue(audioGuide.contains("Screen video is unavailable"))
+        XCTAssertFalse(audioGuide.contains("audio-only meeting"), "The fallback audio does not establish the original capture mode")
+    }
+
+    func testProlongedEncoderStallStopsExplicitlyAndKeepsWrittenAudio() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let url = root.appendingPathComponent("stalled.mov")
+        let blocked = OSAllocatedUnfairLock(initialState: false)
+        let writer = try AudioOnlyRecording(to: url,
+            isReady: { input in !blocked.withLock { $0 } && input.isReadyForMoreMediaData }) { _ in }
+        for index in 0..<25 {
+            writer.append(try sample(at: Double(index) * 0.02, frequency: 440, channels: 1), type: .audio)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        blocked.withLock { $0 = true }
+        writer.append(try sample(at: 0.5, frequency: 440, channels: 1), type: .audio)
+        let waitingSince = ContinuousClock.now
+        do {
+            try await writer.finish()
+            XCTFail("A prolonged encoder stall must be reported, not silently omit queued audio")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("encoder could not keep up"))
+        }
+        XCTAssertGreaterThan(waitingSince.duration(to: .now), .seconds(1), "Temporary pressure must be given time to recover")
+        XCTAssertLessThan(waitingSince.duration(to: .now), .seconds(5), "Stopping must not wait indefinitely for an encoder")
+        let audioURL = root.appendingPathComponent("stalled.m4a")
+        try await AudioExtractor.extract(from: url, to: audioURL) { _ in }
+        let audio = try AVAudioFile(forReading: audioURL)
+        XCTAssertEqual(Double(audio.length) / audio.processingFormat.sampleRate, 0.5, accuracy: 0.06,
+                       "The media written before the stall remains recoverable")
     }
 
     func testEitherSourceCanRecordWhenTheOtherSendsNoBuffers() async throws {

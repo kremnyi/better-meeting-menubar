@@ -188,6 +188,17 @@ The app-signing certificate and Sparkle key serve different purposes and both ar
 required to publish. Run Sparkle's `generate_keys --account com.kremnyi.bettermeeting`
 to inspect the public key; do not replace the existing key when setting up releases.
 
+### Live validation before stable
+
+Complete [the live release-validation checklist](docs/release-validation.md) on
+an actual signed candidate before promoting a beta to stable. Retain a report
+with the tested version/build, source revision, hardware, exact archive checksum,
+and evidence for each check. Failed, blocked, and unverified applicable checks
+block stable publication; beta notes must explicitly name any outstanding checks.
+A passing `swift test`, signed build, or signature check is not evidence that live
+capture, OS notifications, or update installation worked. The release script
+performs automated checks only; it does not complete or waive this checklist.
+
 ### Release script
 
 `scripts/release.sh` runs the whole release, for stable and beta versions alike:

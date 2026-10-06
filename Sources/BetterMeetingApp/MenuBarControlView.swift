@@ -563,7 +563,7 @@ struct MenuBarControlView: View {
     }
 }
 
-/// A compact native link: only the text gains an underline, never a full-width box.
+/// A compact neutral text action: only the text gains an underline, never a full-width box.
 private struct AudioOnlyRecordingButton: View {
     let start: () -> Void
     @Environment(\.isEnabled) private var isEnabled
@@ -577,8 +577,9 @@ private struct AudioOnlyRecordingButton: View {
                 .padding(.vertical, 3)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.link)
+        .buttonStyle(.plain)
         .font(.caption)
+        .foregroundStyle(.secondary)
         .onHover { hovering = $0 }
         .onDisappear { hovering = false }
         // Center the link without turning the empty row into a hover or click target.

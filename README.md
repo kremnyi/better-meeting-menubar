@@ -400,6 +400,10 @@ remains. Typed titles and titles from older folders are preserved.
 Choose **Export bundle…** from a finished meeting's **•••** menu or right-click.
 The app reads the
 saved video, extracts screenshots and screen text, and opens `artifacts/` in Finder.
+If the original video was removed, export still works from the saved transcript,
+with empty screen files. `HOW-TO.md` explains which media is unavailable; saved
+Markdown edits are kept. An existing but damaged recording still reports an error
+instead of silently omitting its screenshots.
 Enable **Options → Files → Include screenshots and screen text** to run this
 after each transcript is saved. Automatic export is off by default.
 

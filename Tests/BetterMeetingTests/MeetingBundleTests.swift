@@ -68,5 +68,26 @@ final class MeetingBundleTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: bundle.appendingPathComponent("timeline.md")), previous)
         XCTAssertEqual(try String(contentsOf: markdownURL, encoding: .utf8), markdown)
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: folder.path).contains { $0.hasPrefix(".artifacts-") })
+
+        // Deleting media for space must not make a completed transcript unexportable.
+        try FileManager.default.removeItem(at: video)
+        let transcriptOnly = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
+        XCTAssertFalse(transcriptOnly.needsTranscription)
+        let transcriptBundle = try await MeetingBundle.build(for: transcriptOnly) { _ in }
+        XCTAssertEqual(try Data(contentsOf: transcriptBundle.appendingPathComponent("transcript.json")),
+                       try Data(contentsOf: folder.appendingPathComponent("transcript.json")))
+        let transcriptExport = try String(contentsOf: transcriptBundle.appendingPathComponent("transcript.md"), encoding: .utf8)
+        XCTAssertTrue(transcriptExport.contains("Manual correction"))
+        XCTAssertFalse(transcriptExport.contains("](recording.mp4)"))
+        XCTAssertTrue(transcriptExport.contains("unavailable"))
+        let guide = try String(contentsOf: transcriptBundle.appendingPathComponent("HOW-TO.md"), encoding: .utf8)
+        XCTAssertTrue(guide.contains("original recording is unavailable"))
+        XCTAssertFalse(guide.contains("audio-only meeting"), "Missing video is not proof of an audio-only capture")
+        let screens = try JSONDecoder().decode([ScreenEvent].self,
+            from: Data(contentsOf: transcriptBundle.appendingPathComponent("screen.json")))
+        XCTAssertTrue(screens.isEmpty)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: transcriptBundle.appendingPathComponent("screens").path).isEmpty)
+        XCTAssertTrue(try String(contentsOf: transcriptBundle.appendingPathComponent("timeline.md"), encoding: .utf8).contains("Plan"))
+        XCTAssertEqual(try String(contentsOf: markdownURL, encoding: .utf8), markdown)
     }
 }
