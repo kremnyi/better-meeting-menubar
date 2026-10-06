@@ -268,15 +268,18 @@ code, pre { font-family: var(--mono); }
 }
 .pop-field svg { width: 12px; height: 12px; color: var(--pop-ink); stroke-width: 2; }
 .pop-record {
-  display: flex; align-items: center; justify-content: center; gap: 7px;
+  display: flex; align-items: center;
   height: 28px; margin-top: 11px;
   border-radius: 7px;
   background: linear-gradient(#e24a42, #c7271f);
   box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .28), 0 .5px 1.5px rgba(0, 0, 0, .25);
   color: #fff; font-weight: 600; font-size: 13.5px;
 }
-.pop-record svg { width: 14px; height: 14px; stroke-width: 1.8; }
-.pop-record svg circle:last-child { fill: #fff; stroke: none; }
+.pop-record-main { display: flex; align-items: center; justify-content: center; gap: 7px; flex: 1; min-width: 0; }
+.pop-record-main svg { width: 14px; height: 14px; stroke-width: 1.8; }
+.pop-record-main svg circle:last-child { fill: #fff; stroke: none; }
+.pop-record-options { display: flex; align-items: center; justify-content: center; flex: 0 0 32px; height: 14px; border-left: 1px solid rgba(255, 255, 255, .25); }
+.pop-record-options svg { width: 10px; height: 10px; stroke-width: 1.8; }
 .pop-rule { height: 1px; margin: 12px 0 0; background: var(--pop-line); }
 .pop-head { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; font-weight: 600; font-size: 13.5px; }
 .pop-head svg { width: 17px; height: 17px; color: var(--pop-ink-2); stroke-width: 1.4; }
@@ -541,7 +544,7 @@ mark { background: color-mix(in srgb, var(--coral) 22%, transparent); color: inh
 .limits { margin-top: 20px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-radius: 22px; border: 1px solid var(--line); }
 .limits div { padding: 22px 24px; font-size: 14.5px; color: var(--ink-2); }
 .limits div + div { border-left: 1px solid var(--line); }
-.limits strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 15px; font-weight: 600; }
+.limits div > strong:first-child { display: block; margin-bottom: 4px; color: var(--ink); font-size: 15px; font-weight: 600; }
 @media (max-width: 900px) {
   .limits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .limits div:nth-child(3) { border-left: 0; }
@@ -655,7 +658,7 @@ footer { border-top: 1px solid var(--line); padding: 40px 0 48px; font-size: 14p
       </div>
 
       <div>
-        <div class="scene" role="img" aria-label="A macOS desktop with a video call in progress and the Better Meeting menu open below its menu bar icon, showing a Start recording button, upcoming calendar meetings, and a list of recorded meetings.">
+        <div class="scene" role="img" aria-label="A macOS desktop with a video call in progress and the Better Meeting menu open below its menu bar icon, showing a split Start recording button with a recording-options arrow, upcoming calendar meetings, and a list of recorded meetings.">
           <div class="menubar" aria-hidden="true">
             <span class="mb-app"><svg><use href="#glyph"/></svg></span>
             <svg class="mb-hide" viewBox="0 0 20 15"><path d="M10 13.6 7.6 11.2a3.4 3.4 0 0 1 4.8 0L10 13.6Zm-4.2-4.2L4.1 7.7a8.3 8.3 0 0 1 11.8 0l-1.7 1.7a5.9 5.9 0 0 0-8.4 0ZM2.3 5.9.6 4.2a13.3 13.3 0 0 1 18.8 0l-1.7 1.7a10.9 10.9 0 0 0-15.4 0Z"/></svg>
@@ -680,8 +683,11 @@ footer { border-top: 1px solid var(--line); padding: 40px 0 48px; font-size: 14p
             </div>
             <div class="pop-field">Meeting name (optional)</div>
             <div class="pop-record">
-              <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><circle cx="8" cy="8" r="2.8"/></svg>
-              Start recording
+              <span class="pop-record-main">
+                <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><circle cx="8" cy="8" r="2.8"/></svg>
+                Start recording
+              </span>
+              <span class="pop-record-options"><svg viewBox="0 0 16 16"><path d="m4 6 4 4 4-4"/></svg></span>
             </div>
             <div class="pop-rule"></div>
             <div class="pop-head">
@@ -775,7 +781,7 @@ footer { border-top: 1px solid var(--line); padding: 40px 0 48px; font-size: 14p
           </div>
           <span class="step-num">01</span>
           <h3>Record</h3>
-          <p>Click <strong>Start recording</strong>. Better Meeting captures one display, system audio, and your microphone, with a live level meter for each source and a warning if both stay silent.</p>
+          <p>Click <strong>Start recording</strong> for screen video, system audio, and microphone. For no video, open its arrow and choose <strong>Record audio-only</strong>. Live meters show both audio sources.</p>
         </article>
         <article class="step reveal">
           <div class="step-visual" aria-hidden="true">
@@ -1020,7 +1026,7 @@ are ready for review.</pre>
         </div>
       </div>
       <div class="limits reveal">
-        <div><strong>Video or audio-only</strong>Record one whole display, or use Record audio-only for system audio and microphone without video. Window-only capture isn't available.</div>
+        <div><strong>Video or audio-only</strong>The main button records one whole display and audio. Its arrow offers <strong>Record audio-only</strong>, which starts immediately with the same meeting details. Screen recording stays the default. Window-only capture isn't available.</div>
         <div><strong>No built-in AI</strong>No summaries or chat. Export a bundle and use the assistant you trust.</div>
         <div><strong>After the call</strong>Transcripts are made after recording stops. There are no live captions.</div>
         <div><strong>One job at a time</strong>Transcriptions queue up, and recording stays available while they run.</div>
