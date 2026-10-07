@@ -7,6 +7,20 @@ Read only the documentation relevant to the requested work:
 - `CONTRIBUTING.md` for build, test, packaging, release, or website (`site/`) work; use only the relevant sections.
 - `docs/calendar-data.md` for calendar integration, event metadata, and reminders.
 - `.impeccable/critique/` contains historical review findings, not standing instructions or a current backlog. Consult these only when relevant and verify findings against current code.
+- `PRODUCT.md` holds product positioning for Impeccable; its `Platform: ios` value is that skill's Apple bucket, and the app is macOS-only.
+
+## Code map
+
+All app code is in `Sources/BetterMeetingApp/`; tests in `Tests/` are named after the area they cover.
+- `AppModel.swift`: central state — recording lifecycle, transcription queue, retries and recovery, saved settings, model loading and idle release. `AppState.swift` holds its phases and errors.
+- `BetterMeetingApp.swift`: app entry, `MenuBarExtra`, app delegate, notification routing.
+- Capture: `MeetingRecorder.swift` (ScreenCaptureKit, video quality), `AudioMeters.swift`, `AudioExtractor.swift` (audio from the recording), `MeetingAudio.swift` (decoded samples shared by passes).
+- Transcription: `LocalTranscriber.swift` (engines, model storage and migration), `MeetingWhisperKit.swift`, `TranscriptionPasses.swift` (Whisper per-language passes and merge), `ParakeetLanguage.swift`, `SpeakerLabels.swift`, `SpeechSettings.swift`, `MeetingTitle.swift`.
+- Meeting files: `MeetingArtifacts.swift` (folder layout, writes, rename, transcript replacement), `MeetingLibrary.swift` (history scan and search), `MeetingBundle.swift` and `ScreenExtractor.swift` (export bundle).
+- Calendar and detection: `CalendarIntegration.swift`, `CalendarEvent.swift`, `CalendarReminders.swift`, `MeetingCalendar.swift` (sidecar search), `CalendarViews.swift`, `MeetingDetector.swift`.
+- Notifications and updates: `MeetingNotifications.swift`, `AppUpdater.swift` (Sparkle).
+- Menu UI: `MenuBarControlView.swift`, `MeetingHistorySection.swift`, `BrandViews.swift` (menu-bar icon and label), `TranscriptionOptionsView.swift` (Options pages and Re-transcribe), `ModelStorageView.swift`, `UpdateOptionsView.swift`, `AboutView.swift`, `ErrorPanel.swift`.
+- Packaging: `App/Info.plist`, `scripts/` (build, package, release), `Casks/`, `appcast.xml`; website in `site/`.
 
 ## Skills
 
