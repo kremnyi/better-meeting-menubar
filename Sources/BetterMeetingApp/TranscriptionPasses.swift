@@ -54,17 +54,16 @@ enum TranscriptionPasses {
     static func run(
         audioURL: URL, languages: [String], hints: String = "",
         settings: SpeechSettings = SpeechSettings(),
+        audioReady: (@Sendable () async throws -> Void)? = nil,
         progressHandler: @Sendable (LocalTranscriptionProgress) -> Void,
         transcribe: (DecodingOptions, Int) async throws -> [ScoredSegment]
     ) async throws -> [TranscriptSegment] {
         try settings.validate()
         guard !languages.isEmpty, languages.allSatisfy(Constants.languageCodes.contains),
               Set(languages).count == languages.count else { throw TranscriptionError.invalidLanguages }
-        // URL resource values can be stale when an existing audio file is replaced.
-        let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
+        // A pending export has no cache yet; its passes are keyed on the m4a once it is written.
+        var stamp = try audioReady == nil ? AudioStamp(of: audioURL) : nil
         let hints = hints.trimmingCharacters(in: .whitespacesAndNewlines)
-        let audioSize = (attributes[.size] as? NSNumber)?.intValue
-        let audioModified = attributes[.modificationDate] as? Date
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         var segments: [ScoredSegment] = []
@@ -75,18 +74,22 @@ enum TranscriptionPasses {
             let cacheURL = audioURL.deletingLastPathComponent().appendingPathComponent("pass_\(language).json")
             let cache = (try? Data(contentsOf: cacheURL)).flatMap { try? JSONDecoder().decode(Cache.self, from: $0) }
             let pass: [ScoredSegment]
-            if let cache, cache.model == settings.model.rawValue,
+            if let cache, let stamp, cache.model == settings.model.rawValue,
                cache.backend == backend, cache.options == encodedOptions,
                (cache.hints ?? "") == hints,
-               cache.audioSize == audioSize, cache.audioModified == audioModified {
+               cache.audioSize == stamp.size, cache.audioModified == stamp.modified {
                 pass = cache.segments
             } else {
                 pass = try await transcribe(options, index)
                 try Task.checkCancellation()
+                if stamp == nil, let audioReady {
+                    try await audioReady()
+                    stamp = try AudioStamp(of: audioURL)
+                }
                 let cache = Cache(
                     model: settings.model.rawValue, backend: backend,
-                    options: encodedOptions, hints: hints.isEmpty ? nil : hints, audioSize: audioSize,
-                    audioModified: audioModified, segments: pass
+                    options: encodedOptions, hints: hints.isEmpty ? nil : hints, audioSize: stamp?.size,
+                    audioModified: stamp?.modified, segments: pass
                 )
                 try encoder.encode(cache).write(to: cacheURL, options: .atomic)
             }

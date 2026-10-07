@@ -423,6 +423,7 @@ actor LocalTranscriber {
         languages: [String] = TranscriptionLanguage.defaultCandidates,
         hints: String = "",
         settings: SpeechSettings = SpeechSettings(),
+        audioReady: (@Sendable () async throws -> Void)? = nil,
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         activeTranscriptions += 1
@@ -431,13 +432,14 @@ actor LocalTranscriber {
         case .whisper:
             return try await transcribeWhisper(
                 audioURL: audioURL, audio: audio ?? MeetingAudio(url: audioURL),
-                languages: languages, hints: hints, settings: settings,
+                languages: languages, hints: hints, settings: settings, audioReady: audioReady,
                 progressHandler: progressHandler
             )
         case .parakeet:
-            // Speaker labels decode the samples anyway; share them instead of letting FluidAudio decode the file again.
+            // Speaker labels decode the samples anyway, and an m4a still exporting cannot be read yet;
+            // share the samples instead of letting FluidAudio decode the file again.
             return try await transcribeParakeet(
-                audioURL: audioURL, audio: settings.speakerLabels == true ? audio : nil,
+                audioURL: audioURL, audio: settings.speakerLabels == true || audioReady != nil ? audio : nil,
                 progressHandler: progressHandler
             )
         }
@@ -449,13 +451,12 @@ actor LocalTranscriber {
         languages: [String],
         hints: String,
         settings: SpeechSettings,
+        audioReady: (@Sendable () async throws -> Void)?,
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
-        let audioFile = try AVAudioFile(forReading: audioURL)
-        let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
-
-        return try await TranscriptionPasses.run(
-            audioURL: audioURL, languages: languages, hints: hints, settings: settings, progressHandler: progressHandler
+        try await TranscriptionPasses.run(
+            audioURL: audioURL, languages: languages, hints: hints, settings: settings,
+            audioReady: audioReady, progressHandler: progressHandler
         ) { options, index in
             let whisper = try await self.prepare(model: settings.model, progressHandler: progressHandler)
             var options = options
@@ -473,6 +474,10 @@ actor LocalTranscriber {
                 ))
             }
             report(0)
+            // Decoded samples let WhisperKit split the audio at silences and decode several chunks at once.
+            let samples = try await audio.load()
+            try Task.checkCancellation()
+            let duration = Double(samples.count) / Double(WhisperKit.sampleRate)
             // Chunks decoded in parallel finish out of order; report the furthest point reached.
             let furthest = OSAllocatedUnfairLock(initialState: 0.0)
             whisper.segmentDiscoveryCallback = { segments in
@@ -483,9 +488,6 @@ actor LocalTranscriber {
                 })
             }
             defer { whisper.segmentDiscoveryCallback = nil }
-            // Decoded samples let WhisperKit split the audio at silences and decode several chunks at once.
-            let samples = try await audio.load()
-            try Task.checkCancellation()
             let results = try await whisper.transcribe(audioArray: samples, decodeOptions: options)
             try Task.checkCancellation()
             return results.flatMap(\.segments).compactMap { segment in

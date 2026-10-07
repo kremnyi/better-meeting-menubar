@@ -3,6 +3,7 @@ import AVFoundation
 import Combine
 import CoreGraphics
 import Foundation
+import os
 
 struct ProcessingRun {
     let folder: URL
@@ -1262,12 +1263,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private static func audioDuration(_ audioURL: URL) throws -> Double {
+        let audio = try AVAudioFile(forReading: audioURL)
+        try Task.checkCancellation()
+        return Double(audio.length) / audio.fileFormat.sampleRate
+    }
+
     @discardableResult
     private func finishRecording(_ run: ProcessingRun, inBatch: Bool = false) async -> Bool {
         lastTranscriptionOptions = (run.languages, run.hints, run.settings)
         // This job owns its error/retry target, including after an automatic rename.
         var folder = run.folder
         var replacing = run.replacing
+        // A fresh recording's m4a, exported while transcription reads the recording directly.
+        var export: Task<Void, Error>?
         do {
             try Task.checkCancellation()
             try MeetingArtifacts.recoverTranscript(in: folder)
@@ -1287,17 +1296,51 @@ final class AppModel: ObservableObject {
                 try await AudioExtractor.waitUntilReadable(recordingURL)
             }
             setProcessingPhase(.preparingAudio, fraction: 0)
+            // Decoded once, for every language pass and speaker labels.
+            var meetingAudio = MeetingAudio(url: audioURL)
+            defer { meetingAudio.discard() }
+            // Set while the m4a is still exporting; caches are keyed on the finished file.
+            var audioReady: (@Sendable () async throws -> Void)?
+            let duration: Double
             if needsAudio {
-                try await AudioExtractor.extract(from: recordingURL, to: audioURL) { [weak self] fraction in
-                    Task { @MainActor [weak self] in
-                        guard self?.processingPhase == .preparingAudio else { return }
-                        self?.setProcessingFraction(fraction)
+                let exportDone = OSAllocatedUnfairLock(initialState: false)
+                let exporting = Task {
+                    try await AudioExtractor.extract(from: recordingURL, to: audioURL) { [weak self] fraction in
+                        Task { @MainActor [weak self] in
+                            // Transcription overlaps the export; its progress only shows before transcription starts.
+                            guard self?.processingPhase == .preparingAudio else { return }
+                            self?.setProcessingFraction(fraction)
+                        }
+                    }
+                    exportDone.withLock { $0 = true }
+                }
+                export = exporting
+                let exported: @Sendable () async throws -> Void = {
+                    try await withTaskCancellationHandler {
+                        try await exporting.value
+                    } onCancel: {
+                        exporting.cancel()
                     }
                 }
+                let decoded = MeetingAudio(recording: recordingURL)
+                do {
+                    duration = Double(try await decoded.load().count) / MeetingAudio.sampleRate
+                    meetingAudio = decoded
+                    audioReady = { [weak self] in
+                        if !exportDone.withLock({ $0 }) {
+                            await self?.showSavingAudio()
+                        }
+                        try await exported()
+                    }
+                } catch {
+                    try Task.checkCancellation()
+                    // The export reports a recording it cannot read; otherwise transcribe its m4a as before.
+                    try await exported()
+                    duration = try Self.audioDuration(audioURL)
+                }
+            } else {
+                duration = try Self.audioDuration(audioURL)
             }
-            let audio = try AVAudioFile(forReading: audioURL)
-            try Task.checkCancellation()
-            let duration = Double(audio.length) / audio.fileFormat.sampleRate
             if !isCapturing { elapsed = duration }
             if replacing == nil {
                 try MeetingArtifacts.writeMetadata(
@@ -1319,12 +1362,9 @@ final class AppModel: ObservableObject {
                 }
                 try Task.checkCancellation()
             }
-            // Decoded once, for every language pass and speaker labels.
-            let meetingAudio = MeetingAudio(url: audioURL)
-            defer { meetingAudio.discard() }
             var segments = try await transcriber.transcribe(
                 audioURL: audioURL, audio: meetingAudio,
-                languages: run.languages, hints: run.hints, settings: run.settings
+                languages: run.languages, hints: run.hints, settings: run.settings, audioReady: audioReady
             ) { [weak self] progress in
                 Task { @MainActor [weak self] in
                     self?.updateTranscriptionProgress(progress)
@@ -1334,7 +1374,8 @@ final class AppModel: ObservableObject {
             var speakerWarning: String?
             do {
                 segments = try await SpeakerLabels.run(
-                    audioURL: audioURL, segments: segments, enabled: run.settings.speakerLabels == true
+                    audioURL: audioURL, segments: segments, enabled: run.settings.speakerLabels == true,
+                    audioReady: audioReady
                 ) {
                     self.setProcessingPhase(.labelingSpeakers)
                     return try await self.transcriber.detectSpeakers(audio: meetingAudio) { [weak self] fraction in
@@ -1352,6 +1393,8 @@ final class AppModel: ObservableObject {
                 speakerWarning = "Transcript saved without speaker labels: \(error.localizedDescription)"
             }
             meetingAudio.discard()
+            // The folder can be renamed below, so the export must be done first.
+            try await audioReady?()
 
             try Task.checkCancellation()
             setProcessingPhase(.writingFiles)
@@ -1411,6 +1454,11 @@ final class AppModel: ObservableObject {
             )
             return true
         } catch {
+            // A cancelled export removes its partial file; wait for that before the next job can start.
+            if let export {
+                export.cancel()
+                _ = await export.result
+            }
             let failedFolder = folder
             completedFolder = failedFolder
             if Task.isCancelled {
@@ -1558,6 +1606,12 @@ final class AppModel: ObservableObject {
             setProcessingPhase(.transcribing, fraction: fraction)
             processingStatusText = "Transcribing with Parakeet…"
         }
+    }
+
+    /// Transcription can finish before the m4a export it overlaps.
+    private func showSavingAudio() {
+        guard !cancellingTranscription else { return }
+        processingStatusText = "Saving audio.m4a…"
     }
 
     private func setProcessingPhase(_ phase: ProcessingPhase, fraction: Double? = nil) {

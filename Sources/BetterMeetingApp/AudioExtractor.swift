@@ -20,6 +20,18 @@ enum AudioExtractor {
         }
     }
 
+    /// Levels for a recording's system and microphone tracks; MeetingAudio decodes with the same mix.
+    static func mix(for recordingURL: URL, tracks: [AVAssetTrack]) -> AVAudioMix? {
+        guard recordingURL.pathExtension == "mov", tracks.count > 1 else { return nil }
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = tracks.map { track in
+            let parameters = AVMutableAudioMixInputParameters(track: track)
+            parameters.setVolume(1 / Float(tracks.count), at: .zero)
+            return parameters
+        }
+        return mix
+    }
+
     static func extract(
         from recordingURL: URL,
         to audioURL: URL,
@@ -41,15 +53,7 @@ enum AudioExtractor {
         }
 
         exporter.shouldOptimizeForNetworkUse = false
-        if recordingURL.pathExtension == "mov", audioTracks.count > 1 {
-            let mix = AVMutableAudioMix()
-            mix.inputParameters = audioTracks.map { track in
-                let parameters = AVMutableAudioMixInputParameters(track: track)
-                parameters.setVolume(1 / Float(audioTracks.count), at: .zero)
-                return parameters
-            }
-            exporter.audioMix = mix
-        }
+        exporter.audioMix = mix(for: recordingURL, tracks: audioTracks)
         progressHandler(0)
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {

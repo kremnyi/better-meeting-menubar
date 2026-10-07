@@ -21,27 +21,29 @@ enum SpeakerLabels {
 
     static func run(
         audioURL: URL, segments: [TranscriptSegment], enabled: Bool,
+        audioReady: (@Sendable () async throws -> Void)? = nil,
         detect: () async throws -> [Turn]
     ) async throws -> [TranscriptSegment] {
         try Task.checkCancellation()
         guard enabled, !segments.isEmpty else { return segments }
         let backend = "SpeakerKit-1.1.0-pyannote-defaults"
-        let attributes = try FileManager.default.attributesOfItem(atPath: audioURL.path)
-        let size = (attributes[.size] as? NSNumber)?.intValue
-        let modified = attributes[.modificationDate] as? Date
+        // A pending export has no cache yet; its turns are keyed on the m4a once it is written.
+        let stamp = try audioReady == nil ? AudioStamp(of: audioURL) : nil
         let cacheURL = audioURL.deletingLastPathComponent().appendingPathComponent("speaker_turns.json")
         let cache = (try? Data(contentsOf: cacheURL)).flatMap { try? JSONDecoder().decode(Cache.self, from: $0) }
         let turns: [Turn]
-        if let cache, cache.backend == backend, cache.audioSize == size, cache.audioModified == modified,
-           cache.turns.allSatisfy(\.isValid) {
+        if let cache, let stamp, cache.backend == backend, cache.audioSize == stamp.size,
+           cache.audioModified == stamp.modified, cache.turns.allSatisfy(\.isValid) {
             turns = cache.turns
         } else {
             turns = try await detect()
             try Task.checkCancellation()
             guard turns.allSatisfy(\.isValid) else { throw MeetingActionError.invalidMeeting }
+            try await audioReady?()
+            let written = try stamp ?? AudioStamp(of: audioURL)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(Cache(backend: backend, audioSize: size, audioModified: modified, turns: turns))
+            try encoder.encode(Cache(backend: backend, audioSize: written.size, audioModified: written.modified, turns: turns))
                 .write(to: cacheURL, options: .atomic)
         }
         try Task.checkCancellation()
