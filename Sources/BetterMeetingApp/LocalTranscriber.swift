@@ -436,12 +436,8 @@ actor LocalTranscriber {
                 progressHandler: progressHandler
             )
         case .parakeet:
-            // Speaker labels decode the samples anyway, and an m4a still exporting cannot be read yet;
-            // share the samples instead of letting FluidAudio decode the file again.
-            return try await transcribeParakeet(
-                audioURL: audioURL, audio: settings.speakerLabels == true || audioReady != nil ? audio : nil,
-                progressHandler: progressHandler
-            )
+            // The same decoded samples serve Whisper, speaker labels and a recording whose m4a is still exporting.
+            return try await transcribeParakeet(audio: audio ?? MeetingAudio(url: audioURL), progressHandler: progressHandler)
         }
     }
 
@@ -502,12 +498,11 @@ actor LocalTranscriber {
     }
 
     private func transcribeParakeet(
-        audioURL: URL,
-        audio: MeetingAudio?,
+        audio: MeetingAudio,
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         let manager = try await prepareParakeet(progressHandler: progressHandler)
-        let samples = try await audio?.load()
+        let samples = try await audio.load()
         try Task.checkCancellation()
         progressHandler(.engineTranscribing(nil))
         let progressTask = Task {
@@ -521,11 +516,7 @@ actor LocalTranscriber {
         var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
         // Parakeet detects the language itself. The language list is Whisper's setting, and pinning
         // one language garbled English product names in a Russian call.
-        let result = if let samples {
-            try await manager.transcribe(samples, decoderState: &decoderState, language: nil)
-        } else {
-            try await manager.transcribe(audioURL, decoderState: &decoderState, language: nil)
-        }
+        let result = try await manager.transcribe(samples, decoderState: &decoderState, language: nil)
         try Task.checkCancellation()
         // ponytail: Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.
         return ParakeetLanguage.tagging(Self.segments(from: result))
