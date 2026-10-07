@@ -38,7 +38,7 @@ final class AppModel: ObservableObject {
     /// A transcription that failed while nothing was recording. It shows inline in the idle menu,
     /// so a failed transcript never takes the place of Start recording.
     @Published private(set) var transcriptionError: Error?
-    @Published private(set) var completedFolder: URL? {
+    @Published var completedFolder: URL? {
         didSet {
             // Checked once when the folder is set; the menu reads the flag on every redraw.
             hasCompletedTranscript = completedFolder.map {
@@ -502,7 +502,7 @@ final class AppModel: ObservableObject {
     func prepareSavedTranscription(_ item: MeetingHistoryItem) {
         completionMessage = nil
         completedFolder = nil
-        recording.clearFailure()
+        if recording.state == .failed { recording.state = .idle }
         transcriptionError = nil
         if !isCapturing { elapsed = item.duration }
         lastError = nil
@@ -524,7 +524,7 @@ final class AppModel: ObservableObject {
 
     func dismissFailure() {
         guard state == .failed else { return }
-        recording.clearFailure()
+        recording.state = .idle
         lastError = nil
         privacyPermission = nil
         meetingTitle = ""
@@ -691,12 +691,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// The meeting a finished export or a cancelled job reports on.
-    func showOutcome(in folder: URL, message: String) {
-        completedFolder = folder
-        completionMessage = message
-    }
-
     func transcriptSaved(in folder: URL) {
         completedFolder = folder
         updateFailedTranscriptionFolders { $0.remove(folder) }
@@ -738,9 +732,14 @@ final class AppModel: ObservableObject {
 
     /// `folder` is the meeting the failure belongs to; a job transcribing meanwhile keeps its own state.
     func fail(_ error: Error, folder: URL? = nil) {
-        recording.didFail()
+        recording.stopTimer()
+        recording.state = .failed
+        recording.statusText = "Couldn’t finish this recording."
         transcriptionError = nil
-        processing.clearProgressUnlessRunning()
+        if processing.task == nil {
+            processing.fraction = nil
+            processing.phase = nil
+        }
         lastError = error
         if let folder {
             updateFailedTranscriptionFolders { $0.insert(folder) }

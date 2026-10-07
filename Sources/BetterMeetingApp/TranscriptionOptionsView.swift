@@ -116,15 +116,15 @@ struct CaptureOptionsView: View {
                     .toggleCaption()
                     .help(launchAtLoginError ?? "")
                 }
-                SettingToggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime,
-                              help: "Shows the elapsed time beside the menu bar icon while recording")
+                Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
+                    .setting(help: "Shows the elapsed time beside the menu bar icon while recording")
             }
             VStack(alignment: .leading, spacing: 5) {
                 Text("Updates").font(.headline)
-                SettingToggle("Download updates automatically", isOn: $model.automaticUpdateChecks,
-                              help: "Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
-                SettingToggle("Include beta releases", isOn: $model.betaUpdates,
-                              help: "Offers beta builds ahead of the next release. Stable releases arrive either way.")
+                Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
+                    .setting(help: "Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
+                Toggle("Include beta releases", isOn: $model.betaUpdates)
+                    .setting(help: "Offers beta builds ahead of the next release. Stable releases arrive either way.")
                 UpdateOptionsView(updates: model.updates, version: version)
             }
             Divider()
@@ -213,11 +213,11 @@ struct CaptureOptionsView: View {
                 destinationButton
             }
             GridRow {
-                SettingToggle("Include screenshots and screen text", isOn: $model.exportAfterRecording,
-                              help: "After saving each transcript, export a bundle with screenshots and screen text into an artifacts folder.",
-                              caption: model.exportAfterRecording ? "Saves extra files beside the transcript." : nil,
-                              disabled: model.fileSettingsLocked)
-                .gridCellColumns(2)
+                Toggle("Include screenshots and screen text", isOn: $model.exportAfterRecording)
+                    .disabled(model.fileSettingsLocked)
+                    .setting(help: "After saving each transcript, export a bundle with screenshots and screen text into an artifacts folder.",
+                             caption: model.exportAfterRecording ? "Saves extra files beside the transcript." : nil)
+                    .gridCellColumns(2)
             }
         }
     }
@@ -442,7 +442,7 @@ struct AdvancedTranscriptionView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 Text("Applies to future transcriptions.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .wrappingCaption()
                 HelpPopover(text: "The engine picks speed or accuracy; the model trades memory for quality; vocabulary and decoding help Whisper with names and noisy audio. Defaults suit most meetings.")
                 Spacer(minLength: 0)
             }
@@ -483,10 +483,11 @@ struct AdvancedTranscriptionView: View {
                     }
                 }
                 GridRow {
-                    SettingToggle("Add speaker labels", isOn: Binding(
+                    Toggle("Add speaker labels", isOn: Binding(
                         get: { settings.speakerLabels == true },
                         set: { settings.speakerLabels = $0 }
-                    ), help: "Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
+                    ))
+                    .setting(help: "Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
                     .toggleStyle(.checkbox)
                     .gridCellColumns(2)
                 }
@@ -550,13 +551,6 @@ struct AdvancedTranscriptionView: View {
             .accessibilityLabel(title)
             .help(help)
         }
-    }
-}
-
-private extension View {
-    /// A picker beside its row title in a Grid: the title shows, the picker keeps the label for VoiceOver.
-    func gridPicker(_ label: LocalizedStringKey, disabled: Bool) -> some View {
-        labelsHidden().frame(maxWidth: .infinity).disabled(disabled).accessibilityLabel(label)
     }
 }
 

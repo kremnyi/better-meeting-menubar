@@ -428,16 +428,16 @@ actor LocalTranscriber {
     ) async throws -> [TranscriptSegment] {
         activeTranscriptions += 1
         defer { activeTranscriptions -= 1 }
+        let audio = audio ?? MeetingAudio(url: audioURL)
         switch settings.selectedEngine {
         case .whisper:
             return try await transcribeWhisper(
-                audioURL: audioURL, audio: audio ?? MeetingAudio(url: audioURL),
+                audioURL: audioURL, audio: audio,
                 languages: languages, hints: hints, settings: settings, audioReady: audioReady,
                 progressHandler: progressHandler
             )
         case .parakeet:
-            // The same decoded samples serve Whisper, speaker labels and a recording whose m4a is still exporting.
-            return try await transcribeParakeet(audio: audio ?? MeetingAudio(url: audioURL), progressHandler: progressHandler)
+            return try await transcribeParakeet(audio: audio, progressHandler: progressHandler)
         }
     }
 

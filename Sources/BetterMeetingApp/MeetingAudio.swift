@@ -19,35 +19,28 @@ struct AudioStamp: Sendable {
 /// A meeting's audio as 16 kHz mono samples, decoded on first use and shared by every
 /// Whisper language pass and speaker labeling instead of decoding the file for each.
 final class MeetingAudio: Sendable {
-    static let sampleRate = Double(WhisperKit.sampleRate)
-
-    /// The extracted m4a, or the recording itself for `init(recording:)`.
+    /// The extracted m4a, or the recording itself when `isRecording` is set.
     let url: URL
-    private let fromRecording: Bool
+    private let isRecording: Bool
     // One shared decode; a second caller awaits it instead of repeating it.
     private let decode = OSAllocatedUnfairLock<Task<[Float], Error>?>(initialState: nil)
 
-    init(url: URL) {
-        self.url = url
-        fromRecording = false
-    }
-
-    /// Decodes the recording with AudioExtractor's track mix, so transcription need not wait for the
+    /// A recording decodes with AudioExtractor's track mix, so transcription need not wait for the
     /// m4a export. The samples differ from the m4a's only by the export's AAC encoding.
-    init(recording: URL) {
-        url = recording
-        fromRecording = true
+    init(url: URL, isRecording: Bool = false) {
+        self.url = url
+        self.isRecording = isRecording
     }
 
     /// The decoded samples. The decode runs on a dispatch queue rather than the cooperative pool.
     func load() async throws -> [Float] {
         try Task.checkCancellation()
         let url = url
-        let fromRecording = fromRecording
+        let isRecording = isRecording
         let task = decode.withLock { task in
             if let task { return task }
             let started = Task<[Float], Error> {
-                if fromRecording { return try await Self.decodeRecording(url) }
+                if isRecording { return try await Self.decodeRecording(url) }
                 return try await withCheckedThrowingContinuation { continuation in
                     DispatchQueue.global(qos: .userInitiated).async {
                         continuation.resume(with: Result { try AudioProcessor.loadAudioAsFloatArray(fromPath: url.path) })
@@ -87,7 +80,6 @@ final class MeetingAudio: Sendable {
                 channels = max(channels, Int(format.mChannelsPerFrame))
             }
         }
-        let duration = try await asset.load(.duration).seconds
         let cancelled = OSAllocatedUnfairLock(initialState: false)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -95,7 +87,7 @@ final class MeetingAudio: Sendable {
                     continuation.resume(with: Result {
                         try read(asset, tracks: tracks, mix: AudioExtractor.mix(for: url, tracks: allTracks),
                                  rate: rate > 0 ? rate : 48_000, channels: min(channels, 2),
-                                 duration: duration, cancelled: cancelled)
+                                 cancelled: cancelled)
                     })
                 }
             }
@@ -106,7 +98,7 @@ final class MeetingAudio: Sendable {
 
     private static func read(
         _ asset: AVURLAsset, tracks: [AVAssetTrack], mix: AVAudioMix?, rate: Double, channels: Int,
-        duration: Double, cancelled: OSAllocatedUnfairLock<Bool>
+        cancelled: OSAllocatedUnfairLock<Bool>
     ) throws -> [Float] {
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
@@ -132,7 +124,6 @@ final class MeetingAudio: Sendable {
 
         let sampleRate = Double(WhisperKit.sampleRate)
         var samples: [Float] = []
-        if duration.isFinite, duration > 0 { samples.reserveCapacity(Int(duration * sampleRate) + Int(sampleRate)) }
         // WhisperKit decodes the m4a in 10-minute windows read 1,323,000 frames at a time, mixing each
         // read to mono and resampling it alone; flush at the same frames so the samples match it.
         let window = AVAudioFramePosition(600 * rate)
@@ -174,7 +165,6 @@ final class MeetingAudio: Sendable {
                 }
             }
         }
-        if cancelled.withLock({ $0 }) { throw CancellationError() }
         if reader.status == .failed { throw reader.error ?? AudioExtractionError.cannotCreateExporter }
         try flush()
         return samples

@@ -215,8 +215,6 @@ extension AppModel {
     }
 
     private func restartApplication() {
-        recording.statusText = "Restarting Better Meeting…"
-
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         configuration.createsNewApplicationInstance = true

@@ -5,7 +5,7 @@ import Combine
 /// queued for processing. Its tasks capture the model, so a capture starting or stopping keeps it alive.
 @MainActor
 final class RecordingSession: ObservableObject {
-    @Published private(set) var state: AppState = .idle { didSet { model.refreshCaptureAccess() } }
+    @Published var state: AppState = .idle { didSet { model.refreshCaptureAccess() } }
     @Published var statusText = "Ready to record your display and audio."
     @Published private(set) var audioWarning = false
     @Published private(set) var audioWarningTitle = "No audio detected yet"
@@ -226,7 +226,6 @@ final class RecordingSession: ObservableObject {
                 let elapsed = Date().timeIntervalSince(startDate)
                 // The clocks show whole seconds; publishing every tick would redraw the menu four times a second.
                 if Int(elapsed) != Int(model.elapsed) { model.elapsed = elapsed }
-                // Only the open menu shows the meters.
                 if model.menuWindow?.isVisible == true {
                     model.meters.update(
                         microphone: self.recorder.audioLevel(microphone: true),
@@ -304,7 +303,7 @@ final class RecordingSession: ObservableObject {
         if let id { MeetingNotifications.remove(id.uuidString) }
     }
 
-    private func stopTimer() {
+    func stopTimer() {
         timer?.invalidate()
         timer = nil
         clearAudioWarning()
@@ -314,15 +313,5 @@ final class RecordingSession: ObservableObject {
         diskSpace = nil
         id = nil
         model.meters.update(microphone: 0, system: 0)
-    }
-
-    func didFail() {
-        stopTimer()
-        state = .failed
-        statusText = "Couldn’t finish this recording."
-    }
-
-    func clearFailure() {
-        if state == .failed { state = .idle }
     }
 }

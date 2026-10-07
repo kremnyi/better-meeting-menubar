@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import os
 import ScreenCaptureKit
@@ -37,20 +38,18 @@ final class AudioOnlyRecordingTests: XCTestCase {
         try await AudioExtractor.extract(from: recording, to: audioURL) { _ in }
         // Transcription reads the recording while its m4a exports, so both must yield the same samples,
         // including for a recording whose microphone track is disabled.
-        let scratch = makeTempRoot()
-        defer { removeTempRoot(scratch) }
         let movie = AVMutableMovie(url: recording)
         try XCTUnwrap(movie.tracks(withMediaType: .audio).last).isEnabled = false
-        let disabled = scratch.appendingPathComponent("disabled.mov")
+        let disabled = root.appendingPathComponent("disabled.mov")
         try movie.writeHeader(to: disabled, fileType: .mov, options: .addMovieHeaderToDestination)
-        let disabledAudio = scratch.appendingPathComponent("disabled.m4a")
+        let disabledAudio = root.appendingPathComponent("disabled.m4a")
         try await AudioExtractor.extract(from: disabled, to: disabledAudio) { _ in }
         var levels: [Double] = []
         for (source, exported) in [(recording, audioURL), (disabled, disabledAudio)] {
-            let direct = try await MeetingAudio(recording: source).load()
+            let direct = try await MeetingAudio(url: source, isRecording: true).load()
             let loaded = try await MeetingAudio(url: exported).load()
             XCTAssertEqual(direct.count, loaded.count, accuracy: 160, source.lastPathComponent)
-            let rms = { (samples: [Float]) in sqrt(samples.reduce(0) { $0 + Double($1 * $1) } / Double(max(samples.count, 1))) }
+            let rms = { (samples: [Float]) in Double(vDSP.rootMeanSquare(samples)) }
             XCTAssertEqual(rms(direct), rms(loaded), accuracy: 0.05 * rms(loaded), source.lastPathComponent)
             levels.append(rms(loaded))
         }

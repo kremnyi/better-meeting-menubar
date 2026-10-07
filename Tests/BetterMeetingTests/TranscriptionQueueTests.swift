@@ -176,11 +176,11 @@ final class TranscriptionQueueTests: XCTestCase {
             }
             model.transcribeAllRecordings { _ in XCTFail("Pre-start cancellation must not process"); return false }
             let task = try XCTUnwrap(model.processing.task)
-            var redraws = 0
-            let redraw = model.objectWillChange.sink { redraws += 1 }
+            var redrew = false
+            let redraw = model.objectWillChange.sink { redrew = true }
+            defer { redraw.cancel() }
             model.cancelTranscription()
-            XCTAssertGreaterThan(redraws, 0, "The menu observes the model, so the queue's Cancelling… must reach it")
-            redraw.cancel()
+            XCTAssertTrue(redrew, "The menu observes the model, so the queue's Cancelling… must reach it")
             await task.value
             XCTAssertEqual(model.state, .idle)
         }

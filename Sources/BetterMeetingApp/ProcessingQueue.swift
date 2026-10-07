@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 import Combine
-import os
+import WhisperKit
 
 struct ProcessingRun {
     let folder: URL
@@ -41,8 +41,8 @@ extension LocalTranscriptionProgress {
 /// and completion. Results surface through the model; its tasks capture the model, so a running job keeps it alive.
 @MainActor
 final class ProcessingQueue: ObservableObject {
-    @Published private(set) var phase: ProcessingPhase?
-    @Published private(set) var fraction: Double?
+    @Published var phase: ProcessingPhase?
+    @Published var fraction: Double?
     @Published private(set) var statusText = ""
     @Published private(set) var title = ""
     @Published private(set) var folder: URL?
@@ -100,13 +100,15 @@ final class ProcessingQueue: ObservableObject {
             var succeeded = false
             do {
                 let destination = try await createBundle(for: meeting)
-                model.showOutcome(in: meeting.folderURL, message: "Export bundle saved in the meeting folder.")
+                model.completedFolder = meeting.folderURL
+                model.completionMessage = "Export bundle saved in the meeting folder."
                 NSWorkspace.shared.open(destination)
                 succeeded = true
             } catch {
-                model.showOutcome(in: meeting.folderURL, message: Task.isCancelled
+                model.completedFolder = meeting.folderURL
+                model.completionMessage = Task.isCancelled
                     ? "Export cancelled. Existing meeting files and bundle are kept."
-                    : "Export failed: \(error.localizedDescription)")
+                    : "Export failed: \(error.localizedDescription)"
             }
             queueFinished(succeeded: succeeded)
         }
@@ -195,16 +197,8 @@ final class ProcessingQueue: ObservableObject {
         if !succeeded || !model.isCapturing { model.completeTermination(succeeded) }
     }
 
-    /// A capture failure clears the progress only when no job is running to keep its own.
-    func clearProgressUnlessRunning() {
-        guard task == nil else { return }
-        fraction = nil
-        phase = nil
-    }
-
     private static func audioDuration(_ audioURL: URL) throws -> Double {
         let audio = try AVAudioFile(forReading: audioURL)
-        try Task.checkCancellation()
         return Double(audio.length) / audio.fileFormat.sampleRate
     }
 
@@ -242,7 +236,6 @@ final class ProcessingQueue: ObservableObject {
             var audioReady: (@Sendable () async throws -> Void)?
             let duration: Double
             if needsAudio {
-                let exportDone = OSAllocatedUnfairLock(initialState: false)
                 let exporting = Task {
                     try await AudioExtractor.extract(from: recordingURL, to: audioURL) { [weak self] fraction in
                         Task { @MainActor [weak self] in
@@ -251,7 +244,6 @@ final class ProcessingQueue: ObservableObject {
                             self?.setFraction(fraction)
                         }
                     }
-                    exportDone.withLock { $0 = true }
                 }
                 export = exporting
                 let exported: @Sendable () async throws -> Void = {
@@ -261,13 +253,14 @@ final class ProcessingQueue: ObservableObject {
                         exporting.cancel()
                     }
                 }
-                let decoded = MeetingAudio(recording: recordingURL)
+                let decoded = MeetingAudio(url: recordingURL, isRecording: true)
                 do {
-                    duration = Double(try await decoded.load().count) / MeetingAudio.sampleRate
+                    duration = Double(try await decoded.load().count) / Double(WhisperKit.sampleRate)
                     meetingAudio = decoded
                     audioReady = { [weak self] in
-                        if !exportDone.withLock({ $0 }) {
-                            await self?.showSavingAudio()
+                        // Transcription can finish before the m4a export it overlaps.
+                        await MainActor.run { [weak self] in
+                            if let self, !self.cancelling { self.statusText = "Saving audio.m4a…" }
                         }
                         try await exported()
                     }
@@ -396,9 +389,10 @@ final class ProcessingQueue: ObservableObject {
             }
             let failedFolder = folder
             if Task.isCancelled {
-                model.showOutcome(in: failedFolder, message: replacing == nil
+                model.completedFolder = failedFolder
+                model.completionMessage = replacing == nil
                     ? "Transcription cancelled. Recording kept; transcribe it from the menu to resume."
-                    : "Re-transcription cancelled. Your existing transcript is unchanged.")
+                    : "Re-transcription cancelled. Your existing transcript is unchanged."
                 model.refreshHistory()
                 return false
             }
@@ -423,12 +417,6 @@ final class ProcessingQueue: ObservableObject {
             setPhase(.transcribing, fraction: fraction)
             statusText = "Transcribing with Parakeet…"
         }
-    }
-
-    /// Transcription can finish before the m4a export it overlaps.
-    private func showSavingAudio() {
-        guard !cancelling else { return }
-        statusText = "Saving audio.m4a…"
     }
 
     private func setPhase(_ phase: ProcessingPhase, fraction: Double? = nil) {

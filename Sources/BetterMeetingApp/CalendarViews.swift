@@ -10,17 +10,19 @@ struct MeetingOptionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Calendar").font(.headline)
-            SettingToggle("Use calendar", isOn: Binding(
+            Toggle("Use calendar", isOn: Binding(
                 get: { calendar.enabled },
                 set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
-            ), caption: "Lists upcoming meetings in the menu.")
+            ))
+            .setting(caption: "Lists upcoming meetings in the menu.")
 
             Group {
                 if calendar.authorization == .fullAccess {
-                    SettingToggle("Show next meeting in the menu bar", isOn: Binding(
+                    Toggle("Show next meeting in the menu bar", isOn: Binding(
                         get: { calendar.menuBarPreview },
                         set: { calendar.setMenuBarPreview($0) }
                     ))
+                    .setting()
                     calendarChoices
                 } else {
                     accessRequest
@@ -40,9 +42,9 @@ struct MeetingOptionsView: View {
             Divider()
             Text("Suggest recording").font(.headline)
             CalendarReminderOptionsView(calendar: calendar, reminders: calendar.reminders)
-            SettingToggle("Detect meetings automatically", isOn: $detectsMeetings,
-                          help: "Notifies you when another app has used the microphone for half a minute. Nothing is recorded on its own.",
-                          caption: "For calls that aren’t on your calendar.")
+            Toggle("Detect meetings automatically", isOn: $detectsMeetings)
+                .setting(help: "Notifies you when another app has used the microphone for half a minute. Nothing is recorded on its own.",
+                         caption: "For calls that aren’t on your calendar.")
         }
         .toggleStyle(.checkbox)
         .task { await calendar.refresh() }
@@ -136,11 +138,8 @@ private struct CalendarReminderOptionsView: View {
                     set: { value in Task { await calendar.setNotifyAtStart(value) } }
                 ))
                 .disabled(reminders.requestingAccess || unavailableReason != nil)
-                .help("Sends a notification with Start recording when a meeting from your selected calendars begins.")
-                if let unavailableReason {
-                    Text(unavailableReason)
-                        .toggleCaption()
-                }
+                .setting(help: "Sends a notification with Start recording when a meeting from your selected calendars begins.",
+                         caption: unavailableReason.map { LocalizedStringKey($0) })
                 // Schedule status belongs under its own toggle, not between the two checkboxes.
                 if calendar.notifyAtStart, unavailableReason == nil {
                     TimelineView(.periodic(from: .now, by: 60)) { context in

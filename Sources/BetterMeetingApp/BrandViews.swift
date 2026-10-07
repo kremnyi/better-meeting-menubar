@@ -240,31 +240,19 @@ extension View {
     func wrappingCaption() -> some View {
         font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
-}
 
-/// A checkbox setting: the toggle with its tooltip, and an optional caption under its title.
-/// `disabled` dims only the toggle, as the caption explains the setting either way.
-struct SettingToggle: View {
-    let title: LocalizedStringKey
-    @Binding var isOn: Bool
-    var help: LocalizedStringKey?
-    var caption: LocalizedStringKey?
-    var disabled = false
-
-    init(_ title: LocalizedStringKey, isOn: Binding<Bool>, help: LocalizedStringKey? = nil,
-         caption: LocalizedStringKey? = nil, disabled: Bool = false) {
-        (self.title, _isOn, self.help, self.caption, self.disabled) = (title, isOn, help, caption, disabled)
-    }
-
-    var body: some View {
+    /// A checkbox setting: the toggle with its tooltip, and an optional caption under its title.
+    /// Apply `.disabled` before this so it dims only the toggle; the caption explains the setting either way.
+    func setting(help: LocalizedStringKey? = nil, caption: LocalizedStringKey? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let help {
-                Toggle(title, isOn: $isOn).disabled(disabled).help(help)
-            } else {
-                Toggle(title, isOn: $isOn).disabled(disabled)
-            }
+            self.help(help ?? "")
             if let caption { Text(caption).toggleCaption() }
         }
+    }
+
+    /// A picker beside its row title in a Grid; the picker keeps the label for VoiceOver.
+    func gridPicker(_ label: LocalizedStringKey, disabled: Bool) -> some View {
+        labelsHidden().frame(maxWidth: .infinity).disabled(disabled).accessibilityLabel(label)
     }
 }
 
