@@ -3,6 +3,17 @@
     <channel>
         <title>Better Meeting</title>
         <item>
+            <title>0.4.5b1</title>
+            <pubDate>Wed, 07 Oct 2026 15:35:56 +0200</pubDate>
+            <link>https://github.com/kremnyi/better-meeting-menubar/releases/tag/v0.4.5b1</link>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>116</sparkle:version>
+            <sparkle:shortVersionString>0.4.5b1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/kremnyi/better-meeting-menubar/releases/download/v0.4.5b1/Better-Meeting-0.4.5b1-arm64.zip" length="14108857" type="application/octet-stream" sparkle:edSignature="v1DCiPAot/GLW2caq1HDRyozKpkzg23JB0EgQDiwCoM5E2AhcqEoWFJw/QwV2uDCwVfEsWa9Wf0oL8rJwzWzBg==" />
+        </item>
+        <item>
             <title>0.4.4</title>
             <pubDate>Tue, 06 Oct 2026 16:03:36 +0200</pubDate>
             <link>https://github.com/kremnyi/better-meeting-menubar/releases/tag/v0.4.4</link>
@@ -11,17 +22,6 @@
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <enclosure url="https://github.com/kremnyi/better-meeting-menubar/releases/download/v0.4.4/Better-Meeting-0.4.4-arm64.zip" length="14083850" type="application/octet-stream" sparkle:edSignature="t85U0l9VAEYSoaA0uopp7xaCrG5YxwpoeF+eY62hJgIEMj99nxZFQuAqorWoEGxrhaYFfOm4g2Zi6Ibh46rDAQ==" />
-        </item>
-        <item>
-            <title>0.4.4b11</title>
-            <pubDate>Tue, 06 Oct 2026 15:02:49 +0200</pubDate>
-            <link>https://github.com/kremnyi/better-meeting-menubar/releases/tag/v0.4.4b11</link>
-            <sparkle:channel>beta</sparkle:channel>
-            <sparkle:version>114</sparkle:version>
-            <sparkle:shortVersionString>0.4.4b11</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/kremnyi/better-meeting-menubar/releases/download/v0.4.4b11/Better-Meeting-0.4.4b11-arm64.zip" length="14083854" type="application/octet-stream" sparkle:edSignature="039qIWlhatuJ1zplpEBzgLaIFI/RllPikfb/FK8Hu0WGpPBEJbt/CiFxQZJIIEwqPXls56RgkLwdPIqMZlKNCg==" />
         </item>
     </channel>
 </rss>
