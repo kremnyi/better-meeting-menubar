@@ -200,7 +200,7 @@ final class MeetingCalendarTests: XCTestCase {
         reader.beforeReturn = nil
         XCTAssertTrue(activated)
         XCTAssertEqual(starts, 1)
-        model.recordingDidStart(at: Date())
+        model.recording.didStart(at: Date())
         await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
         XCTAssertEqual(starts, 1)
         XCTAssertEqual(model.state, .recording)

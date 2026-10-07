@@ -245,7 +245,7 @@ final class RecoveryTests: XCTestCase {
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
         model.retryTranscription(try XCTUnwrap(model.unfinishedRecordings.first))
-        let processing = try XCTUnwrap(model.processingTask)
+        let processing = try XCTUnwrap(model.processing.task)
         XCTAssertTrue(model.isProcessing)
 
         var exits = 0
@@ -355,7 +355,7 @@ final class RecoveryTests: XCTestCase {
         await model.historyRefreshTask?.value
         let item = try XCTUnwrap(model.unfinishedRecordings.first)
         model.retryTranscription(item)
-        let processing = try XCTUnwrap(model.processingTask)
+        let processing = try XCTUnwrap(model.processing.task)
         XCTAssertTrue(model.isProcessing)
         let view = hostingView(MenuBarControlView(), model: model)
         func searchField(in view: NSView) -> NSSearchField? {
@@ -380,7 +380,7 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(model.unfinishedRecordings.first?.folderURL.resolvingSymlinksInPath(), pending.resolvingSymlinksInPath())
         try writePanelPreview(view, name: "cancelled")
         model.retryTranscription(item)
-        await model.processingTask?.value
+        await model.processing.task?.value
         XCTAssertEqual(model.state, .idle)
         XCTAssertNotNil(model.failedTranscriptionMeeting)
         XCTAssertFalse(model.updates.isBusy(), "A failure must unlock settings so the user can recover")
@@ -401,8 +401,8 @@ final class RecoveryTests: XCTestCase {
         model.accessibilityAnnouncement = { announcements.append($0) }
 
         model.retryTranscription(item)
-        let task = try XCTUnwrap(model.processingTask)
-        model.recordingDidStart(at: Date())
+        let task = try XCTUnwrap(model.processing.task)
+        model.recording.didStart(at: Date())
         await task.value
 
         XCTAssertEqual(model.state, .recording)
@@ -850,20 +850,22 @@ final class RecoveryTests: XCTestCase {
             model.fail(AppError.missingRecording)
             removeTempDefaults(defaults, suite: suite, root: root)
         }
-        model.recordingDidStart(at: Date())
-        var warnings = 0
-        let observation = model.$audioWarning.sink { if $0 { warnings += 1 } }
-        defer { observation.cancel() }
+        model.recording.didStart(at: Date())
+        var warnings = 0, redraws = 0
+        let observations = [model.recording.$audioWarning.sink { if $0 { warnings += 1 } }, model.objectWillChange.sink { redraws += 1 }]
+        defer { observations.forEach { $0.cancel() } }
         let view = hostingView(MenuBarControlView(), model: model)
         let initialSize = view.fittingSize
-        model.checkRecordingAudio(elapsed: 29.99, audioDetected: false)
+        model.recording.checkAudio(elapsed: 29.99, audioDetected: false)
         XCTAssertFalse(model.audioWarning)
         let panels = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"].map { URL(fileURLWithPath: $0) }
         if let panels { try writePreview(view, to: panels.appendingPathComponent("recording-normal.png")) }
-        model.checkRecordingAudio(elapsed: 30, audioDetected: false)
+        let redrawsBefore = redraws
+        model.recording.checkAudio(elapsed: 30, audioDetected: false)
         XCTAssertTrue(model.audioWarning)
+        XCTAssertGreaterThan(redraws, redrawsBefore, "The menu observes the model, so the recording's warning must reach it")
         XCTAssertEqual(announcements, ["Recording started.", "No audio detected yet. Check your microphone and meeting audio."])
-        model.checkRecordingAudio(elapsed: 120, audioDetected: false)
+        model.recording.checkAudio(elapsed: 120, audioDetected: false)
         XCTAssertEqual(warnings, 1)
         XCTAssertEqual(model.state, .recording, "A warning must not stop recording")
         let warningView = hostingView(view.rootView, model: model)
@@ -886,23 +888,23 @@ final class RecoveryTests: XCTestCase {
             samples.update(repeating: 0.1, count: 100)
             recorder.updateAudioLevel(buffer, type: source, at: .now)
             XCTAssertTrue(recorder.hasDetectedAudio, "Either source must count as detected audio")
-            model.checkRecordingAudio(elapsed: 120, audioDetected: recorder.hasDetectedAudio)
+            model.recording.checkAudio(elapsed: 120, audioDetected: recorder.hasDetectedAudio)
             XCTAssertFalse(model.audioWarning)
             samples.update(repeating: 0, count: 100)
             recorder.updateAudioLevel(buffer, type: source, at: .now)
             XCTAssertTrue(recorder.hasDetectedAudio, "Later silence must not erase the earlier signal")
-            model.checkRecordingAudio(elapsed: 600, audioDetected: recorder.hasDetectedAudio)
+            model.recording.checkAudio(elapsed: 600, audioDetected: recorder.hasDetectedAudio)
             XCTAssertFalse(model.audioWarning)
         }
         XCTAssertEqual(warnings, 1)
         XCTAssertEqual(hostingView(view.rootView, model: model).fittingSize, initialSize)
-        model.recordingDidStart(at: Date())
-        model.checkRecordingAudio(elapsed: 30, audioDetected: false)
+        model.recording.didStart(at: Date())
+        model.recording.checkAudio(elapsed: 30, audioDetected: false)
         XCTAssertEqual(warnings, 2, "A new recording must get its own warning")
         model.fail(AppError.missingRecording)
         XCTAssertFalse(model.audioWarning)
         XCTAssertNil(model.recordingID)
-        model.checkRecordingAudio(elapsed: 60, audioDetected: false)
+        model.recording.checkAudio(elapsed: 60, audioDetected: false)
         XCTAssertFalse(model.audioWarning, "A late timer callback must not warn after recording stops")
     }
 
@@ -925,24 +927,24 @@ final class RecoveryTests: XCTestCase {
         for source: SCStreamOutputType in [.microphone, .audio] {
             recorder.updateAudioLevel(buffer, type: source, at: start)
         }
-        model.recordingDidStart(at: date)
+        model.recording.didStart(at: date)
         let initialSize = hostingView(MenuBarControlView(), model: model).fittingSize
         samples.update(repeating: 0, count: 100)
         recorder.updateAudioLevel(buffer, type: .audio, at: start.advanced(by: .seconds(30)))
-        model.checkRecordingAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
+        model.recording.checkAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(30))))
         XCTAssertTrue(model.audioWarning, "Audio heard earlier must not hide a disconnected microphone")
         XCTAssertEqual(model.audioWarningTitle, "Microphone stopped sending audio")
         XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
         recorder.updateAudioLevel(buffer, type: .microphone, at: start.advanced(by: .seconds(30)))
-        model.checkRecordingAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
+        model.recording.checkAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(30))))
         XCTAssertFalse(model.audioWarning, "Silent buffers prove the sources recovered")
         recorder.updateAudioLevel(buffer, type: .microphone, at: start.advanced(by: .seconds(41)))
-        model.checkRecordingAudio(elapsed: 41, audioDetected: recorder.hasDetectedAudio,
+        model.recording.checkAudio(elapsed: 41, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(41))))
         XCTAssertEqual(model.audioWarningTitle, "System audio stopped sending data")
-        model.checkRecordingAudio(elapsed: 60, audioDetected: recorder.hasDetectedAudio,
+        model.recording.checkAudio(elapsed: 60, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(60))))
         XCTAssertEqual(model.audioWarningTitle, "Audio sources stopped sending data")
         XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
@@ -960,21 +962,21 @@ final class RecoveryTests: XCTestCase {
         XCTAssertThrowsError(try RecordingDiskSpace(availableBytes: 249_999_999).preflight())
         XCTAssertNoThrow(try RecordingDiskSpace(availableBytes: 250_000_000).preflight())
         XCTAssertNotNil(RecordingDiskSpace.read(at: root.appendingPathComponent("not-created/yet")))
-        model.recordingDidStart(at: Date())
+        model.recording.didStart(at: Date())
         var announcements: [String] = []
         model.accessibilityAnnouncement = { announcements.append($0) }
-        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 1_900_000_000))
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 1_900_000_000))
         XCTAssertTrue(try XCTUnwrap(model.recordingDiskSpace).isLow)
-        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 1_800_000_000))
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 1_800_000_000))
         XCTAssertEqual(announcements.count, 1, "Changing capacity must not repeat the same warning")
-        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 2_000_000_000))
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 2_000_000_000))
         XCTAssertFalse(try XCTUnwrap(model.recordingDiskSpace).isLow)
-        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 1_900_000_000))
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 1_900_000_000))
         XCTAssertEqual(announcements.count, 2, "A new low-space episode must warn again")
         XCTAssertEqual(model.state, .recording)
         model.fail(AppError.missingRecording)
         XCTAssertNil(model.recordingDiskSpace)
-        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 0))
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 0))
         XCTAssertNil(model.recordingDiskSpace, "Late callbacks must not warn after capture ends")
     }
 

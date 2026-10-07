@@ -194,7 +194,7 @@ final class MeetingDetectorTests: XCTestCase {
         model.detectsMeetings = true
         XCTAssertTrue(delegate.shouldPresentMicrophoneMeeting())
         XCTAssertTrue(AppModel(defaults: defaults).detectsMeetings, "The setting is remembered")
-        model.recordingDidStart(at: Date())
+        model.recording.didStart(at: Date())
         XCTAssertFalse(delegate.shouldPresentMicrophoneMeeting(), "A recording is already under way")
         model.detectsMeetings = false
     }

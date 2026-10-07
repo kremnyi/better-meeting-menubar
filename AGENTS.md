@@ -12,7 +12,7 @@ Read only the documentation relevant to the requested work:
 ## Code map
 
 All app code is in `Sources/BetterMeetingApp/`; tests in `Tests/` are named after the area they cover.
-- `AppModel.swift`: central state — recording lifecycle, transcription queue, retries and recovery, saved settings, model loading and idle release. `AppState.swift` holds its phases and errors.
+- `AppModel.swift`: settings, history, model loading and idle release, error and termination glue; `AppModel+Menu.swift` holds menu text and actions. `RecordingSession.swift` owns the live capture (timer, disk and audio warnings), `ProcessingQueue.swift` owns the transcription queue, retries and `finishRecording`. `AppState.swift` holds phases and errors.
 - `BetterMeetingApp.swift`: app entry, `MenuBarExtra`, app delegate, notification routing.
 - Capture: `MeetingRecorder.swift` (ScreenCaptureKit, video quality), `AudioMeters.swift`, `AudioExtractor.swift` (audio from the recording), `MeetingAudio.swift` (decoded samples shared by passes).
 - Transcription: `LocalTranscriber.swift` (engines, model storage and migration), `MeetingWhisperKit.swift`, `TranscriptionPasses.swift` (Whisper per-language passes and merge), `ParakeetLanguage.swift`, `SpeakerLabels.swift`, `SpeechSettings.swift`, `MeetingTitle.swift`.

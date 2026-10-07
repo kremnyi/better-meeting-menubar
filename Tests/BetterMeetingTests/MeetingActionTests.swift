@@ -57,16 +57,16 @@ final class MeetingActionTests: XCTestCase {
                     XCTAssertEqual(view.fittingSize.width, 304, "Recovery controls must fit the menu")
                 }
                 model.retryTranscription(blocked)
-                XCTAssertNil(model.processingTask, "Recovery-blocked meetings cannot start transcription")
+                XCTAssertNil(model.processing.task, "Recovery-blocked meetings cannot start transcription")
                 XCTAssertNotNil(model.errorMessage)
                 model.transcribeAllRecordings()
-                XCTAssertNil(model.processingTask, "Bulk transcription must exclude recovery-blocked meetings")
+                XCTAssertNil(model.processing.task, "Bulk transcription must exclude recovery-blocked meetings")
                 let unchanged = try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }
                 // A job enqueued with stale history must also stop before reading media or writing files.
-                model.enqueue(ProcessingRun(folder: folder, recordedAt: date, title: stale.title,
+                model.processing.enqueue(ProcessingRun(folder: folder, recordedAt: date, title: stale.title,
                                             titleWasProvided: true, replacing: stale, languages: ["en"], hints: "",
                                             settings: SpeechSettings(engine: .whisper)))
-                await model.processingTask?.value
+                await model.processing.task?.value
                 await model.historyRefreshTask?.value
                 XCTAssertTrue(try XCTUnwrap(model.errorMessage).contains("could not be restored"))
                 XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, unchanged)
@@ -108,7 +108,7 @@ final class MeetingActionTests: XCTestCase {
         model.retryTranscription(item)
         XCTAssertTrue(model.canCancelTranscription)
         model.cancelTranscription()
-        await model.processingTask?.value
+        await model.processing.task?.value
         XCTAssertEqual(model.state, .idle)
         XCTAssertFalse(model.canCancelTranscription)
         XCTAssertEqual(model.completionMessage, "Re-transcription cancelled. Your existing transcript is unchanged.")
@@ -116,14 +116,14 @@ final class MeetingActionTests: XCTestCase {
         // Missing source media must fail without marking the saved transcript unfinished.
         model.retryTranscription(item)
         XCTAssertNil(model.completionMessage, "A new attempt must clear the cancellation notice")
-        await model.processingTask?.value
+        await model.processing.task?.value
         XCTAssertEqual(model.state, .idle, "A failed transcription must not take the place of Start recording")
         XCTAssertEqual(model.primaryButtonTitle, "Start recording")
         XCTAssertEqual(model.failedTranscriptionMeeting?.title, item.title)
         XCTAssertEqual(model.failureTitle, "Couldn’t transcribe “\(item.title)”")
         model.retryFailedTranscription()
         XCTAssertTrue(model.isProcessing, "Retry must use saved media, not start a new recording")
-        await model.processingTask?.value
+        await model.processing.task?.value
         XCTAssertEqual(model.state, .idle)
         XCTAssertNotNil(model.failedTranscriptionMeeting)
         XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, original)
@@ -256,13 +256,13 @@ final class MeetingActionTests: XCTestCase {
             model.fail(AppError.missingRecording)
             removeTempDefaults(defaults, suite: suite, root: root)
         }
-        model.recordingDidStart(at: Date())
+        model.recording.didStart(at: Date())
         let request = MeetingNotifications.audioWarning(recordingID: try XCTUnwrap(model.recordingID))
         XCTAssertEqual(request.content.title, "Check your recording")
         XCTAssertNil(MeetingNotifications.folder(from: request.content))
-        model.checkRecordingAudio(elapsed: 30, audioDetected: false)
+        model.recording.checkAudio(elapsed: 30, audioDetected: false)
         XCTAssertTrue(delegate.shouldPresentAudioWarning(request))
-        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 1_000_000_000))
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 1_000_000_000))
         let disk = MeetingNotifications.diskWarning(recordingID: try XCTUnwrap(model.recordingID), message: "Low space")
         XCTAssertTrue(delegate.shouldPresentDiskWarning(disk))
         delegate.openNotification(request)
@@ -277,21 +277,21 @@ final class MeetingActionTests: XCTestCase {
         delegate.openNotification(request)
         XCTAssertEqual(clicks.count, 1, "Clicking with the menu open must not toggle it closed")
         window.orderOut(nil)
-        model.checkRecordingAudio(elapsed: 31, audioDetected: true)
+        model.recording.checkAudio(elapsed: 31, audioDetected: true)
         XCTAssertFalse(delegate.shouldPresentAudioWarning(request))
-        model.recordingDidStart(at: Date())
-        model.checkRecordingAudio(elapsed: 30, audioDetected: false)
+        model.recording.didStart(at: Date())
+        model.recording.checkAudio(elapsed: 30, audioDetected: false)
         XCTAssertFalse(delegate.shouldPresentAudioWarning(request))
         delegate.openNotification(request)
         XCTAssertEqual(clicks.count, 1, "Old notifications must not open a later recording")
         XCTAssertFalse(delegate.shouldPresentDiskWarning(disk))
         delegate.openNotification(disk)
         XCTAssertEqual(clicks.count, 1, "Old disk warnings must not open a later recording")
-        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 1_000_000_000))
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 1_000_000_000))
         let currentDisk = MeetingNotifications.diskWarning(recordingID: try XCTUnwrap(model.recordingID), message: "Low space")
         delegate.openNotification(currentDisk)
         XCTAssertEqual(clicks.count, 2)
-        model.checkRecordingDiskSpace(RecordingDiskSpace(availableBytes: 3_000_000_000))
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 3_000_000_000))
         XCTAssertFalse(delegate.shouldPresentDiskWarning(currentDisk))
         let current = MeetingNotifications.audioWarning(recordingID: try XCTUnwrap(model.recordingID))
         model.fail(AppError.missingRecording)
@@ -371,11 +371,11 @@ final class MeetingActionTests: XCTestCase {
         try MeetingArtifacts.write(title: "Earlier meeting", recordedAt: date, duration: 60, segments: [], to: kept)
         let active = try MeetingArtifacts.createDirectory(in: root, title: "Nobody came", recordedAt: date)
         let model = AppModel(defaults: defaults)
-        model.activeFolder = active
-        model.recordingDidStart(at: date)
+        model.recording.activeFolder = active
+        model.recording.didStart(at: date)
         let stopping = expectation(description: "capture stop requested")
         var finishStop: CheckedContinuation<Void, Never>?
-        model.stopCapture = {
+        model.recording.stopCapture = {
             await withCheckedContinuation { continuation in
                 finishStop = continuation
                 stopping.fulfill()
@@ -390,11 +390,11 @@ final class MeetingActionTests: XCTestCase {
             done.fulfill()
         }
 
-        model.cancelRecording(confirm: { _ in .alertFirstButtonReturn }, trash: trash)
+        model.recording.cancel(confirm: { _ in .alertFirstButtonReturn }, trash: trash)
         XCTAssertEqual(model.state, .recording, "Keep recording must leave the recording running")
         XCTAssertTrue(trashed.isEmpty)
 
-        model.cancelRecording(confirm: { _ in .alertSecondButtonReturn }, trash: trash)
+        model.recording.cancel(confirm: { _ in .alertSecondButtonReturn }, trash: trash)
         XCTAssertEqual(model.state, .stopping)
         model.primaryAction()
         model.startRecording()
@@ -417,13 +417,13 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertFalse(model.isProcessing, "A canceled recording must not be transcribed")
 
         // A failed stop keeps the original files and reports the failure instead of trashing them.
-        model.activeFolder = kept
-        model.recordingDidStart(at: date)
-        model.stopCapture = { throw URLError(.cannotWriteToFile) }
+        model.recording.activeFolder = kept
+        model.recording.didStart(at: date)
+        model.recording.stopCapture = { throw URLError(.cannotWriteToFile) }
         let failed = expectation(description: "stop failure shown")
-        let observation = model.$state.sink { if $0 == .failed { failed.fulfill() } }
+        let observation = model.recording.$state.sink { if $0 == .failed { failed.fulfill() } }
         defer { observation.cancel() }
-        model.cancelRecording(confirm: { _ in .alertSecondButtonReturn }, trash: trash)
+        model.recording.cancel(confirm: { _ in .alertSecondButtonReturn }, trash: trash)
         await fulfillment(of: [failed], timeout: 5)
         XCTAssertNotNil(model.errorMessage)
         XCTAssertEqual(trashed, [active])
