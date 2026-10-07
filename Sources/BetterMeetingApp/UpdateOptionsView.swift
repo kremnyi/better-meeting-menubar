@@ -14,10 +14,6 @@ struct UpdateOptionsView: View {
         return URL(string: "https://github.com/kremnyi/better-meeting-menubar/releases/tag/v\(notesVersion)") ?? AppUpdater.releaseURL
     }
 
-    private var updateInProgress: Bool {
-        [.checking, .downloading, .preparing, .installing].contains(updates.status)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -26,13 +22,11 @@ struct UpdateOptionsView: View {
                     .fixedSize()
                     .opacity(updates.status == .installing ? 0 : 1)
                     .accessibilityHidden(updates.status == .installing)
-                if updateInProgress {
+                if [.checking, .downloading, .preparing, .installing].contains(updates.status) {
                     ProgressView().controlSize(.small).accessibilityHidden(true)
                 }
                 Spacer(minLength: 8)
-                Text(updates.status.message)
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(updates.status.message).wrappingCaption()
             }
             .frame(minHeight: 22)
 
@@ -40,13 +34,9 @@ struct UpdateOptionsView: View {
                 ErrorPanel(message: error)
             }
             if updates.installationWaiting {
-                Text("The update will install when this meeting finishes.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text("The update will install when this meeting finishes.").wrappingCaption()
             } else if updates.isBusy() {
-                Text("Finish recording or processing before updating.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text("Finish recording or processing before updating.").wrappingCaption()
             }
 
             HStack {

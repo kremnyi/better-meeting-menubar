@@ -51,9 +51,7 @@ struct CaptureOptionsView: View {
             case .options:
                 basicOptions
                 if let notice = model.settingsLockNotice {
-                    Text(notice)
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(notice).wrappingCaption()
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 2) {
@@ -118,15 +116,15 @@ struct CaptureOptionsView: View {
                     .toggleCaption()
                     .help(launchAtLoginError ?? "")
                 }
-                Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
-                    .help("Shows the elapsed time beside the menu bar icon while recording")
+                SettingToggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime,
+                              help: "Shows the elapsed time beside the menu bar icon while recording")
             }
             VStack(alignment: .leading, spacing: 5) {
                 Text("Updates").font(.headline)
-                Toggle("Download updates automatically", isOn: $model.automaticUpdateChecks)
-                    .help("Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
-                Toggle("Include beta releases", isOn: $model.betaUpdates)
-                    .help("Offers beta builds ahead of the next release. Stable releases arrive either way.")
+                SettingToggle("Download updates automatically", isOn: $model.automaticUpdateChecks,
+                              help: "Checks GitHub on launch and periodically. Downloads in the background; installs when you restart or quit.")
+                SettingToggle("Include beta releases", isOn: $model.betaUpdates,
+                              help: "Offers beta builds ahead of the next release. Stable releases arrive either way.")
                 UpdateOptionsView(updates: model.updates, version: version)
             }
             Divider()
@@ -160,11 +158,8 @@ struct CaptureOptionsView: View {
                         Text("Unavailable display").tag(model.selectedDisplayID)
                     }
                 }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-                .disabled(model.isCapturing)
+                .gridPicker("Display", disabled: model.isCapturing)
                 .help("The entire selected display is recorded")
-                .accessibilityLabel("Display")
             }
             GridRow {
                 Text("Microphone")
@@ -177,11 +172,8 @@ struct CaptureOptionsView: View {
                         Text("Unavailable microphone").tag(model.selectedMicrophoneID)
                     }
                 }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-                .disabled(model.isCapturing)
+                .gridPicker("Microphone", disabled: model.isCapturing)
                 .help("Recorded along with system audio")
-                .accessibilityLabel("Microphone")
             }
             GridRow {
                 Text("Video")
@@ -221,15 +213,10 @@ struct CaptureOptionsView: View {
                 destinationButton
             }
             GridRow {
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle("Include screenshots and screen text", isOn: $model.exportAfterRecording)
-                        .disabled(model.fileSettingsLocked)
-                        .help("After saving each transcript, export a bundle with screenshots and screen text into an artifacts folder.")
-                    if model.exportAfterRecording {
-                        Text("Saves extra files beside the transcript.")
-                            .toggleCaption()
-                    }
-                }
+                SettingToggle("Include screenshots and screen text", isOn: $model.exportAfterRecording,
+                              help: "After saving each transcript, export a bundle with screenshots and screen text into an artifacts folder.",
+                              caption: model.exportAfterRecording ? "Saves extra files beside the transcript." : nil,
+                              disabled: model.fileSettingsLocked)
                 .gridCellColumns(2)
             }
         }
@@ -332,9 +319,7 @@ struct TranscriptionLanguagePicker: View {
                 .padding(.horizontal, 10)
             }
             Text("At least one language is required. Each selected language adds one transcription pass.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .wrappingCaption()
         }
         .padding(14)
         .frame(width: 300, height: 360)
@@ -453,10 +438,6 @@ struct AdvancedTranscriptionView: View {
     var modelSelectionDisabled = false
     @State var decodingExpanded = false
 
-    private var engineBinding: Binding<TranscriptionEngine> {
-        Binding(get: { settings.selectedEngine }, set: { settings.engine = $0 })
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
@@ -468,21 +449,16 @@ struct AdvancedTranscriptionView: View {
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                 GridRow {
                     Text("Engine")
-                    Picker("Engine", selection: engineBinding) {
+                    Picker("Engine", selection: Binding(get: { settings.selectedEngine }, set: { settings.engine = $0 })) {
                         ForEach(TranscriptionEngine.allCases, id: \.self) { engine in
                             Text(engine.label).tag(engine)
                         }
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
-                    .disabled(modelSelectionDisabled)
-                    .accessibilityLabel("Engine")
+                    .gridPicker("Engine", disabled: modelSelectionDisabled)
                 }
                 GridRow {
                     Text("")
-                    Text(settings.selectedEngine.detail)
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(settings.selectedEngine.detail).wrappingCaption()
                 }
                 if settings.usesWhisperOptions {
                     LanguagesRow(languages: $languages)
@@ -493,16 +469,11 @@ struct AdvancedTranscriptionView: View {
                                 Text(model == .turbo ? "\(model.label) (default)" : model.label).tag(model)
                             }
                         }
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity)
-                        .disabled(modelSelectionDisabled)
-                        .accessibilityLabel("Whisper model")
+                        .gridPicker("Whisper model", disabled: modelSelectionDisabled)
                     }
                     GridRow {
                         Text("")
-                        Text(settings.model.detail + " Downloads once, then works offline.")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Text(settings.model.detail + " Downloads once, then works offline.").wrappingCaption()
                     }
                     GridRow {
                         Text("Vocabulary")
@@ -512,12 +483,11 @@ struct AdvancedTranscriptionView: View {
                     }
                 }
                 GridRow {
-                    Toggle("Add speaker labels", isOn: Binding(
+                    SettingToggle("Add speaker labels", isOn: Binding(
                         get: { settings.speakerLabels == true },
                         set: { settings.speakerLabels = $0 }
-                    ))
+                    ), help: "Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
                     .toggleStyle(.checkbox)
-                    .help("Adds Speaker 1, Speaker 2… after transcription. Downloads about 11 MB once, takes longer, and needs review.")
                     .gridCellColumns(2)
                 }
             }
@@ -558,8 +528,7 @@ struct AdvancedTranscriptionView: View {
                 }
             } else {
                 Text("Parakeet detects each language automatically. Languages, vocabulary, and decoding options apply to Whisper only.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .wrappingCaption()
             }
             Divider()
             Text("Models").font(.headline)
@@ -581,6 +550,13 @@ struct AdvancedTranscriptionView: View {
             .accessibilityLabel(title)
             .help(help)
         }
+    }
+}
+
+private extension View {
+    /// A picker beside its row title in a Grid: the title shows, the picker keeps the label for VoiceOver.
+    func gridPicker(_ label: LocalizedStringKey, disabled: Bool) -> some View {
+        labelsHidden().frame(maxWidth: .infinity).disabled(disabled).accessibilityLabel(label)
     }
 }
 

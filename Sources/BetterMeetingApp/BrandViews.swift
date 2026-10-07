@@ -235,6 +235,37 @@ extension View {
     func toggleCaption() -> some View {
         font(.caption).foregroundStyle(.secondary).padding(.leading, 18)
     }
+
+    /// Secondary caption text that wraps instead of truncating.
+    func wrappingCaption() -> some View {
+        font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A checkbox setting: the toggle with its tooltip, and an optional caption under its title.
+/// `disabled` dims only the toggle, as the caption explains the setting either way.
+struct SettingToggle: View {
+    let title: LocalizedStringKey
+    @Binding var isOn: Bool
+    var help: LocalizedStringKey?
+    var caption: LocalizedStringKey?
+    var disabled = false
+
+    init(_ title: LocalizedStringKey, isOn: Binding<Bool>, help: LocalizedStringKey? = nil,
+         caption: LocalizedStringKey? = nil, disabled: Bool = false) {
+        (self.title, _isOn, self.help, self.caption, self.disabled) = (title, isOn, help, caption, disabled)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let help {
+                Toggle(title, isOn: $isOn).disabled(disabled).help(help)
+            } else {
+                Toggle(title, isOn: $isOn).disabled(disabled)
+            }
+            if let caption { Text(caption).toggleCaption() }
+        }
+    }
 }
 
 extension Color {

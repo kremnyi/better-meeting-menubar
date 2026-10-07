@@ -10,18 +10,14 @@ struct MeetingOptionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Calendar").font(.headline)
-            VStack(alignment: .leading, spacing: 4) {
-                Toggle("Use calendar", isOn: Binding(
-                    get: { calendar.enabled },
-                    set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
-                ))
-                Text("Lists upcoming meetings in the menu.")
-                    .toggleCaption()
-            }
+            SettingToggle("Use calendar", isOn: Binding(
+                get: { calendar.enabled },
+                set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
+            ), caption: "Lists upcoming meetings in the menu.")
 
             Group {
                 if calendar.authorization == .fullAccess {
-                    Toggle("Show next meeting in the menu bar", isOn: Binding(
+                    SettingToggle("Show next meeting in the menu bar", isOn: Binding(
                         get: { calendar.menuBarPreview },
                         set: { calendar.setMenuBarPreview($0) }
                     ))
@@ -34,10 +30,8 @@ struct MeetingOptionsView: View {
                 }
                 if calendar.enabled, calendar.hasLoaded || calendar.isStale || calendar.errorMessage != nil {
                     Text(calendar.diagnosticSummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .wrappingCaption()
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .disabled(!calendar.enabled)
@@ -46,12 +40,9 @@ struct MeetingOptionsView: View {
             Divider()
             Text("Suggest recording").font(.headline)
             CalendarReminderOptionsView(calendar: calendar, reminders: calendar.reminders)
-            VStack(alignment: .leading, spacing: 4) {
-                Toggle("Detect meetings automatically", isOn: $detectsMeetings)
-                    .help("Notifies you when another app has used the microphone for half a minute. Nothing is recorded on its own.")
-                Text("For calls that aren’t on your calendar.")
-                    .toggleCaption()
-            }
+            SettingToggle("Detect meetings automatically", isOn: $detectsMeetings,
+                          help: "Notifies you when another app has used the microphone for half a minute. Nothing is recorded on its own.",
+                          caption: "For calls that aren’t on your calendar.")
         }
         .toggleStyle(.checkbox)
         .task { await calendar.refresh() }
@@ -216,9 +207,7 @@ struct UpcomingMeetingView: View {
                         HStack(alignment: .top, spacing: 8) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Event title").lineLimit(2)
-                                Text("Starts in 5 min · 10:00–11:00")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                Text("Starts in 5 min · 10:00–11:00").wrappingCaption()
                             }
                             Spacer(minLength: 0)
                             Image(systemName: "record.circle")
@@ -238,9 +227,7 @@ struct UpcomingMeetingView: View {
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(event.title).lineLimit(2)
                                             TimelineView(.periodic(from: .now, by: 60)) { context in
-                                                Text(Self.caption(for: event, at: context.date))
-                                                    .font(.caption).foregroundStyle(.secondary)
-                                                    .fixedSize(horizontal: false, vertical: true)
+                                                Text(Self.caption(for: event, at: context.date)).wrappingCaption()
                                             }
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -298,9 +285,7 @@ struct UpcomingMeetingView: View {
                                 }
                             }
                         } else if !calendar.calendars.contains(where: { calendar.selectedIDs.contains($0.id) }) {
-                            Text("Choose calendars in Options → Meetings to see them here.")
-                                .font(.caption).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                            Text("Choose calendars in Options → Meetings to see them here.").wrappingCaption()
                         } else {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("No more meetings today.")
@@ -317,8 +302,7 @@ struct UpcomingMeetingView: View {
                                     .accessibilityHint(Self.openHint(for: tomorrow))
                                 }
                             }
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .wrappingCaption()
                         }
                     }
                 }
@@ -386,7 +370,8 @@ struct UpcomingMeetingLayout {
 
     static let compactLimit = 2
 
-    static func make(events: [CalendarEvent], now: Date, calendar: Calendar = .current) -> UpcomingMeetingLayout {
+    static func make(events: [CalendarEvent], now: Date) -> UpcomingMeetingLayout {
+        let calendar = Calendar.current
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
         let today = CalendarEvent.withoutDuplicates(events).filter { $0.scheduledStart < tomorrowStart }
         let compact = Array(today.dropFirst().prefix(compactLimit))

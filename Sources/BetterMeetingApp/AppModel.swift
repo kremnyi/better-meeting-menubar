@@ -20,6 +20,13 @@ struct ProcessingRun {
 
 private let failedTranscriptionFoldersKey = "failedTranscriptionFolders"
 
+/// A stopped or retried recording, or one meeting of Transcribe all.
+private enum QueuedJob {
+    case recording(ProcessingRun), batch(MeetingHistoryItem, process: (MeetingHistoryItem) async -> Bool)
+    var folder: URL { switch self { case .recording(let run): run.folder; case .batch(let item, _): item.folderURL } }
+    var isBatch: Bool { if case .batch = self { true } else { false } }
+}
+
 private extension LocalTranscriptionProgress {
     /// Setup and transcription share one progress enum; only model steps map onto a processing phase.
     var modelStep: (phase: ProcessingPhase, fraction: Double?)? {
@@ -217,11 +224,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Whether two settings need the same speech model files.
-    private static func sameModel(_ lhs: SpeechSettings, _ rhs: SpeechSettings) -> Bool {
-        lhs.selectedEngine == rhs.selectedEngine && (lhs.selectedEngine != .whisper || lhs.model == rhs.model)
-    }
-
     private let defaults: UserDefaults
     private let recorder = MeetingRecorder()
     /// Production waits for ScreenCaptureKit's completion; tests can hold that completion pending.
@@ -240,8 +242,7 @@ final class AppModel: ObservableObject {
     private var quitWhenFinished = false
     private var startTask: Task<Void, Never>?
     private(set) var processingTask: Task<Void, Never>?
-    private var pendingRuns: [ProcessingRun] = [] { didSet { updateQueuedFolders() } }
-    private var batchRemaining: [URL] = [] { didSet { updateQueuedFolders() } }
+    private var pendingJobs: [QueuedJob] = [] { didSet { queuedFolders = pendingJobs.map(\.folder) } }
     @Published private(set) var processingFolder: URL?
     /// Meetings waiting behind the current job, in order, so the list can mark them.
     @Published private(set) var queuedFolders: [URL] = []
@@ -644,30 +645,8 @@ final class AppModel: ObservableObject {
         transcriptionBatchTotal = recordings.count
         transcriptionBatchIndex = 1
         prepareSavedTranscription(recordings[0])
-        processingTask = Task {
-            var completed = 0
-            for (index, item) in recordings.enumerated() {
-                guard !Task.isCancelled else { break }
-                transcriptionBatchIndex = index + 1
-                batchRemaining = recordings.dropFirst(index + 1).map(\.folderURL)
-                if index > 0 { prepareSavedTranscription(item) }
-                guard await process(item) else { break }
-                completed += 1
-            }
-            let cancelled = Task.isCancelled
-            if errorMessage == nil {
-                let message = cancelled
-                    ? "Transcription cancelled. \(completed) of \(recordings.count) finished; remaining recordings are kept."
-                    : "Transcribed \(completed) of \(recordings.count) recordings."
-                completionMessage = message
-                accessibilityAnnouncement(message)
-            }
-            batchRemaining = []
-            transcriptionBatchTotal = 0
-            transcriptionBatchIndex = 0
-            refreshHistory()
-            processingQueueFinished(succeeded: !cancelled && completed == recordings.count)
-        }
+        pendingJobs = recordings.map { .batch($0, process: process) }
+        processingTask = Task { await runProcessingQueue() }
     }
 
     var transcribableRecordings: [MeetingHistoryItem] {
@@ -1192,36 +1171,44 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private func updateQueuedFolders() {
-        queuedFolders = batchRemaining + pendingRuns.map(\.folder)
-    }
-
     func enqueue(_ run: ProcessingRun) {
         cancelModelUnload()
-        pendingRuns.append(run)
+        pendingJobs.append(.recording(run))
         guard processingTask == nil else { return }
         processingTask = Task { await runProcessingQueue() }
     }
 
     private func runProcessingQueue() async {
         var succeeded = true
-        while !pendingRuns.isEmpty {
-            let run = pendingRuns.removeFirst()
-            processingFolder = run.folder
-            if let stopTask = run.stopTask {
-                do {
-                    try await stopTask.value
-                } catch {
-                    succeeded = false
-                    pendingRuns.removeAll()
-                    break
+        while succeeded, !pendingJobs.isEmpty {
+            switch pendingJobs.removeFirst() {
+            case .batch(let item, let process):
+                // A batch ends after its last meeting or at the first that fails or is cancelled.
+                let remaining = pendingJobs.filter(\.isBatch).count
+                transcriptionBatchIndex = transcriptionBatchTotal - remaining
+                if transcriptionBatchIndex > 1, !Task.isCancelled { prepareSavedTranscription(item) }
+                let processed = Task.isCancelled ? false : await process(item)
+                if processed, remaining > 0 { continue }
+                let (completed, total, cancelled) = (transcriptionBatchIndex - (processed ? 0 : 1), transcriptionBatchTotal, Task.isCancelled)
+                if errorMessage == nil {
+                    let message = cancelled
+                        ? "Transcription cancelled. \(completed) of \(total) finished; remaining recordings are kept."
+                        : "Transcribed \(completed) of \(total) recordings."
+                    completionMessage = message
+                    accessibilityAnnouncement(message)
                 }
-            }
-            processingTitle = run.title
-            if !(await finishRecording(run)) {
-                succeeded = false
-                pendingRuns.removeAll()
-                break
+                pendingJobs.removeAll(where: \.isBatch) // Recordings stopped meanwhile stay queued.
+                (transcriptionBatchTotal, transcriptionBatchIndex) = (0, 0)
+                refreshHistory()
+                succeeded = !cancelled && completed == total
+            case .recording(let run):
+                processingFolder = run.folder
+                do { try await run.stopTask?.value } catch { succeeded = false }
+                if succeeded {
+                    processingTitle = run.title
+                    succeeded = await finishRecording(run)
+                }
+                if !succeeded { pendingJobs.removeAll() }
             }
         }
         processingQueueFinished(succeeded: succeeded)
@@ -1233,7 +1220,7 @@ final class AppModel: ObservableObject {
             cancellingTranscription = false
             if let processingPhase { processingStatusText = processingPhase.statusText }
         }
-        guard pendingRuns.isEmpty else {
+        guard pendingJobs.isEmpty else {
             processingTask = Task { await runProcessingQueue() }
             return
         }
@@ -1321,7 +1308,8 @@ final class AppModel: ObservableObject {
 
             // Only wait for a download of the model this job uses; a retry keeps its meeting's engine.
             if let preparation = modelPreparationTask,
-               modelPreparationSettings.map({ Self.sameModel($0, run.settings) }) ?? true {
+               modelPreparationSettings.map({ $0.selectedEngine == run.settings.selectedEngine
+                   && ($0.selectedEngine != .whisper || $0.model == run.settings.model) }) ?? true {
                 setProcessingPhase(.preparingModel, fraction: modelSetupFraction)
                 processingStatusText = modelSetupStatus
                 try await withTaskCancellationHandler {

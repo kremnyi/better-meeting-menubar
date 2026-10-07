@@ -17,7 +17,8 @@ struct BetterMeetingApp: App {
         _model = StateObject(wrappedValue: model)
         appDelegate.model = model
         model.calendar.startMonitoring()
-        model.meetingDetector.setEnabled(model.detectsMeetings)
+        // Core Audio's first default-device query takes ~50 ms; let the first frame draw before it.
+        Task { @MainActor in model.meetingDetector.setEnabled(model.detectsMeetings) }
         model.watchInputs()
         model.prepareSpeechModel()
     }

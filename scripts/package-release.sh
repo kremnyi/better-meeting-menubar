@@ -22,6 +22,9 @@ codesign --verify --deep --strict \
     "$app_dir"
 version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_dir/Contents/Info.plist")
 archive="Better-Meeting-${version}-arm64.zip"
+# The bundled executable is stripped; keep the matching dSYM locally (never uploaded) for crash symbolication.
+rm -rf "dist/Better-Meeting-${version}-arm64.dSYM"
+ditto .build/release/BetterMeeting.dSYM "dist/Better-Meeting-${version}-arm64.dSYM"
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "dist/$archive"
 (cd dist && shasum -a 256 "$archive" | tee "$archive.sha256")
 feed_dir="$PWD/.build/sparkle-release/$version"

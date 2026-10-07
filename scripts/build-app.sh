@@ -29,6 +29,9 @@ rm -rf "$app_dir"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
 cp "$package_dir/App/Info.plist" "$app_dir/Contents/Info.plist"
 cp "$build_dir/release/BetterMeeting" "$app_dir/Contents/MacOS/BetterMeeting"
+# Drop local symbols from the bundled copy only; signing below must follow this.
+# .build/release keeps the unstripped binary and its matching BetterMeeting.dSYM.
+strip -x "$app_dir/Contents/MacOS/BetterMeeting"
 
 sparkle_dir="$build_dir/artifacts/sparkle/Sparkle"
 sparkle_framework="$app_dir/Contents/Frameworks/Sparkle.framework"
