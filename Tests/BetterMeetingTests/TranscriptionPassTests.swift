@@ -127,6 +127,10 @@ final class TranscriptionPassTests: XCTestCase {
         let boxed = (0..<3).map { half[$0].doubleValue }
         let expected = Float(exp(boxed[1] - 7) / boxed.reduce(0) { $0 + exp($1 - 7) })
         XCTAssertEqual(SpeechProbabilityDecoder.probability(of: 1, in: half), expected)
+        // A model that emits single precision must not trap on the half-precision fast path.
+        let single = try MLMultiArray(shape: [1, 1, 3], dataType: .float32)
+        for index in 0..<3 { single[index] = half[index] }
+        XCTAssertEqual(SpeechProbabilityDecoder.probability(of: 1, in: single), expected)
     }
 
     func testCancellationKeepsOnlyCompletedPasses() async throws {

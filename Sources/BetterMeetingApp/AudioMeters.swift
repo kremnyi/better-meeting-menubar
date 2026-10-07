@@ -4,13 +4,23 @@ import SwiftUI
 /// second, so only the meters observe them instead of the whole menu and menu bar item.
 @MainActor
 final class AudioMeters: ObservableObject {
-    @Published private(set) var microphone = 0.0
-    @Published private(set) var system = 0.0
-
-    func update(microphone: Double, system: Double) {
-        if self.microphone != microphone { self.microphone = microphone }
-        if self.system != system { self.system = system }
+    struct Levels: Equatable {
+        var microphone = 0.0
+        var system = 0.0
     }
+
+    /// One published value, so a tick that moves both meters redraws them once.
+    @Published private(set) var levels = Levels()
+    var microphone: Double { levels.microphone }
+    var system: Double { levels.system }
+
+    /// Levels are compared in whole percent; finer changes are invisible and would redraw every tick.
+    func update(microphone: Double, system: Double) {
+        let next = Levels(microphone: Self.quantized(microphone), system: Self.quantized(system))
+        if levels != next { levels = next }
+    }
+
+    private static func quantized(_ level: Double) -> Double { (level * 100).rounded() / 100 }
 }
 
 struct AudioMetersView: View {

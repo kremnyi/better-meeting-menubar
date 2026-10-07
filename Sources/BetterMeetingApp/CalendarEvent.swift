@@ -74,7 +74,7 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
         let eventId = Self.hash(calendarKey + "\n" + (externalIdentifier ?? providerEventId))
         self.eventId = eventId
         occurrenceId = recurrenceId.map {
-            Self.hash(eventId + "\n" + ISO8601DateFormatter().string(from: $0))
+            Self.hash(eventId + "\n" + Self.occurrenceDateFormatter.string(from: $0))
         } ?? eventId
         joinURL = Self.joinURL(url: event.url, location: event.location, notes: event.notes)
     }
@@ -83,13 +83,17 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
     /// Invites also carry help, dial-in, and download links on the same hosts, so only join paths count.
     static func joinURL(url: URL?, location: String?, notes: String?) -> URL? {
         if let url, joinService(for: url) != nil { return url }
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        guard let detector = linkDetector else { return nil }
         for text in [location, notes].compactMap({ $0 }) {
             let matches = detector.matches(in: text, range: NSRange(text.startIndex..., in: text))
             if let link = matches.lazy.compactMap(\.url).first(where: { joinService(for: $0) != nil }) { return link }
         }
         return nil
     }
+
+    // Both are thread-safe and costly to build, and every calendar refresh makes one event per occurrence.
+    private static let occurrenceDateFormatter = ISO8601DateFormatter()
+    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
     static func joinService(for url: URL) -> String? {
         guard ["https", "http"].contains(url.scheme?.lowercased() ?? ""),

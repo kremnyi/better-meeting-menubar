@@ -89,6 +89,7 @@ final class AppModel: ObservableObject {
             hasCompletedTranscript = completedFolder.map {
                 FileManager.default.fileExists(atPath: $0.appendingPathComponent("transcript.md").path)
             } ?? false
+            updateRetryableMeeting()
         }
     }
     private(set) var hasCompletedTranscript = false
@@ -114,7 +115,9 @@ final class AppModel: ObservableObject {
         didSet { searchHistory() }
     }
     @Published private(set) var searchingHistory = false
-    @Published private(set) var unfinishedRecordings: [MeetingHistoryItem] = []
+    @Published private(set) var unfinishedRecordings: [MeetingHistoryItem] = [] {
+        didSet { updateRetryableMeeting() }
+    }
     @Published private(set) var historyTotalBytes: Int64 = 0
     @Published private(set) var transcriptionBatchTotal = 0
     @Published private(set) var transcriptionBatchIndex = 0
@@ -214,6 +217,11 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Whether two settings need the same speech model files.
+    private static func sameModel(_ lhs: SpeechSettings, _ rhs: SpeechSettings) -> Bool {
+        lhs.selectedEngine == rhs.selectedEngine && (lhs.selectedEngine != .whisper || lhs.model == rhs.model)
+    }
+
     private let defaults: UserDefaults
     private let recorder = MeetingRecorder()
     /// Production waits for ScreenCaptureKit's completion; tests can hold that completion pending.
@@ -239,12 +247,26 @@ final class AppModel: ObservableObject {
     @Published private(set) var queuedFolders: [URL] = []
     private(set) var historySearchTask: Task<Void, Never>?
     private(set) var historyRefreshTask: Task<Void, Never>?
-    private var completedMeetings: [MeetingHistoryItem] = []
+    private var historyRefreshStart = ContinuousClock.now - .seconds(1)
+    private var completedMeetings: [MeetingHistoryItem] = [] {
+        didSet { updateRetryableMeeting() }
+    }
+    /// Every meeting, newest first, sorted once per refresh for the list and each search.
+    private var meetingsByRecency: [MeetingHistoryItem] = []
     private var lastTranscriptionOptions: (languages: [String], hints: String, settings: SpeechSettings)?
+    /// The speech settings the running model preparation downloads for.
+    private var modelPreparationSettings: SpeechSettings?
 
-    private var retryableMeeting: MeetingHistoryItem? {
-        (unfinishedRecordings + completedMeetings).first { $0.folderURL == completedFolder }
-            ?? completedFolder.flatMap { MeetingArtifacts.meeting(in: $0) }
+    /// The completed or failed meeting, resolved when the folder or history changes:
+    /// the menu-bar label reads it on every redraw.
+    private var retryableMeeting: MeetingHistoryItem?
+
+    private func updateRetryableMeeting() {
+        retryableMeeting = completedFolder.flatMap { folder in
+            unfinishedRecordings.first { $0.folderURL == folder }
+                ?? completedMeetings.first { $0.folderURL == folder }
+                ?? MeetingArtifacts.meeting(in: folder)
+        }
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -289,9 +311,9 @@ final class AppModel: ObservableObject {
             speechSettings.engine = .whisper
             defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings")
         }
-        modelReady = Self.modelIsCached(speechSettings)
         // Listed without sizes so the model rows are there in the first frame; refreshStoredModels fills the sizes in.
         storedModels = LocalTranscriber.storedModels(sizes: false)
+        modelReady = Self.modelIsCached(speechSettings)
         grantedAccess = captureAccess()
         updates.allowsBetaUpdates = betaUpdates
         recorder.onUnexpectedStop = { [weak self] error in
@@ -319,7 +341,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var grantedAccess: (screen: Bool, microphone: AVAuthorizationStatus) = (false, .notDetermined)
 
     func refreshCaptureAccess() {
-        grantedAccess = captureAccess()
+        let access = captureAccess()
+        // `state` changes call this; publish only a real change so the menu doesn't redraw for nothing.
+        if access != grantedAccess { grantedAccess = access }
     }
 
     var primaryButtonTitle: String {
@@ -474,13 +498,17 @@ final class AppModel: ObservableObject {
         modelPreparationTask?.cancel()
         modelPreparationToken += 1
         let token = modelPreparationToken
+        modelPreparationSettings = speechSettings
         modelReady = false
         modelSetupError = nil
         modelSetupFraction = nil
         modelSetupStatus = "Preparing speech model…"
         modelPreparationTask = Task {
             defer {
-                if modelPreparationToken == token { modelPreparationTask = nil }
+                if modelPreparationToken == token {
+                    modelPreparationTask = nil
+                    modelPreparationSettings = nil
+                }
             }
             do {
                 try await prepare { [weak self] progress in
@@ -805,9 +833,11 @@ final class AppModel: ObservableObject {
         updateFailedTranscriptionFolders { $0.removeAll() }
         completedMeetings = []
         unfinishedRecordings = []
+        meetingsByRecency = []
         allMeetingCount = 0
         transcriptionHistory = []
-        searchHistory()
+        // A pending search over the old folder must not publish; the refresh searches the new one.
+        historySearchTask?.cancel()
         refreshHistory()
     }
 
@@ -837,7 +867,16 @@ final class AppModel: ObservableObject {
         historyRefreshTask?.cancel()
         let root = outputRoot
         let scan = scan ?? { [library] in try library.meetings(in: $0) }
+        // The first refresh scans at once; later ones within the window join a single trailing scan,
+        // so a batch, its completion, and a menu open don't each list every meeting folder.
+        let now = ContinuousClock.now
+        let start = historyRefreshStart > now ? historyRefreshStart : max(now, historyRefreshStart + .milliseconds(300))
+        historyRefreshStart = start
         historyRefreshTask = Task.detached(priority: .userInitiated) { [weak self] in
+            if start > now {
+                try? await Task.sleep(until: start, clock: .continuous)
+                guard !Task.isCancelled else { return }
+            }
             do {
                 let meetings = try scan(root)
                 await self?.showHistory(meetings)
@@ -854,31 +893,32 @@ final class AppModel: ObservableObject {
 
     private func showHistory(_ meetings: [MeetingHistoryItem]) {
         guard !Task.isCancelled else { return }
-        historyError = nil
-        completedMeetings = meetings.filter { !$0.needsTranscription }
-        unfinishedRecordings = meetings.filter(\.needsTranscription)
+        if historyError != nil { historyError = nil }
+        let completed = meetings.filter { !$0.needsTranscription }
+        let unfinished = meetings.filter(\.needsTranscription)
+        // A refresh usually finds nothing new; reassigning would still redraw the menu.
+        if completed != completedMeetings { completedMeetings = completed }
+        if unfinished != unfinishedRecordings { unfinishedRecordings = unfinished }
+        meetingsByRecency = (completed + unfinished).sorted { $0.recordedAt > $1.recordedAt }
         let currentFolders = Set(meetings.map { $0.folderURL.standardizedFileURL })
         let validFailedFolders = failedTranscriptionFolders.intersection(currentFolders)
         if validFailedFolders != failedTranscriptionFolders {
             updateFailedTranscriptionFolders { $0 = validFailedFolders }
         }
-        allMeetingCount = meetingsByRecency.count
-        historyTotalBytes = meetings.reduce(0) { $0 + $1.totalBytes }
+        allMeetingCount = meetings.count
+        let totalBytes = meetings.reduce(0) { $0 + $1.totalBytes }
+        if totalBytes != historyTotalBytes { historyTotalBytes = totalBytes }
         searchHistory()
     }
 
     var hasMeetings: Bool { !completedMeetings.isEmpty || !unfinishedRecordings.isEmpty }
 
-    private var meetingsByRecency: [MeetingHistoryItem] {
-        (completedMeetings + unfinishedRecordings).sorted { $0.recordedAt > $1.recordedAt }
-    }
-
     private func searchHistory() {
         historySearchTask?.cancel()
         let query = historyQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
-            searchingHistory = false
-            transcriptionHistory = meetingsByRecency
+            if searchingHistory { searchingHistory = false }
+            if transcriptionHistory != meetingsByRecency { transcriptionHistory = meetingsByRecency }
             return
         }
         let meetings = meetingsByRecency
@@ -894,7 +934,7 @@ final class AppModel: ObservableObject {
 
     private func showSearchResults(_ matches: [MeetingHistoryItem]) {
         guard !Task.isCancelled else { return }
-        transcriptionHistory = matches
+        if transcriptionHistory != matches { transcriptionHistory = matches }
         searchingHistory = false
     }
 
@@ -1006,7 +1046,8 @@ final class AppModel: ObservableObject {
             defer { startTask = nil }
             do {
                 try Task.checkCancellation()
-                let space = RecordingDiskSpace.read(at: outputRoot)
+                let root = outputRoot
+                let space = await Task.detached(priority: .utility) { RecordingDiskSpace.read(at: root) }.value
                 checkRecordingDiskSpace(space)
                 try space?.preflight()
                 try await recorder.requestPermissions()
@@ -1039,7 +1080,7 @@ final class AppModel: ObservableObject {
                 recordingDidStart(at: startedAt)
             } catch {
                 discardUnstartedFolder()
-                fail(error)
+                fail(error, folder: activeFolder)
             }
         }
     }
@@ -1077,7 +1118,7 @@ final class AppModel: ObservableObject {
                 refreshHistory()
                 if !isProcessing { completeTermination(true) }
             } catch {
-                fail(error)
+                fail(error, folder: activeFolder)
             }
         }
     }
@@ -1094,7 +1135,7 @@ final class AppModel: ObservableObject {
         guard state == .recording else { return }
 
         if let error {
-            fail(error)
+            fail(error, folder: activeFolder)
             return
         }
 
@@ -1107,21 +1148,24 @@ final class AppModel: ObservableObject {
         }
         stopTimer()
         guard var run = takeCaptureRun() else {
-            fail(AppError.missingRecording)
+            fail(AppError.missingRecording, folder: activeFolder)
             return
         }
         state = stopCapture ? .stopping : .idle
         if stopCapture { statusText = "Stopping the recording…" }
         accessibilityAnnouncement("Recording stopped. Transcription started.")
-        processingFolder = run.folder
-        if !isProcessing { setProcessingPhase(.finalizingRecording) }
+        if !isProcessing {
+            processingFolder = run.folder
+            setProcessingPhase(.finalizingRecording)
+        }
         if stopCapture {
+            let folder = run.folder
             run.stopTask = Task {
                 do {
                     try await self.stopCapture()
                     if state == .stopping { state = .idle }
                 } catch {
-                    fail(error)
+                    fail(error, folder: folder)
                     throw error
                 }
             }
@@ -1163,6 +1207,7 @@ final class AppModel: ObservableObject {
         var succeeded = true
         while !pendingRuns.isEmpty {
             let run = pendingRuns.removeFirst()
+            processingFolder = run.folder
             if let stopTask = run.stopTask {
                 do {
                     try await stopTask.value
@@ -1172,7 +1217,6 @@ final class AppModel: ObservableObject {
                     break
                 }
             }
-            processingFolder = run.folder
             processingTitle = run.title
             if !(await finishRecording(run)) {
                 succeeded = false
@@ -1184,13 +1228,17 @@ final class AppModel: ObservableObject {
     }
 
     private func processingQueueFinished(succeeded: Bool) {
+        // A cancelled job ends here; a recording queued behind it is a new job that can report and cancel.
+        if cancellingTranscription {
+            cancellingTranscription = false
+            if let processingPhase { processingStatusText = processingPhase.statusText }
+        }
         guard pendingRuns.isEmpty else {
             processingTask = Task { await runProcessingQueue() }
             return
         }
         finishProcessingUI()
         processingTask = nil
-        cancellingTranscription = false
         scheduleModelUnload()
         if !succeeded || !isCapturing { completeTermination(succeeded) }
     }
@@ -1271,7 +1319,9 @@ final class AppModel: ObservableObject {
                 )
             }
 
-            if let preparation = modelPreparationTask {
+            // Only wait for a download of the model this job uses; a retry keeps its meeting's engine.
+            if let preparation = modelPreparationTask,
+               modelPreparationSettings.map({ Self.sameModel($0, run.settings) }) ?? true {
                 setProcessingPhase(.preparingModel, fraction: modelSetupFraction)
                 processingStatusText = modelSetupStatus
                 try await withTaskCancellationHandler {
@@ -1299,9 +1349,7 @@ final class AppModel: ObservableObject {
                     audioURL: audioURL, segments: segments, enabled: run.settings.speakerLabels == true
                 ) {
                     self.setProcessingPhase(.labelingSpeakers)
-                    return try await SpeakerLabels.detect(
-                        audio: meetingAudio, downloadBase: LocalTranscriber.defaultDownloadBase
-                    ) { [weak self] fraction in
+                    return try await self.transcriber.detectSpeakers(audio: meetingAudio) { [weak self] fraction in
                         Task { @MainActor [weak self] in
                             guard let self, self.processingPhase == .labelingSpeakers,
                                   !self.cancellingTranscription, let fraction = fraction.unitClamped else { return }
@@ -1320,9 +1368,9 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             setProcessingPhase(.writingFiles)
             if !run.titleWasProvided && replacing == nil {
-                let generatedTitle = await Task.detached(priority: .utility) {
-                    MeetingTitle.suggest(from: segments.map(\.text).joined(separator: "\n"))
-                }.value
+                let generatedTitle = await MeetingTitle.suggestInBackground(
+                    from: segments.map(\.text).joined(separator: "\n"))
+                try Task.checkCancellation()
                 if let generatedTitle {
                     folder = try MeetingArtifacts.renameDirectory(folder, title: generatedTitle, recordedAt: recordedAt)
                     title = generatedTitle
@@ -1348,7 +1396,7 @@ final class AppModel: ObservableObject {
 
             completedFolder = folder
             updateFailedTranscriptionFolders { $0.remove(folder) }
-            modelReady = Self.modelIsCached(run.settings)
+            modelReady = Self.modelIsCached(speechSettings)
             modelSetupError = nil
             refreshHistory()
             let meeting = MeetingArtifacts.meeting(in: folder)
@@ -1404,28 +1452,30 @@ final class AppModel: ObservableObject {
         self.recordingID = recordingID
         elapsed = 0
         state = .recording
+        // The microphone is live from here on, so its idle event always re-arms the detector.
+        if detectsMeetings { meetingDetector.ownRecordingStarted() }
         statusText = captureMode == .audioOnly
             ? "Recording system audio and microphone. No screen video is saved."
             : "Recording the selected display, system audio, and microphone."
         accessibilityAnnouncement("Recording started.")
-        lastDiskCheck = Date()
-        checkRecordingDiskSpace(RecordingDiskSpace.read(at: activeFolder ?? outputRoot))
+        refreshRecordingDiskSpace()
+        // Added to the main run loop below, so each tick already runs on the main actor.
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 guard let self, self.state == .recording, self.recordingID == recordingID else { return }
                 let elapsed = Date().timeIntervalSince(startDate)
                 // The clocks show whole seconds; publishing every tick would redraw the menu four times a second.
                 if Int(elapsed) != Int(self.elapsed) { self.elapsed = elapsed }
-                self.meters.update(
-                    microphone: self.recorder.audioLevel(microphone: true),
-                    system: self.recorder.audioLevel(microphone: false)
-                )
+                // Only the open menu shows the meters.
+                if self.menuWindow?.isVisible == true {
+                    self.meters.update(
+                        microphone: self.recorder.audioLevel(microphone: true),
+                        system: self.recorder.audioLevel(microphone: false)
+                    )
+                }
                 self.checkRecordingAudio(elapsed: elapsed, audioDetected: self.recorder.hasDetectedAudio,
                                          health: self.recorder.audioHealth())
-                if Date().timeIntervalSince(self.lastDiskCheck) >= 10 {
-                    self.lastDiskCheck = Date()
-                    self.checkRecordingDiskSpace(RecordingDiskSpace.read(at: self.activeFolder ?? self.outputRoot))
-                }
+                if Date().timeIntervalSince(self.lastDiskCheck) >= 10 { self.refreshRecordingDiskSpace() }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -1450,6 +1500,18 @@ final class AppModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 await MeetingNotifications.post(MeetingNotifications.audioWarning(recordingID: recordingID, message: message))
             }
+        }
+    }
+
+    /// Reads free space off the main actor; a result that arrives after this recording ended is dropped.
+    private func refreshRecordingDiskSpace() {
+        guard let recordingID else { return }
+        lastDiskCheck = Date()
+        let destination = activeFolder ?? outputRoot
+        Task {
+            let space = await Task.detached(priority: .utility) { RecordingDiskSpace.read(at: destination) }.value
+            guard self.recordingID == recordingID else { return }
+            checkRecordingDiskSpace(space)
         }
     }
 
@@ -1526,7 +1588,8 @@ final class AppModel: ObservableObject {
         processingFraction = fraction
     }
 
-    func fail(_ error: Error) {
+    /// `folder` is the meeting the failure belongs to; a job transcribing meanwhile keeps its own state.
+    func fail(_ error: Error, folder: URL? = nil) {
         stopTimer()
         state = .failed
         transcriptionError = nil
@@ -1536,7 +1599,7 @@ final class AppModel: ObservableObject {
             processingPhase = nil
         }
         lastError = error
-        if let folder = processingFolder ?? activeFolder {
+        if let folder {
             updateFailedTranscriptionFolders { $0.insert(folder) }
             completedFolder = folder
         }

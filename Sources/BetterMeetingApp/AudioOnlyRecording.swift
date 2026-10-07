@@ -4,7 +4,8 @@ import ScreenCaptureKit
 
 /// The two capture sources share the host clock. Keep separate audio tracks in a
 /// fragmented movie, then mix them into audio.m4a through the usual processing path.
-/// No video input is created. All writer access is serialized on this queue.
+/// No video input is created. All writer access is serialized on the capture queue,
+/// so samples are appended inline as they arrive.
 final class AudioOnlyRecording: @unchecked Sendable {
     private struct QueuedSample {
         let buffer: CMSampleBuffer
@@ -19,8 +20,7 @@ final class AudioOnlyRecording: @unchecked Sendable {
 
     private let writer: AVAssetWriter
     private let inputs: [SCStreamOutputType: AVAssetWriterInput]
-    private let queue = DispatchQueue(label: "com.kremnyi.bettermeeting.audio-recording", qos: .userInitiated)
-    // Reserve before dispatching, so closures waiting on the queue are bounded too.
+    private let queue: DispatchQueue
     private let budget = OSAllocatedUnfairLock(initialState: Budget())
     private var pending: [SCStreamOutputType: [QueuedSample]] = [:]
     private var finishedInputs: Set<SCStreamOutputType> = []
@@ -33,8 +33,10 @@ final class AudioOnlyRecording: @unchecked Sendable {
     private let onFailure: @Sendable (Error) -> Void
     private let isReady: @Sendable (AVAssetWriterInput) -> Bool
 
-    init(to url: URL, isReady: @escaping @Sendable (AVAssetWriterInput) -> Bool = { $0.isReadyForMoreMediaData },
+    init(to url: URL, queue: DispatchQueue,
+         isReady: @escaping @Sendable (AVAssetWriterInput) -> Bool = { $0.isReadyForMoreMediaData },
          onFailure: @escaping @Sendable (Error) -> Void) throws {
+        self.queue = queue
         self.onFailure = onFailure
         self.isReady = isReady
         writer = try AVAssetWriter(outputURL: url, fileType: .mov)
@@ -66,19 +68,20 @@ final class AudioOnlyRecording: @unchecked Sendable {
             budget.bytes += item.bytes
             return true
         }
-        guard reserved else {
-            queue.async { [self] in recordFailure(BackpressureError()) }
-            return
+        dispatchPrecondition(condition: .onQueue(queue))
+        enqueue(reserved ? item : nil, type: type)
+    }
+
+    /// A nil item is a sample that did not fit the budget.
+    private func enqueue(_ item: QueuedSample?, type: SCStreamOutputType) {
+        guard let item else { return recordFailure(BackpressureError()) }
+        guard !finishing, !finished, failure == nil else { release(item); return }
+        if !started {
+            writer.startSession(atSourceTime: item.buffer.presentationTimeStamp)
+            started = true
         }
-        queue.async { [self] in
-            guard !finishing, !finished, failure == nil else { release(item); return }
-            if !started {
-                writer.startSession(atSourceTime: sample.presentationTimeStamp)
-                started = true
-            }
-            pending[type, default: []].append(item)
-            drain()
-        }
+        pending[type, default: []].append(item)
+        drain()
     }
 
     /// Temporary encoder pressure is not a write failure. Keep original timestamps
@@ -91,20 +94,27 @@ final class AudioOnlyRecording: @unchecked Sendable {
             return
         }
         for (type, input) in inputs where !finishedInputs.contains(type) {
-            while let item = pending[type]?.first {
+            // Drop the appended prefix once; removing each sample would shift the queue every time.
+            let queued = pending[type]?.count ?? 0
+            var appended = 0
+            var error: Error?
+            while appended < queued {
+                let item = pending[type, default: []][appended]
                 guard isReady(input) else {
-                    if item.receivedAt.duration(to: .now) >= .seconds(2) {
-                        recordFailure(BackpressureError())
-                        return
-                    }
+                    if item.receivedAt.duration(to: .now) >= .seconds(2) { error = BackpressureError() }
                     break
                 }
                 guard input.append(item.buffer) else {
-                    recordFailure(writer.error ?? WriteError())
-                    return
+                    error = writer.error ?? WriteError()
+                    break
                 }
-                pending[type]?.removeFirst()
+                appended += 1
                 release(item)
+            }
+            if appended > 0 { pending[type]?.removeFirst(appended) }
+            if let error {
+                recordFailure(error)
+                return
             }
             // An unused or exhausted track must not stall another track's tail.
             if finishing, pending[type]?.isEmpty != false {
@@ -141,8 +151,11 @@ final class AudioOnlyRecording: @unchecked Sendable {
         guard !finished else { return }
         finished = true
         guard started, writer.status == .writing else {
+            // Stopping before the first buffer is not a drive problem; finishing the inputs
+            // of a writer with no session fails it, so its own error would mislead here.
+            let error = failure ?? (started ? writer.error ?? WriteError() : NoAudioError())
             writer.cancelWriting()
-            completeFinish(.failure(failure ?? writer.error ?? WriteError()))
+            completeFinish(.failure(error))
             return
         }
         for (type, input) in inputs where !finishedInputs.contains(type) { input.markAsFinished() }
@@ -198,6 +211,12 @@ final class AudioOnlyRecording: @unchecked Sendable {
     private struct BackpressureError: LocalizedError {
         var errorDescription: String? {
             "The audio encoder could not keep up with the recording. Close other busy apps or check the recording drive, then retry. Any saved audio remains in the meeting folder."
+        }
+    }
+
+    private struct NoAudioError: LocalizedError {
+        var errorDescription: String? {
+            "No audio was captured before the recording stopped."
         }
     }
 

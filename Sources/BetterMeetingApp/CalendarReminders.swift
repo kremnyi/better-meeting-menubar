@@ -104,7 +104,8 @@ final class CalendarReminders: ObservableObject {
         if enabled { allowed = (try? await center.calendarAccess(request: false)) == true }
         else { allowed = false }
         var failure: String? = !enabled || allowed ? nil : "Allow notifications for Better Meeting in System Settings."
-        let valid = allowed ? events.filter { $0.scheduledEnd > now } : []
+        // One meeting on several selected calendars arrives once per calendar; remind about it once.
+        let valid = allowed ? CalendarEvent.withoutDuplicates(events.filter { $0.scheduledEnd > now }) : []
         let byID = Dictionary(valid.map { (CalendarReminder.prefix + $0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let pending = await center.pendingNotificationRequests().filter { $0.identifier.hasPrefix(CalendarReminder.prefix) }
         let delivered = await center.calendarDeliveredRequests().filter { $0.identifier.hasPrefix(CalendarReminder.prefix) }

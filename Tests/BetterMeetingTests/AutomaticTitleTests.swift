@@ -15,6 +15,25 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertNil(MeetingTitle.suggest(from: "Anna will call tomorrow. Anna will call tomorrow."))
     }
 
+    func testCancellationStopsTitleSuggestion() async {
+        // Tagging a long transcript must not hold up a cancelled transcription.
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return MeetingTitle.suggest(from: pricing)
+        }
+        let cancelledTitle = await cancelled.value
+        XCTAssertNil(cancelledTitle)
+        // The background variant must pass the caller's cancellation to its detached tagging task.
+        let background = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await MeetingTitle.suggestInBackground(from: pricing)
+        }
+        let backgroundTitle = await background.value
+        XCTAssertNil(backgroundTitle)
+        let title = await MeetingTitle.suggestInBackground(from: pricing)
+        XCTAssertEqual(title, "Anna — Pricing Review")
+    }
+
     func testUnnamedMeetingCanBeRetriedAndRenamedWithoutLosingFiles() throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }

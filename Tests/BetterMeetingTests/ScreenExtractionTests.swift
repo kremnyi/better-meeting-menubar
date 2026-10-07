@@ -44,11 +44,38 @@ final class ScreenExtractionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("cancelled").path))
     }
 
-    static func makeVideo(at url: URL) async throws {
+    /// Audio routinely outlasts the last video frame, which stretches the movie past the video track; the
+    /// samples there can't decode, and they must not cost the screens that do.
+    func testAudioOutlastingVideoStillExtractsScreens() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let video = root.appendingPathComponent("recording.mp4")
+        try await Self.makeVideo(at: video, audioSeconds: 9)
+        let asset = AVURLAsset(url: video)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let videoEnd = try await XCTUnwrap(tracks.first).load(.timeRange).end.seconds
+        let duration = try await asset.load(.duration).seconds
+        XCTAssertGreaterThan(duration, videoEnd + 2, "The fixture must leave samples past the video track")
+        let events = try await ScreenExtractor.extract(video: video, to: root, languages: ["en"]) { _ in }
+        let text = events.flatMap(\.added).joined(separator: " ").lowercased()
+        XCTAssertTrue(text.contains("pricing"), text)
+        XCTAssertTrue(text.contains("release"), text)
+        XCTAssertEqual(events.compactMap(\.screenshot).count, 2)
+    }
+
+    /// Four seconds of video; `audioSeconds` adds a silent audio track of that length.
+    static func makeVideo(at url: URL, audioSeconds: Int? = nil) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 960, AVVideoHeightKey: 540
         ])
+        let sampleRate = 16_000
+        let audio = audioSeconds.map { _ in
+            AVAssetWriterInput(mediaType: .audio, outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: sampleRate, AVNumberOfChannelsKey: 1
+            ])
+        }
+        if let audio { writer.add(audio) }
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: 960, kCVPixelBufferHeightKey as String: 540,
@@ -84,7 +111,36 @@ final class ScreenExtractionTests: XCTestCase {
             XCTAssertTrue(adaptor.append(pixels, withPresentationTime: CMTime(value: Int64(index), timescale: 1)))
         }
         input.markAsFinished()
-        writer.endSession(atSourceTime: CMTime(value: 4, timescale: 1))
+        if let audio, let audioSeconds {
+            var format = AudioStreamBasicDescription(
+                mSampleRate: Double(sampleRate), mFormatID: kAudioFormatLinearPCM,
+                mFormatFlags: kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked,
+                mBytesPerPacket: 2, mFramesPerPacket: 1, mBytesPerFrame: 2, mChannelsPerFrame: 1,
+                mBitsPerChannel: 16, mReserved: 0)
+            var description: CMAudioFormatDescription?
+            CMAudioFormatDescriptionCreate(allocator: nil, asbd: &format, layoutSize: 0, layout: nil,
+                magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &description)
+            for second in 0..<audioSeconds {
+                while !audio.isReadyForMoreMediaData {
+                    if let error = writer.error { throw error }
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                let bytes = sampleRate * 2
+                var block: CMBlockBuffer?
+                CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: bytes,
+                    blockAllocator: nil, customBlockSource: nil, offsetToData: 0, dataLength: bytes,
+                    flags: kCMBlockBufferAssureMemoryNowFlag, blockBufferOut: &block)
+                CMBlockBufferFillDataBytes(with: 0, blockBuffer: try XCTUnwrap(block), offsetIntoDestination: 0, dataLength: bytes)
+                var sample: CMSampleBuffer?
+                CMAudioSampleBufferCreateReadyWithPacketDescriptions(allocator: nil, dataBuffer: try XCTUnwrap(block),
+                    formatDescription: try XCTUnwrap(description), sampleCount: sampleRate,
+                    presentationTimeStamp: CMTime(value: Int64(second), timescale: 1),
+                    packetDescriptions: nil, sampleBufferOut: &sample)
+                XCTAssertTrue(audio.append(try XCTUnwrap(sample)))
+            }
+            audio.markAsFinished()
+        }
+        writer.endSession(atSourceTime: CMTime(value: Int64(max(4, audioSeconds ?? 0)), timescale: 1))
         await writer.finishWriting()
         if let error = writer.error { throw error }
     }

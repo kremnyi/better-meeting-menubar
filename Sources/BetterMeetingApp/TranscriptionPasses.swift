@@ -102,23 +102,37 @@ enum TranscriptionPasses {
     // Port of GivenFLY/better-meeting's asr.py _merge at e9b524d, except that a candidate must add at
     // least half its length past the cursor. Upstream also took a segment another pass had already
     // covered, which repeated sentences and placed lines out of order.
-    // ponytail: upstream's quadratic scan; sweep the intervals if long meetings make merging slow.
+    // Upstream rescans every segment for each pick; this sweep gives the same picks in near-linear time.
     static func merge(_ passes: [ScoredSegment], noSpeechThreshold: Float = 0.6, logProbThreshold: Float = -1) -> [ScoredSegment] {
         let segments = passes.filter { !($0.nospeech > noSpeechThreshold && $0.score < logProbThreshold) }
             .sorted { $0.start < $1.start }
         guard var cursor = segments.first?.start else { return [] }
         var merged: [ScoredSegment] = []
+        // The cursor only moves forward, so segments that start within reach form a growing prefix,
+        // and a segment that ends before the reach stays out of it for good.
+        var reached = 0
+        var open: [Int] = []
+        var following = 0
         while true {
-            let candidates = segments.filter {
-                $0.end > cursor + 0.2 && $0.start <= cursor + 2
-                    && $0.end - max($0.start, cursor) >= ($0.end - $0.start) / 2
+            while reached < segments.count, segments[reached].start <= cursor + 2 {
+                open.append(reached)
+                reached += 1
             }
+            open.removeAll { !(segments[$0].end > cursor + 0.2) }
             // Keep the first candidate on ties, matching Python's max().
-            if let best = candidates.max(by: { $0.score < $1.score }) {
+            var best: ScoredSegment?
+            for index in open {
+                let segment = segments[index]
+                guard segment.end - max(segment.start, cursor) >= (segment.end - segment.start) / 2 else { continue }
+                if let current = best, !(current.score < segment.score) { continue }
+                best = segment
+            }
+            while following < segments.count, segments[following].start <= cursor { following += 1 }
+            if let best {
                 merged.append(best)
                 cursor = best.end
-            } else if let next = segments.first(where: { $0.start > cursor }) {
-                cursor = next.start
+            } else if following < segments.count {
+                cursor = segments[following].start
             } else {
                 break
             }

@@ -209,6 +209,34 @@ struct MenuBarStatusLabel: View {
     }
 }
 
+/// The menu's row hover feedback: a faint rounded fill while the pointer is over the row,
+/// slightly stronger while `pressed`.
+private struct HoverHighlight: ViewModifier {
+    let cornerRadius: CGFloat
+    let pressed: Bool
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                Color.primary.opacity(pressed ? 0.1 : hovering ? 0.06 : 0),
+                in: RoundedRectangle(cornerRadius: cornerRadius)
+            )
+            .onHover { hovering = $0 }
+    }
+}
+
+extension View {
+    func hoverHighlight(cornerRadius: CGFloat, pressed: Bool = false) -> some View {
+        modifier(HoverHighlight(cornerRadius: cornerRadius, pressed: pressed))
+    }
+
+    /// Secondary caption text aligned with a checkbox's title rather than its box.
+    func toggleCaption() -> some View {
+        font(.caption).foregroundStyle(.secondary).padding(.leading, 18)
+    }
+}
+
 extension Color {
     /// WCAG AA (≥4.5:1) with white button labels and on light backgrounds.
     static let signalCoral = Color(red: 0.85, green: 0.16, blue: 0.13)

@@ -32,9 +32,10 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         var detected = false
     }
 
+    /// Times are monotonic, so a wall-clock change cannot make a live source look stale.
     private struct Level: Sendable {
         let value: Double
-        let time: Date
+        let time: ContinuousClock.Instant
     }
 
     var onUnexpectedStop: ((Error?) -> Void)?
@@ -48,6 +49,10 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private var startContinuation: CheckedContinuation<Void, Error>?
     private var stopContinuation: CheckedContinuation<Void, Error>?
     private var startCaptureTask: Task<Void, Never>?
+    /// Set while `start` awaits shareable content, before `stream` is assigned.
+    private var starting = false
+    /// Whether this stream's capture was already stopped, so clean-up does not stop it again.
+    private var captureStopped = false
     // Audio buffers arrive on their own queue so the main thread isn't woken for each one;
     // the recording timer reads the latest levels from here.
     private nonisolated let meter = OSAllocatedUnfairLock(initialState: MeterState())
@@ -56,15 +61,15 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     nonisolated func audioLevel(microphone: Bool) -> Double {
         let type: SCStreamOutputType = microphone ? .microphone : .audio
         guard let level = meter.withLock({ $0.levels[type] }),
-              Date().timeIntervalSince(level.time) < 0.5 else { return 0 }
+              level.time.duration(to: .now) < .milliseconds(500) else { return 0 }
         return level.value
     }
 
-    func audioHealth(at date: Date = Date()) -> RecordingAudioHealth {
+    func audioHealth(at time: ContinuousClock.Instant = .now) -> RecordingAudioHealth {
         let health = meter.withLock { state in
             RecordingAudioHealth(
-                microphoneMissing: state.levels[.microphone].map { date.timeIntervalSince($0.time) >= 10 } ?? true,
-                systemMissing: state.levels[.audio].map { date.timeIntervalSince($0.time) >= 10 } ?? true
+                microphoneMissing: state.levels[.microphone].map { $0.time.duration(to: time) >= .seconds(10) } ?? true,
+                systemMissing: state.levels[.audio].map { $0.time.duration(to: time) >= .seconds(10) } ?? true
             )
         }
         return RecordingAudioHealth(
@@ -88,7 +93,12 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         to outputURL: URL, displayID: CGDirectDisplayID, microphoneID: String,
         resolution: CaptureResolution, quality: CaptureQuality, mode: CaptureMode = .screen
     ) async throws {
-        guard stream == nil else { throw RecorderError.alreadyRecording }
+        // Overlapping starts would both pass a check on `stream` alone, which is set only after the awaits below.
+        guard stream == nil, !starting, startContinuation == nil, startCaptureTask == nil else {
+            throw RecorderError.alreadyRecording
+        }
+        starting = true
+        defer { starting = false }
         meter.withLock { $0 = MeterState() }
         guard CGPreflightScreenCaptureAccess() else { throw RecorderError.screenPermissionDenied }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
@@ -153,7 +163,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             try stream.addRecordingOutput(output)
             recordingOutput = output
         } else {
-            let recording = try AudioOnlyRecording(to: outputURL) { [weak self] error in
+            let recording = try AudioOnlyRecording(to: outputURL, queue: audioQueue) { [weak self] error in
                 Task { @MainActor [weak self] in
                     guard self?.stream.map(ObjectIdentifier.init) == streamID else { return }
                     self?.finish(failing: error)
@@ -165,6 +175,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         self.stream = stream
         self.microphone = microphone
         finalizingAudio = false
+        captureStopped = false
 
         try await withCheckedThrowingContinuation { continuation in
             startContinuation = continuation
@@ -193,15 +204,19 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     }
 
     func stop() async throws {
-        guard let stream else { throw RecorderError.notRecording }
+        // A second stop while one is pending would overwrite, and leak, the first continuation.
+        guard let stream, stopContinuation == nil else { throw RecorderError.notRecording }
 
         try await withCheckedThrowingContinuation { continuation in
             stopContinuation = continuation
             Task {
                 do {
+                    captureStopped = true
                     try await stream.stopCapture()
                     if audioRecording.withLock({ $0 != nil }) { finalizeAudio(error: nil) }
                 } catch {
+                    // Clean-up may still need to stop a capture that failed to stop here.
+                    if stream === self.stream { captureStopped = false }
                     finishStop(with: .failure(error))
                 }
             }
@@ -219,23 +234,28 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         // Both audio outputs are delivered on audioQueue; each level is measured at most every 0.1 s.
         guard type == .audio || type == .microphone else { return }
         let streamID = ObjectIdentifier(stream)
-        let now = Date()
+        let now = ContinuousClock.now
         guard meter.withLock({ $0.stream == streamID }),
               sampleBuffer.isValid, CMSampleBufferDataIsReady(sampleBuffer),
               let description = sampleBuffer.formatDescription else { return }
         audioRecording.withLock { $0 }?.append(sampleBuffer, type: type)
-        guard meter.withLock({ now.timeIntervalSince($0.levels[type]?.time ?? .distantPast) >= 0.1 }) else { return }
-        let format = AVAudioFormat(cmAudioFormatDescription: description)
+        guard meter.withLock({ state in
+            state.levels[type].map { $0.time.duration(to: now) >= .milliseconds(100) } ?? true
+        }) else { return }
         let frames = sampleBuffer.numSamples
-        guard frames > 0, frames <= Int(Int32.max),
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)) else { return }
-        buffer.frameLength = AVAudioFrameCount(frames)
-        guard CMSampleBufferCopyPCMDataIntoAudioBufferList(sampleBuffer, at: 0, frameCount: Int32(frames), into: buffer.mutableAudioBufferList) == noErr else { return }
-        updateAudioLevel(buffer, type: type, at: now)
+        guard frames > 0, let format = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
+              // Measures the samples in place; nothing is copied just for the meter.
+              let level = try? sampleBuffer.withAudioBufferList(body: { buffers, _ in
+                  Self.meterLevel(buffers, format: format, frames: frames)
+              }) else { return }
+        recordLevel(level, type: type, at: now)
     }
 
-    nonisolated func updateAudioLevel(_ buffer: AVAudioPCMBuffer, type: SCStreamOutputType, at time: Date) {
-        let level = Self.meterLevel(buffer)
+    nonisolated func updateAudioLevel(_ buffer: AVAudioPCMBuffer, type: SCStreamOutputType, at time: ContinuousClock.Instant) {
+        recordLevel(Self.meterLevel(buffer), type: type, at: time)
+    }
+
+    private nonisolated func recordLevel(_ level: Double, type: SCStreamOutputType, at time: ContinuousClock.Instant) {
         meter.withLock { state in
             state.levels[type] = Level(value: level, time: time)
             state.detected = state.detected || level > 0
@@ -243,25 +263,47 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     }
 
     nonisolated static func meterLevel(_ buffer: AVAudioPCMBuffer) -> Double {
-        guard buffer.frameLength > 0 else { return 0 }
+        meterLevel(UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList),
+                   format: buffer.format.streamDescription.pointee, frames: Int(buffer.frameLength))
+    }
+
+    /// The loudest channel's RMS on a -60…0 dB scale. Interleaved channels share one buffer
+    /// with a stride of the channel count; non-interleaved channels each have their own.
+    nonisolated static func meterLevel(
+        _ buffers: UnsafeMutableAudioBufferListPointer, format: AudioStreamBasicDescription, frames: Int
+    ) -> Double {
+        let channels = Int(format.mChannelsPerFrame)
+        let bytes = Int(format.mBitsPerChannel) / 8
+        let flags = format.mFormatFlags
+        let isFloat = flags & kAudioFormatFlagIsFloat != 0
+        let isInteger = flags & kAudioFormatFlagIsSignedInteger != 0
+        guard frames > 0, channels > 0, format.mFormatID == kAudioFormatLinearPCM,
+              isFloat ? bytes == 4 : isInteger && (bytes == 2 || bytes == 4) else { return 0 }
+        let nonInterleaved = flags & kAudioFormatFlagIsNonInterleaved != 0
+        let stride = nonInterleaved ? 1 : channels
         var peakRMS: Float = 0
-        for channel in 0..<Int(buffer.format.channelCount) {
+        var samples: [Float] = []
+        for channel in 0..<channels {
+            let index = nonInterleaved ? channel : 0
+            guard index < buffers.count, let data = buffers[index].mData else { return 0 }
+            let count = min(frames, Int(buffers[index].mDataByteSize) / (bytes * stride))
+            guard count > 0 else { continue }
+            let offset = nonInterleaved ? 0 : channel
+            let length = vDSP_Length(count)
             var rms: Float = 0
-            let count = vDSP_Length(buffer.frameLength)
-            let stride = vDSP_Stride(buffer.stride)
-            if let channels = buffer.floatChannelData {
-                vDSP_rmsqv(channels[channel], stride, &rms, count)
+            if isFloat {
+                vDSP_rmsqv(data.assumingMemoryBound(to: Float.self) + offset, vDSP_Stride(stride), &rms, length)
             } else {
-                var samples = [Float](repeating: 0, count: Int(count))
+                if samples.count < count { samples = [Float](repeating: 0, count: count) }
                 let scale: Float
-                if let channels = buffer.int16ChannelData {
-                    vDSP_vflt16(channels[channel], stride, &samples, 1, count)
+                if bytes == 2 {
+                    vDSP_vflt16(data.assumingMemoryBound(to: Int16.self) + offset, vDSP_Stride(stride), &samples, 1, length)
                     scale = 32768
-                } else if let channels = buffer.int32ChannelData {
-                    vDSP_vflt32(channels[channel], stride, &samples, 1, count)
+                } else {
+                    vDSP_vflt32(data.assumingMemoryBound(to: Int32.self) + offset, vDSP_Stride(stride), &samples, 1, length)
                     scale = 2147483648
-                } else { return 0 }
-                vDSP_rmsqv(samples, 1, &rms, count)
+                }
+                vDSP_rmsqv(samples, 1, &rms, length)
                 rms /= scale
             }
             peakRMS = max(peakRMS, rms)
@@ -294,6 +336,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     nonisolated func stream(_ stream: SCStream, didStopWithError error: any Error) {
         Task { @MainActor in
             guard stream === self.stream else { return }
+            captureStopped = true
             let nsError = error as NSError
             let code = SCStreamError.Code(rawValue: nsError.code)
             let wasStoppedIntentionally = nsError.domain == SCStreamErrorDomain
@@ -332,7 +375,10 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         guard !finalizingAudio, let recording = audioRecording.withLock({ $0 }) else { return }
         finalizingAudio = true
         Task {
-            if error != nil { try? await stream?.stopCapture() }
+            if error != nil, !captureStopped, let stream {
+                captureStopped = true
+                try? await stream.stopCapture()
+            }
             // The capture queue can still hold its last buffers when capture ends.
             await withCheckedContinuation { continuation in
                 audioQueue.async { continuation.resume() }
@@ -370,7 +416,9 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     }
 
     private func cleanUp() {
-        let previousStream = stream
+        // Our own stop, or the stream reporting its end, already stopped this capture.
+        let previousStream = captureStopped ? nil : stream
+        captureStopped = false
         stream = nil
         recordingOutput = nil
         microphone = nil

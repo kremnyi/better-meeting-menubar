@@ -103,6 +103,57 @@ final class MeetingDetectorTests: XCTestCase {
         await fulfillment(of: [suggested], timeout: 2)
     }
 
+    /// Core Audio reports only changes, so a call that starts during a transcription sends no
+    /// further event when the transcription ends; the detector must notice the app became free.
+    func testCallStartedWhileBusyIsSuggestedOnceTheAppIsFree() async throws {
+        var transcribing = true
+        let (detector, microphone, notifications) = makeDetector(busy: { transcribing })
+        detector.busyRecheckInterval = 0.01
+        let quiet = expectation(description: "no suggestion while busy")
+        quiet.isInverted = true
+        notifications.onPost = { quiet.fulfill() }
+        detector.setEnabled(true)
+
+        microphone.send(true)
+        await fulfillment(of: [quiet], timeout: 0.3)
+        XCTAssertTrue(notifications.posted.isEmpty)
+
+        let suggested = expectation(description: "suggested after the transcription")
+        notifications.onPost = { suggested.fulfill() }
+        transcribing = false // No new microphone report: the call simply continues.
+        await fulfillment(of: [suggested], timeout: 2)
+        XCTAssertEqual(notifications.posted.count, 1)
+    }
+
+    /// Recording a call by hand means the app is busy until the transcription ends; the call the user
+    /// already recorded must not be offered again when the app becomes free while the call continues.
+    func testACallTheUserRecordsIsNotSuggestedAfterTheRecording() async throws {
+        var busy = false
+        let (detector, microphone, notifications) = makeDetector(busy: { busy })
+        detector.busyRecheckInterval = 0.01
+        detector.setEnabled(true)
+        let suggested = expectation(description: "suggested")
+        notifications.onPost = { suggested.fulfill() }
+        microphone.send(true)
+        await fulfillment(of: [suggested], timeout: 2)
+
+        busy = true
+        detector.ownRecordingStarted() // The user starts recording from the suggestion.
+        XCTAssertEqual(notifications.removed, [MicrophoneMeeting.requestID])
+        let quiet = expectation(description: "no second suggestion")
+        quiet.isInverted = true
+        notifications.onPost = { quiet.fulfill() }
+        busy = false // Recording and transcription finished; the call is still on the microphone.
+        await fulfillment(of: [quiet], timeout: 0.3)
+        XCTAssertEqual(notifications.posted.count, 1)
+
+        microphone.send(false)
+        microphone.send(true) // The next call is suggested again.
+        let next = expectation(description: "next call suggested")
+        notifications.onPost = { next.fulfill() }
+        await fulfillment(of: [next], timeout: 2)
+    }
+
     func testTurningDetectionOffStopsWatchingAndWithdraws() async throws {
         let (detector, microphone, notifications) = makeDetector()
         let suggested = expectation(description: "suggested")

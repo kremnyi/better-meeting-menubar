@@ -881,15 +881,15 @@ final class RecoveryTests: XCTestCase {
         for source: SCStreamOutputType in [.microphone, .audio] {
             let recorder = MeetingRecorder()
             samples.update(repeating: 0, count: 100)
-            recorder.updateAudioLevel(buffer, type: source, at: Date())
+            recorder.updateAudioLevel(buffer, type: source, at: .now)
             XCTAssertFalse(recorder.hasDetectedAudio)
             samples.update(repeating: 0.1, count: 100)
-            recorder.updateAudioLevel(buffer, type: source, at: Date())
+            recorder.updateAudioLevel(buffer, type: source, at: .now)
             XCTAssertTrue(recorder.hasDetectedAudio, "Either source must count as detected audio")
             model.checkRecordingAudio(elapsed: 120, audioDetected: recorder.hasDetectedAudio)
             XCTAssertFalse(model.audioWarning)
             samples.update(repeating: 0, count: 100)
-            recorder.updateAudioLevel(buffer, type: source, at: Date())
+            recorder.updateAudioLevel(buffer, type: source, at: .now)
             XCTAssertTrue(recorder.hasDetectedAudio, "Later silence must not erase the earlier signal")
             model.checkRecordingAudio(elapsed: 600, audioDetected: recorder.hasDetectedAudio)
             XCTAssertFalse(model.audioWarning)
@@ -920,29 +920,30 @@ final class RecoveryTests: XCTestCase {
         buffer.frameLength = 100
         let samples = try XCTUnwrap(buffer.floatChannelData)[0]
         let date = Date()
+        let start = ContinuousClock.now
         samples.update(repeating: 0.1, count: 100)
         for source: SCStreamOutputType in [.microphone, .audio] {
-            recorder.updateAudioLevel(buffer, type: source, at: date)
+            recorder.updateAudioLevel(buffer, type: source, at: start)
         }
         model.recordingDidStart(at: date)
         let initialSize = hostingView(MenuBarControlView(), model: model).fittingSize
         samples.update(repeating: 0, count: 100)
-        recorder.updateAudioLevel(buffer, type: .audio, at: date.addingTimeInterval(30))
+        recorder.updateAudioLevel(buffer, type: .audio, at: start.advanced(by: .seconds(30)))
         model.checkRecordingAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
-                                  health: recorder.audioHealth(at: date.addingTimeInterval(30)))
+                                  health: recorder.audioHealth(at: start.advanced(by: .seconds(30))))
         XCTAssertTrue(model.audioWarning, "Audio heard earlier must not hide a disconnected microphone")
         XCTAssertEqual(model.audioWarningTitle, "Microphone stopped sending audio")
         XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
-        recorder.updateAudioLevel(buffer, type: .microphone, at: date.addingTimeInterval(30))
+        recorder.updateAudioLevel(buffer, type: .microphone, at: start.advanced(by: .seconds(30)))
         model.checkRecordingAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
-                                  health: recorder.audioHealth(at: date.addingTimeInterval(30)))
+                                  health: recorder.audioHealth(at: start.advanced(by: .seconds(30))))
         XCTAssertFalse(model.audioWarning, "Silent buffers prove the sources recovered")
-        recorder.updateAudioLevel(buffer, type: .microphone, at: date.addingTimeInterval(41))
+        recorder.updateAudioLevel(buffer, type: .microphone, at: start.advanced(by: .seconds(41)))
         model.checkRecordingAudio(elapsed: 41, audioDetected: recorder.hasDetectedAudio,
-                                  health: recorder.audioHealth(at: date.addingTimeInterval(41)))
+                                  health: recorder.audioHealth(at: start.advanced(by: .seconds(41))))
         XCTAssertEqual(model.audioWarningTitle, "System audio stopped sending data")
         model.checkRecordingAudio(elapsed: 60, audioDetected: recorder.hasDetectedAudio,
-                                  health: recorder.audioHealth(at: date.addingTimeInterval(60)))
+                                  health: recorder.audioHealth(at: start.advanced(by: .seconds(60))))
         XCTAssertEqual(model.audioWarningTitle, "Audio sources stopped sending data")
         XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
         XCTAssertEqual(model.state, .recording)

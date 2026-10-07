@@ -33,6 +33,8 @@ struct MeetingHistoryItem: Identifiable, Equatable, Sendable {
     var totalBytes: Int64 = 0
     /// A blocked restore retains its backup and must not be treated as a new transcription.
     var recoveryFolder: URL? = nil
+    /// Whether `transcript.md` existed on scan, so menus can enable Copy without touching the disk.
+    var hasTranscript = false
 
     var recoveryError: String? {
         recoveryFolder.flatMap { MeetingActionError.transcriptRecovery($0).errorDescription }
@@ -329,9 +331,9 @@ enum MeetingArtifacts {
         let manifest = (try? Data(contentsOf: metadataURL)).flatMap {
             try? decoder.decode(MeetingManifest.self, from: $0)
         }
-        let hasTranscripts = ["transcript.md", "transcript.json"].allSatisfy {
-            FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
-        }
+        let hasMarkdown = FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path)
+        let hasTranscripts = hasMarkdown
+            && FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.json").path)
         let complete = recoveryFolder == nil && manifest != nil && manifest?.transcriptionComplete != false && hasTranscripts
         guard complete || hasMedia(in: folder) || recoveryFolder != nil else { return nil }
 
@@ -345,7 +347,8 @@ enum MeetingArtifacts {
             needsTranscription: !complete,
             titleWasProvided: manifest?.titleWasProvided ?? true,
             totalBytes: LocalTranscriber.sizeOnDisk(of: folder),
-            recoveryFolder: recoveryFolder
+            recoveryFolder: recoveryFolder,
+            hasTranscript: hasMarkdown
         )
     }
 

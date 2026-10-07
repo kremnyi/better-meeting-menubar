@@ -75,6 +75,18 @@ final class ModelStorageTests: XCTestCase {
             atPath: destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3/model.bin").path
         ))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("parakeet-tdt-0.6b-v3").path))
+
+        // With no legacy folder left, later launches must not look in Documents again,
+        // while the stray-folder repair inside Application Support keeps running.
+        let legacyModel = root.appendingPathComponent("legacy/models/openai/tokenizer.json")
+        try write("late", to: legacyModel)
+        try write("stray", to: destination.appendingPathComponent("parakeet-tdt-0.6b-v3/other.bin"))
+        LocalTranscriber.prepareModelStorage(legacy: root.appendingPathComponent("legacy"), destination: destination)
+        XCTAssertEqual(try String(contentsOf: legacyModel), "late")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("models/openai").path))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3/other.bin").path
+        ))
     }
 
     func testStoredModelsReportInstallationAndSize() throws {
@@ -84,7 +96,10 @@ final class ModelStorageTests: XCTestCase {
         for name in ["MelSpectrogram", "AudioEncoder", "TextDecoder"] {
             try write(Data(repeating: 0, count: 1024), to: whisper.appendingPathComponent("\(name).mlmodelc/coremldata.bin"))
         }
-        try write("speaker", to: base.appendingPathComponent("models/argmaxinc/speakerkit-coreml/model.bin"))
+        let speakers = base.appendingPathComponent("models/argmaxinc/speakerkit-coreml")
+        // A partial download (or Finder metadata) must not count as installed speaker labels.
+        try write("partial", to: speakers.appendingPathComponent(".DS_Store"))
+        try write(Data(repeating: 1, count: 64), to: speakers.appendingPathComponent("speaker_segmenter/pyannote-v3/W8A16/SpeakerSegmenter.mlmodelc/coremldata.bin"))
         try write(Data(repeating: 1, count: 8192), to: base.appendingPathComponent("models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930/AudioEncoder.mlmodelc/partial.bin"))
         try write(Data(repeating: 1, count: 8192), to: base.appendingPathComponent("models/parakeet-tdt-0.6b-v3/Encoder.mlmodelc/partial.bin"))
 
@@ -105,7 +120,15 @@ final class ModelStorageTests: XCTestCase {
         XCTAssertEqual(parakeet.url.deletingLastPathComponent().lastPathComponent, "models")
         XCTAssertFalse(parakeet.installed)
         XCTAssertGreaterThan(parakeet.sizeBytes, 0)
-        XCTAssertTrue(try XCTUnwrap(models.last).installed)
+        XCTAssertFalse(try XCTUnwrap(models.last).installed)
+        for path in [
+            "speaker_embedder/pyannote-v3/W8A16/SpeakerEmbedderPreprocessor",
+            "speaker_embedder/pyannote-v3/W8A16/SpeakerEmbedder",
+            "speaker_clusterer/pyannote-v4/W32A32/PldaProjector",
+        ] {
+            try write(Data(repeating: 1, count: 64), to: speakers.appendingPathComponent("\(path).mlmodelc/coremldata.bin"))
+        }
+        XCTAssertTrue(try XCTUnwrap(LocalTranscriber.storedModels(in: base, sizes: false).last).installed)
     }
 
     func testDeleteStoredModelRemovesOnlyThatFolder() async throws {

@@ -19,7 +19,11 @@ enum ScreenExtractor {
     ) async throws -> [ScreenEvent] {
         try Task.checkCancellation()
         let asset = AVURLAsset(url: video)
-        let duration = try await asset.load(.duration).seconds
+        // Audio often outlasts the last video frame, so only the video track's span has screens to read.
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
+            throw ScreenExtractionError.invalidVideo
+        }
+        let duration = try await track.load(.timeRange).end.seconds
         guard duration.isFinite, duration > 0 else { throw ScreenExtractionError.invalidVideo }
         let thumbnails = generator(for: asset, width: 320)
         let frames = generator(for: asset, width: 1920)
@@ -29,13 +33,17 @@ enum ScreenExtractor {
         var previousTime = -90.0
         var previousText: [String] = []
         var keyframes: [ScreenEvent] = []
+        var decoded = 0
         let times = stride(from: 0.0, to: duration, by: 2.0).map { CMTime(seconds: $0, preferredTimescale: 600) }
         // One batch request reads the video forward instead of starting a separate request per sample.
         for await sample in thumbnails.images(for: times) {
             try Task.checkCancellation()
             let timestamp = sample.requestedTime
             let time = timestamp.seconds
-            let signature = try signature(of: try sample.image)
+            // A frame that can't be decoded only costs that sample, not the whole export.
+            guard let thumbnail = try? sample.image else { continue }
+            decoded += 1
+            let signature = try signature(of: thumbnail)
             if shouldKeep(signature, previous: previousSignature, gap: time - previousTime) {
                 let image = try await frames.image(at: timestamp).image
                 let lines = try recognizeText(in: image, recognitionLanguages: recognitionLanguages)
@@ -48,6 +56,8 @@ enum ScreenExtractor {
             progress(0.9 * min((time + 2) / duration, 1))
         }
         try Task.checkCancellation()
+        // A video that yields no frame at all is broken, not merely shorter than its audio.
+        guard decoded > 0 else { throw ScreenExtractionError.invalidVideo }
         let screens = folder.appendingPathComponent("screens", isDirectory: true)
         try FileManager.default.createDirectory(at: screens, withIntermediateDirectories: true)
         let selected = selectedIndices(in: keyframes, duration: duration, limit: 30)

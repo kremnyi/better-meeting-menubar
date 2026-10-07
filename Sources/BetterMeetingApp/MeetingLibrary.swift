@@ -19,12 +19,33 @@ final class MeetingLibrary: Sendable {
         let stamps: [Stamp]
         let transcript: String?
         let calendarFields: [String]
+
+        var bytes: Int { (transcript?.utf8.count ?? 0) + calendarFields.reduce(0) { $0 + $1.utf8.count } }
     }
 
     private struct Cache: Sendable {
         var folders: [URL: Folder] = [:]
         var text: [URL: SearchText] = [:]
+        /// The bytes the cached text holds.
+        var textBytes = 0
+
+        mutating func storeText(_ entry: SearchText, for folder: URL) {
+            textBytes += entry.bytes - (text.updateValue(entry, forKey: folder)?.bytes ?? 0)
+            // The cache only speeds up search; once it outgrows its budget, start over.
+            if textBytes > searchTextLimit {
+                text.removeAll()
+                textBytes = 0
+            }
+        }
+
+        mutating func keepText(for folders: Set<URL>) {
+            text = text.filter { folders.contains($0.key) }
+            textBytes = text.values.reduce(0) { $0 + $1.bytes }
+        }
     }
+
+    /// Transcripts kept in memory between searches; a larger library reads from disk again.
+    private static let searchTextLimit = 16 << 20
 
     private let cache = OSAllocatedUnfairLock(initialState: Cache())
 
@@ -71,7 +92,7 @@ final class MeetingLibrary: Sendable {
             }
         }
         let listed = Set(meetings.map(\.folderURL))
-        cache.withLock { $0.text = $0.text.filter { listed.contains($0.key) } }
+        cache.withLock { $0.keepText(for: listed) }
         return matches
     }
 
@@ -84,7 +105,7 @@ final class MeetingLibrary: Sendable {
             transcript: try? String(contentsOf: transcriptURL, encoding: .utf8),
             calendarFields: MeetingCalendar.searchFields(in: folder)
         )
-        if Self.isSettled(stamps) { cache.withLock { $0.text[folder] = text } }
+        if Self.isSettled(stamps) { cache.withLock { $0.storeText(text, for: folder) } }
         return text
     }
 

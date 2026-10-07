@@ -33,9 +33,11 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(CalendarReminder.category.actions.first?.identifier, CalendarReminder.startActionID)
         XCTAssertTrue(CalendarReminder.category.actions[0].options.contains(.foreground))
         XCTAssertTrue(CalendarReminder.category.actions[0].options.contains(.authenticationRequired))
-        reminders.update(events: [event], enabled: true)
+        // The same meeting on a second selected calendar has its own occurrence id but is one meeting.
+        let otherCalendarCopy = try calendarEventFixture(id: "other-calendar-occurrence", date: event.scheduledStart)
+        reminders.update(events: [event, otherCalendarCopy], enabled: true)
         await reminders.task?.value
-        XCTAssertEqual(center.adds, 1, "Refreshing the menu must not duplicate or postpone alerts")
+        XCTAssertEqual(center.adds, 1, "Refreshing the menu or selecting another calendar must not duplicate or postpone alerts")
         XCTAssertEqual(reminders.scheduledEvents, [event])
 
         let moved = try calendarEventFixture(date: now.addingTimeInterval(1200))

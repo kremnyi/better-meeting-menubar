@@ -34,6 +34,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     @Published private var pendingInstallation: (() -> Void)?
     private var updateVersion = ""
     private var informationURL: URL?
+    /// Set after the one start attempt, successful or not.
     private var started = false
     private lazy var updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: self, delegate: self)
 
@@ -51,11 +52,12 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         updater.automaticallyChecksForUpdates = automaticChecks
         updater.automaticallyDownloadsUpdates = true
+        // A failed start is reported once; toggling automatic checks must not retry it or stack subscriptions.
         guard !started else { return }
-        updater.publisher(for: \.canCheckForUpdates).assign(to: &$canCheckForUpdates)
+        started = true
         do {
             try updater.start()
-            started = true
+            updater.publisher(for: \.canCheckForUpdates).assign(to: &$canCheckForUpdates)
             if automaticChecks { updater.checkForUpdatesInBackground() }
         } catch {
             showUpdaterError(error) {}

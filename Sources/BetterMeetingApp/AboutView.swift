@@ -71,7 +71,6 @@ struct AboutView: View {
 
     private struct LinkRow: View {
         let link: AboutLink
-        @State private var hovering = false
 
         var body: some View {
             Link(destination: link.url) {
@@ -94,8 +93,7 @@ struct AboutView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .background(hovering ? Color.primary.opacity(0.06) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
-            .onHover { hovering = $0 }
+            .hoverHighlight(cornerRadius: 5)
             .help(link.url.absoluteString)
             .accessibilityLabel(link.accessibilityLabel)
         }

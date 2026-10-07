@@ -14,14 +14,15 @@ final class AudioOnlyRecordingTests: XCTestCase {
         // Delay readiness, not the resulting audio: the real writer must preserve
         // both signals and timestamps after the encoder becomes available again.
         let readyAt = ContinuousClock.now.advanced(by: .seconds(1))
-        let writer = try AudioOnlyRecording(to: recording,
+        let capture = DispatchQueue(label: "capture")
+        let writer = try AudioOnlyRecording(to: recording, queue: capture,
             isReady: { ContinuousClock.now >= readyAt && $0.isReadyForMoreMediaData }) { _ in }
         // Burst delivery exercises encoder pressure at startup and stop;
         // the middle runs at capture cadence, with system sound before the mic.
         for index in 0..<75 {
             let time = Double(index) * 0.02
-            if index < 60 { writer.append(try sample(at: time, frequency: 440, channels: 2), type: .audio) }
-            if index >= 15 { writer.append(try sample(at: time, frequency: 880, channels: 1, rate: 44_100), type: .microphone) }
+            if index < 60 { let buffer = try sample(at: time, frequency: 440, channels: 2); capture.sync { writer.append(buffer, type: .audio) } }
+            if index >= 15 { let buffer = try sample(at: time, frequency: 880, channels: 1, rate: 44_100); capture.sync { writer.append(buffer, type: .microphone) } }
             if (35..<60).contains(index) { try await Task.sleep(for: .milliseconds(20)) }
         }
         try await writer.finish()
@@ -72,14 +73,17 @@ final class AudioOnlyRecordingTests: XCTestCase {
         defer { removeTempRoot(root) }
         let url = root.appendingPathComponent("stalled.mov")
         let blocked = OSAllocatedUnfairLock(initialState: false)
-        let writer = try AudioOnlyRecording(to: url,
+        let capture = DispatchQueue(label: "capture")
+        let writer = try AudioOnlyRecording(to: url, queue: capture,
             isReady: { input in !blocked.withLock { $0 } && input.isReadyForMoreMediaData }) { _ in }
         for index in 0..<25 {
-            writer.append(try sample(at: Double(index) * 0.02, frequency: 440, channels: 1), type: .audio)
+            let buffer = try sample(at: Double(index) * 0.02, frequency: 440, channels: 1)
+            capture.sync { writer.append(buffer, type: .audio) }
             try await Task.sleep(for: .milliseconds(20))
         }
         blocked.withLock { $0 = true }
-        writer.append(try sample(at: 0.5, frequency: 440, channels: 1), type: .audio)
+        let late = try sample(at: 0.5, frequency: 440, channels: 1)
+        capture.sync { writer.append(late, type: .audio) }
         let waitingSince = ContinuousClock.now
         do {
             try await writer.finish()
@@ -99,11 +103,13 @@ final class AudioOnlyRecordingTests: XCTestCase {
     func testEitherSourceCanRecordWhenTheOtherSendsNoBuffers() async throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
+        let capture = DispatchQueue(label: "capture")
         for source: SCStreamOutputType in [.microphone, .audio] {
             let url = root.appendingPathComponent("\(source.rawValue).mov")
-            let writer = try AudioOnlyRecording(to: url) { _ in }
+            let writer = try AudioOnlyRecording(to: url, queue: capture) { _ in }
             for index in 0..<20 {
-                writer.append(try sample(at: Double(index) * 0.02, frequency: 440, channels: 1), type: source)
+                let buffer = try sample(at: Double(index) * 0.02, frequency: 440, channels: 1)
+                capture.sync { writer.append(buffer, type: source) }
                 try await Task.sleep(for: .milliseconds(20))
             }
             try await writer.finish()
@@ -111,6 +117,20 @@ final class AudioOnlyRecordingTests: XCTestCase {
             try await AudioExtractor.extract(from: url, to: audioURL) { _ in }
             let audio = try AVAudioFile(forReading: audioURL)
             XCTAssertEqual(Double(audio.length) / audio.processingFormat.sampleRate, 0.4, accuracy: 0.06)
+        }
+    }
+
+    func testStoppingBeforeAnyAudioDoesNotBlameTheDrive() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let writer = try AudioOnlyRecording(to: root.appendingPathComponent("empty.mov"), queue: DispatchQueue(label: "capture")) { _ in }
+        do {
+            try await writer.finish()
+            XCTFail("A recording without audio must not finish as a saved file")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("No audio was captured"), error.localizedDescription)
+            XCTAssertFalse(error.localizedDescription.contains("recording drive"),
+                           "An instant stop is not a storage failure")
         }
     }
 

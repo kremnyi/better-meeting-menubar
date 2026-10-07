@@ -41,6 +41,12 @@ final class SpeakerLabelsTests: XCTestCase {
         XCTAssertTrue(markdown.contains("[00:00:02] [uk] Speaker 2: Line 1"))
         XCTAssertTrue(MeetingBundle.timeline(segments: labeled, screens: []).contains("Speech [uk] (Speaker 2): Line 1"))
         XCTAssertEqual(try? JSONDecoder().decode([TranscriptSegment].self, from: JSONEncoder().encode(labeled)), labeled)
+        // Turns arrive in any order, and one long turn can outlast shorter ones that start after it.
+        let long: [SpeakerLabels.Turn] = [
+            .init(start: 3, end: 4, speaker: 0), .init(start: 0, end: 8, speaker: 1),
+            .init(start: 1, end: 2, speaker: 0), .init(start: 5, end: 3, speaker: 2)
+        ]
+        XCTAssertEqual(SpeakerLabels.assign(long, to: segments).map(\.speaker), [1, 1, 1, 1])
     }
 
     func testCacheReuseInvalidationAndFailedDetection() async throws {
@@ -91,7 +97,7 @@ final class SpeakerLabelsTests: XCTestCase {
             throw XCTSkip("Set BETTER_MEETING_SPEAKER_CHECK to disposable speech audio for local model verification")
         }
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/speaker-check")
-        let turns = try await SpeakerLabels.detect(audio: MeetingAudio(url: URL(fileURLWithPath: path)), downloadBase: root) { _ in }
+        let turns = try await LocalTranscriber(downloadBase: root).detectSpeakers(audio: MeetingAudio(url: URL(fileURLWithPath: path))) { _ in }
         XCTAssertFalse(turns.isEmpty)
         XCTAssertTrue(turns.allSatisfy(\.isValid))
         print("Speaker check: \(Set(turns.map(\.speaker)).count) speakers, \(turns.count) turns")

@@ -5,7 +5,6 @@ import SwiftUI
 struct MeetingHistorySection: View {
     @EnvironmentObject private var model: AppModel
     @Binding var retranscribingMeeting: MeetingHistoryItem?
-    @State private var hoveredMeetingID: MeetingHistoryItem.ID?
     @State private var searchFocusRequest = 0
 
     /// Every row is this tall, divider included, so the list always shows whole rows and
@@ -257,13 +256,7 @@ struct MeetingHistorySection: View {
         .padding(.horizontal, Self.hoverInset)
         .frame(minHeight: 42)
         .contentShape(Rectangle())
-        .background(
-            hoveredMeetingID == item.id ? Color.primary.opacity(0.06) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6)
-        )
-        .onHover { hovering in
-            hoveredMeetingID = hovering ? item.id : nil
-        }
+        .hoverHighlight(cornerRadius: 6)
         .contextMenu {
             meetingActions(item, canEdit: canEdit)
         }
@@ -289,8 +282,7 @@ struct MeetingHistorySection: View {
             do { try AppModel.copyTranscript(in: item.folderURL) }
             catch { NSAlert(error: error).runActive() }
         }
-        .disabled(item.recoveryFolder != nil
-                  || !FileManager.default.fileExists(atPath: item.folderURL.appendingPathComponent("transcript.md").path))
+        .disabled(item.recoveryFolder != nil || !item.hasTranscript)
         Button("Rename…") { model.renameMeeting(item) }
             .disabled(!canEdit || item.recoveryFolder != nil)
         Button(item.needsTranscription ? "Transcribe…" : "Re-transcribe…") { retranscribingMeeting = item }

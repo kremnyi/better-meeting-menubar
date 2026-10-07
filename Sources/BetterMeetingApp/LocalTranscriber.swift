@@ -41,6 +41,7 @@ actor LocalTranscriber {
     private var whisper: WhisperKit?
     private var loadedModel: SpeechModel?
     private var parakeet: AsrManager?
+    private var speakerKit: SpeakerKit?
     private var activeTranscriptions = 0
     private let downloadBase: URL
 
@@ -51,20 +52,40 @@ actor LocalTranscriber {
     static let legacyDownloadBase = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("huggingface", isDirectory: true)
 
+    /// Present once Documents holds nothing left to migrate, so later launches don't touch that folder.
+    static let legacyMigrationMarker = ".legacy-models-migrated"
+
     static func prepareModelStorage(legacy: URL = legacyDownloadBase, destination: URL = defaultDownloadBase) {
         let fm = FileManager.default
         try? fm.createDirectory(at: destination, withIntermediateDirectories: true)
-        for path in [
-            "models/argmaxinc/whisperkit-coreml",
-            "models/argmaxinc/speakerkit-coreml",
-            "models/openai",
-        ] {
-            move(legacy.appendingPathComponent(path), to: destination.appendingPathComponent(path))
-        }
         // Parakeet lives under models/ too; earlier builds kept it beside models/ and the original copy sits at the legacy root.
         let parakeet = destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3")
         move(destination.appendingPathComponent("parakeet-tdt-0.6b-v3"), to: parakeet)
-        move(legacy.appendingPathComponent("parakeet-tdt-0.6b-v3"), to: parakeet)
+
+        let marker = destination.appendingPathComponent(legacyMigrationMarker)
+        guard !fm.fileExists(atPath: marker.path) else { return }
+        let legacyPaths = [
+            "models/argmaxinc/whisperkit-coreml",
+            "models/argmaxinc/speakerkit-coreml",
+            "models/openai",
+        ].map { (legacy.appendingPathComponent($0), destination.appendingPathComponent($0)) }
+            + [(legacy.appendingPathComponent("parakeet-tdt-0.6b-v3"), parakeet)]
+        if !isMissing(legacy) {
+            for (source, target) in legacyPaths { move(source, to: target) }
+        }
+        // Conflicting files left behind keep the check running; a read error such as a denied
+        // Documents permission is not proof that nothing is left.
+        if isMissing(legacy) || legacyPaths.allSatisfy({ isMissing($0.0) }) {
+            fm.createFile(atPath: marker.path, contents: nil)
+        }
+    }
+
+    private static func isMissing(_ url: URL) -> Bool {
+        do {
+            return try !url.checkResourceIsReachable()
+        } catch {
+            return (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSFileReadNoSuchFileError
+        }
     }
 
     private static func move(_ source: URL, to target: URL) {
@@ -98,7 +119,23 @@ actor LocalTranscriber {
 
     static func cachedParakeetModels(in downloadBase: URL = defaultDownloadBase) -> Bool {
         AsrModels.modelsExist(at: parakeetDirectory(in: downloadBase), version: parakeetVersion)
-            && (try? Data(contentsOf: parakeetVocabulary(in: downloadBase))).map(validParakeetVocabulary) == true
+            && vocabularyIsValid(at: parakeetVocabulary(in: downloadBase))
+    }
+
+    // The menu asks on every open; parse the vocabulary again only after the file changes.
+    private static let vocabularyCheck =
+        OSAllocatedUnfairLock<(path: String, size: Int, modified: Date, valid: Bool)?>(initialState: nil)
+
+    private static func vocabularyIsValid(at url: URL) -> Bool {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = (attributes[.size] as? NSNumber)?.intValue,
+              let modified = attributes[.modificationDate] as? Date else { return false }
+        if let check = vocabularyCheck.withLock({ $0 }), check.path == url.path, check.size == size, check.modified == modified {
+            return check.valid
+        }
+        let valid = (try? Data(contentsOf: url)).map(validParakeetVocabulary) == true
+        vocabularyCheck.withLock { $0 = (url.path, size, modified, valid) }
+        return valid
     }
 
     private static func parakeetVocabulary(in downloadBase: URL) -> URL {
@@ -145,6 +182,21 @@ actor LocalTranscriber {
         downloadBase.appendingPathComponent("models/argmaxinc/speakerkit-coreml", isDirectory: true)
     }
 
+    /// The compiled bundles SpeakerKit's default pyannote setup loads, at the paths it reads them from.
+    static func hasSpeakerModels(in folder: URL) -> Bool {
+        [
+            (ModelInfo.segmenter(), "SpeakerSegmenter"),
+            (ModelInfo.embedder(), "SpeakerEmbedderPreprocessor"),
+            (ModelInfo.embedder(), "SpeakerEmbedder"),
+            (ModelInfo.plda(), "PldaProjector"),
+        ].allSatisfy { info, name in
+            let manifest = info.modelURL(baseURL: folder)
+                .appendingPathComponent("\(name).mlmodelc").appendingPathComponent("coremldata.bin")
+            let values = try? manifest.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            return values?.isRegularFile == true && (values?.fileSize ?? 0) > 0
+        }
+    }
+
     /// The models the app can store. `sizes: false` skips walking each folder, which keeps the call fast enough for the menu.
     static func storedModels(in downloadBase: URL = defaultDownloadBase, sizes: Bool = true) -> [StoredModelInfo] {
         var models = SpeechModel.allCases.map { model in
@@ -162,7 +214,7 @@ actor LocalTranscriber {
         let speakers = speakerKitDirectory(in: downloadBase)
         models.append(info(
             title: "Speaker labels", kind: .speakerLabels, url: speakers,
-            installed: folderHasContent(speakers), downloadBytes: 11_000_000, sizes: sizes
+            installed: hasSpeakerModels(in: speakers), downloadBytes: 11_000_000, sizes: sizes
         ))
         return models
     }
@@ -175,10 +227,6 @@ actor LocalTranscriber {
             installed: installed, sizeBytes: sizes ? sizeOnDisk(of: url) : 0, downloadBytes: downloadBytes,
             existsOnDisk: FileManager.default.fileExists(atPath: url.path)
         )
-    }
-
-    private static func folderHasContent(_ folder: URL) -> Bool {
-        (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == false
     }
 
     static func sizeOnDisk(of folder: URL) -> Int64 {
@@ -239,19 +287,41 @@ actor LocalTranscriber {
     }
 
     private func unloadLoadedModels() async {
-        // Forget the engines before awaiting their cleanup, so a transcription that starts
-        // meanwhile loads a fresh engine instead of using one that is being unloaded.
-        let loadedWhisper = whisper
-        let loadedParakeet = parakeet
-        whisper = nil
-        loadedModel = nil
-        parakeet = nil
-        if let loadedWhisper { await loadedWhisper.unloadModels() }
-        if let loadedParakeet { await loadedParakeet.cleanup() }
+        await unloadWhisper()
+        await unloadParakeet()
+        await unloadSpeakerKit()
     }
 
+    // Each unload forgets its engine before awaiting cleanup, so a transcription that starts
+    // meanwhile loads a fresh engine instead of using one that is being unloaded.
+    private func unloadWhisper() async {
+        let loaded = whisper
+        whisper = nil
+        loadedModel = nil
+        if let loaded { await loaded.unloadModels() }
+    }
+
+    private func unloadParakeet() async {
+        let loaded = parakeet
+        parakeet = nil
+        if let loaded { await loaded.cleanup() }
+    }
+
+    private func unloadSpeakerKit() async {
+        let loaded = speakerKit
+        speakerKit = nil
+        if let loaded { await loaded.unloadModels() }
+    }
+
+    /// Deletes one model folder, unloading only the engine that runs from it.
     func deleteStoredModel(at url: URL) async throws {
-        await unloadLoadedModels()
+        let path = url.standardizedFileURL.path
+        func holds(_ folder: URL) -> Bool { folder.standardizedFileURL.path == path }
+        if let loadedModel, holds(downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(loadedModel.rawValue)")) {
+            await unloadWhisper()
+        }
+        if parakeet != nil, holds(Self.parakeetDirectory(in: downloadBase)) { await unloadParakeet() }
+        if speakerKit != nil, holds(Self.speakerKitDirectory(in: downloadBase)) { await unloadSpeakerKit() }
         try FileManager.default.removeItem(at: url)
     }
 
@@ -280,8 +350,38 @@ actor LocalTranscriber {
     }
 
     func downloadSpeakerModels() async throws {
-        guard !Self.folderHasContent(Self.speakerKitDirectory(in: downloadBase)) else { return }
+        guard !Self.hasSpeakerModels(in: Self.speakerKitDirectory(in: downloadBase)) else { return }
         _ = try await SpeakerKit(PyannoteConfig(downloadBase: downloadBase.path, verbose: false))
+    }
+
+    private func prepareSpeakerKit() async throws -> SpeakerKit {
+        if let speakerKit { return speakerKit }
+        try Task.checkCancellation()
+        let kit = try await SpeakerKit(PyannoteConfig(downloadBase: downloadBase.path, verbose: false))
+        try Task.checkCancellation()
+        // Another caller may have finished loading while this one waited.
+        if let speakerKit {
+            await kit.unloadModels()
+            return speakerKit
+        }
+        speakerKit = kit
+        return kit
+    }
+
+    /// Speaker turns from SpeakerKit, which stays loaded between meetings like the speech engines.
+    func detectSpeakers(
+        audio: MeetingAudio, progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> [SpeakerLabels.Turn] {
+        activeTranscriptions += 1
+        defer { activeTranscriptions -= 1 }
+        let kit = try await prepareSpeakerKit()
+        do {
+            return try await SpeakerLabels.detect(audio: audio, kit: kit, progress: progress)
+        } catch {
+            // A failed run may leave the models in an unknown state; load them fresh next time.
+            if !(error is CancellationError), speakerKit === kit { await unloadSpeakerKit() }
+            throw error
+        }
     }
 
     @discardableResult
@@ -335,7 +435,11 @@ actor LocalTranscriber {
                 progressHandler: progressHandler
             )
         case .parakeet:
-            return try await transcribeParakeet(audioURL: audioURL, progressHandler: progressHandler)
+            // Speaker labels decode the samples anyway; share them instead of letting FluidAudio decode the file again.
+            return try await transcribeParakeet(
+                audioURL: audioURL, audio: settings.speakerLabels == true ? audio : nil,
+                progressHandler: progressHandler
+            )
         }
     }
 
@@ -380,7 +484,7 @@ actor LocalTranscriber {
             }
             defer { whisper.segmentDiscoveryCallback = nil }
             // Decoded samples let WhisperKit split the audio at silences and decode several chunks at once.
-            let samples = try audio.load()
+            let samples = try await audio.load()
             try Task.checkCancellation()
             let results = try await whisper.transcribe(audioArray: samples, decodeOptions: options)
             try Task.checkCancellation()
@@ -397,9 +501,12 @@ actor LocalTranscriber {
 
     private func transcribeParakeet(
         audioURL: URL,
+        audio: MeetingAudio?,
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         let manager = try await prepareParakeet(progressHandler: progressHandler)
+        let samples = try await audio?.load()
+        try Task.checkCancellation()
         progressHandler(.engineTranscribing(nil))
         let progressTask = Task {
             do {
@@ -412,7 +519,11 @@ actor LocalTranscriber {
         var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
         // Parakeet detects the language itself. The language list is Whisper's setting, and pinning
         // one language garbled English product names in a Russian call.
-        let result = try await manager.transcribe(audioURL, decoderState: &decoderState, language: nil)
+        let result = if let samples {
+            try await manager.transcribe(samples, decoderState: &decoderState, language: nil)
+        } else {
+            try await manager.transcribe(audioURL, decoderState: &decoderState, language: nil)
+        }
         try Task.checkCancellation()
         // ponytail: Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.
         return ParakeetLanguage.tagging(Self.segments(from: result))

@@ -2,6 +2,17 @@ import Foundation
 import NaturalLanguage
 
 enum MeetingTitle {
+    /// Suggests a title off the caller's executor. Cancelling the caller stops tagging early.
+    static func suggestInBackground(from text: String) async -> String? {
+        let tagging = Task.detached(priority: .utility) { suggest(from: text) }
+        return await withTaskCancellationHandler {
+            await tagging.value
+        } onCancel: {
+            tagging.cancel()
+        }
+    }
+
+    /// Returns nil once the current task is cancelled, without tagging the rest of the text.
     static func suggest(from text: String) -> String? {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let tagger = NLTagger(tagSchemes: [.nameTypeOrLexicalClass, .lemma])
@@ -18,8 +29,9 @@ enum MeetingTitle {
             let word = String(text[range])
             let lemma = tagger.tag(at: range.lowerBound, unit: .word, scheme: .lemma).0?.rawValue ?? word
             words.append((word, (lemma.isEmpty ? word : lemma).lowercased(), tag, range))
-            return true
+            return !Task.isCancelled
         }
+        guard !Task.isCancelled else { return nil }
 
         let ignored: Set<String> = [
             "thing", "stuff", "meeting", "call", "topic", "time", "today", "tomorrow", "yesterday",
@@ -36,6 +48,7 @@ enum MeetingTitle {
                 && $0.text.contains(where: \.isUppercase) && $0.text != $0.text.uppercased()
         }, by: { $0.text.lowercased() })
         for (key, mentions) in products where mentions.count >= 2 {
+            guard !Task.isCancelled else { return nil }
             if mentions.contains(where: { word in
                 let sentence = tagger.tokenRange(for: word.range, unit: .sentence)
                 return word.text.dropFirst().contains(where: \.isUppercase)

@@ -42,8 +42,9 @@ final class SystemMicrophoneUse: MicrophoneUse {
     func start(_ onChange: @escaping (Bool) -> Void) {
         guard report == nil else { return }
         report = onChange
-        let listener: AudioObjectPropertyListenerBlock = { _, _ in
-            Task { @MainActor [weak self] in self?.followDefaultDevice() }
+        // Registered on the main queue, so the block already runs on the main actor.
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.followDefaultDevice() }
         }
         defaultDeviceListener = listener
         var address = Self.address(kAudioHardwarePropertyDefaultInputDevice)
@@ -69,8 +70,8 @@ final class SystemMicrophoneUse: MicrophoneUse {
         leaveDevice()
         device = Self.defaultInputDevice()
         guard device != AudioObjectID(kAudioObjectUnknown) else { return report?(false) ?? () }
-        let listener: AudioObjectPropertyListenerBlock = { _, _ in
-            Task { @MainActor [weak self] in self?.publish() }
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.publish() }
         }
         deviceListener = listener
         var address = Self.address(kAudioDevicePropertyDeviceIsRunningSomewhere)
@@ -122,6 +123,9 @@ final class SystemMicrophoneUse: MicrophoneUse {
 final class MeetingDetector {
     /// How long another app holds the microphone before this counts as a call.
     var delay: TimeInterval = 30
+    /// Core Audio reports only changes, so a call that starts while the app is busy is re-checked
+    /// at this interval until the app is free, instead of waiting for the microphone to cycle.
+    var busyRecheckInterval: TimeInterval = 5
     private(set) var enabled = false
     private let source: MicrophoneUse
     private let isBusy: () -> Bool
@@ -154,17 +158,31 @@ final class MeetingDetector {
     func microphoneUse(_ inUse: Bool) {
         guard enabled else { return }
         guard inUse else { return withdraw(stopping: false) }
-        guard waiting == nil, !suggested, !isBusy() else { return }
-        waiting = Task { [delay] in
+        guard waiting == nil, !suggested else { return }
+        waiting = Task { [delay, busyRecheckInterval] in
             try? await Task.sleep(for: .seconds(delay))
+            // Our own recording holds the microphone too; so does a transcription the user is waiting for.
+            // The microphone going idle cancels this wait, so it only outlasts the busy state for one call.
+            while !Task.isCancelled, isBusy() {
+                try? await Task.sleep(for: .seconds(busyRecheckInterval))
+            }
             guard !Task.isCancelled else { return }
             waiting = nil
             await suggest()
         }
     }
 
+    /// The user is recording this call themselves, so it is not suggested again when the recording
+    /// and its transcription finish while the call continues. The microphone going idle arms the next call.
+    func ownRecordingStarted() {
+        guard enabled else { return }
+        waiting?.cancel()
+        waiting = nil
+        if suggested { remove(MicrophoneMeeting.requestID) }
+        suggested = true
+    }
+
     private func suggest() async {
-        // Our own recording holds the microphone too; so does a transcription the user is waiting for.
         guard enabled, !isBusy() else { return }
         suggested = true
         await post(MicrophoneMeeting.request)

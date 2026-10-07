@@ -49,43 +49,56 @@ enum SpeakerLabels {
     }
 
     static func detect(
-        audio: MeetingAudio, downloadBase: URL,
+        audio: MeetingAudio, kit: SpeakerKit,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> [Turn] {
         try Task.checkCancellation()
-        let kit = try await SpeakerKit(PyannoteConfig(downloadBase: downloadBase.path, verbose: false))
-        do {
-            try Task.checkCancellation()
-            let samples = try audio.load()
-            try Task.checkCancellation()
-            let result = try await kit.diarize(audioArray: samples, progressCallback: { update in
-                progress(update.fractionCompleted)
-            })
-            try Task.checkCancellation()
-            await kit.unloadModels()
-            return result.segments.compactMap { segment in
-                guard let speaker = segment.speaker.speakerId else { return nil }
-                return Turn(start: Double(segment.startTime), end: Double(segment.endTime), speaker: speaker)
-            }
-        } catch {
-            await kit.unloadModels()
-            throw error
+        let samples = try await audio.load()
+        try Task.checkCancellation()
+        let result = try await kit.diarize(audioArray: samples, progressCallback: { update in
+            progress(update.fractionCompleted)
+        })
+        try Task.checkCancellation()
+        return result.segments.compactMap { segment in
+            guard let speaker = segment.speaker.speakerId else { return nil }
+            return Turn(start: Double(segment.startTime), end: Double(segment.endTime), speaker: speaker)
         }
     }
 
     // ponytail: one label per transcript segment; use word timings if mid-segment speaker changes need splitting.
     static func assign(_ turns: [Turn], to segments: [TranscriptSegment]) -> [TranscriptSegment] {
-        segments.map { segment in
+        // Validate once and order by start; the sort is stable, so equal starts keep their input order.
+        let sorted = turns.filter(\.isValid).sorted { $0.start < $1.start }
+        // furthestEnd[i] is the latest end among sorted[0...i]; turns before the first index whose
+        // value passes a segment's start cannot overlap it.
+        var furthestEnd: [Double] = []
+        furthestEnd.reserveCapacity(sorted.count)
+        for turn in sorted { furthestEnd.append(max(furthestEnd.last ?? -.infinity, turn.end)) }
+        return segments.map { segment in
             var labeled = segment
             var overlap: [Int: Double] = [:]
-            for turn in turns where turn.isValid {
+            var index = Self.firstIndex(in: furthestEnd) { $0 > segment.start }
+            while index < sorted.count, sorted[index].start < segment.end {
+                let turn = sorted[index]
                 let seconds = min(segment.end, turn.end) - max(segment.start, turn.start)
                 if seconds > 0 { overlap[turn.speaker, default: 0] += seconds }
+                index += 1
             }
             let best = overlap.values.max()
             let matches = overlap.filter { $0.value == best }.map(\.key)
             labeled.speaker = matches.count == 1 ? matches[0] : nil
             return labeled
         }
+    }
+
+    /// The first index whose value satisfies `predicate`, for values on which it flips from false to true once.
+    private static func firstIndex(in values: [Double], where predicate: (Double) -> Bool) -> Int {
+        var low = 0
+        var high = values.count
+        while low < high {
+            let middle = (low + high) / 2
+            if predicate(values[middle]) { high = middle } else { low = middle + 1 }
+        }
+        return low
     }
 }

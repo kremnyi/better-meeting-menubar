@@ -99,12 +99,19 @@ final class SpeechProbabilityDecoder: TextDecoding {
 
     /// Softmax of one logit, in the same order of operations as reading each value as a Double.
     static func probability(of token: Int, in logits: MLMultiArray) -> Float {
-        // Reading the buffer directly avoids boxing every vocabulary entry in an NSNumber.
-        logits.withUnsafeBufferPointer(ofType: Float16.self) { buffer in
-            let values = buffer.prefix(logits.count)
-            let maximum = values.lazy.map { Double($0) }.max() ?? 0
-            let denominator = values.reduce(0.0) { $0 + exp(Double($1) - maximum) }
-            return Float(exp(Double(values[token]) - maximum) / denominator)
+        // Reading the buffer directly avoids boxing every vocabulary entry in an NSNumber,
+        // but it is only valid for half precision, which the shipped models produce.
+        guard logits.dataType == .float16 else {
+            return probability(of: token, in: (0..<logits.count).map { logits[$0].doubleValue })
         }
+        return logits.withUnsafeBufferPointer(ofType: Float16.self) { buffer in
+            probability(of: token, in: buffer.prefix(logits.count).map { Double($0) })
+        }
+    }
+
+    private static func probability(of token: Int, in values: [Double]) -> Float {
+        let maximum = values.max() ?? 0
+        let denominator = values.reduce(0.0) { $0 + exp($1 - maximum) }
+        return Float(exp(values[token] - maximum) / denominator)
     }
 }

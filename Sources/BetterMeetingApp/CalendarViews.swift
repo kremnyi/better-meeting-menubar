@@ -16,8 +16,7 @@ struct MeetingOptionsView: View {
                     set: { calendar.setEnabled($0); Task { await calendar.refresh() } }
                 ))
                 Text("Lists upcoming meetings in the menu.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.leading, 18)
+                    .toggleCaption()
             }
 
             Group {
@@ -51,8 +50,7 @@ struct MeetingOptionsView: View {
                 Toggle("Detect meetings automatically", isOn: $detectsMeetings)
                     .help("Notifies you when another app has used the microphone for half a minute. Nothing is recorded on its own.")
                 Text("For calls that aren’t on your calendar.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.leading, 18)
+                    .toggleCaption()
             }
         }
         .toggleStyle(.checkbox)
@@ -150,8 +148,7 @@ private struct CalendarReminderOptionsView: View {
                 .help("Sends a notification with Start recording when a meeting from your selected calendars begins.")
                 if let unavailableReason {
                     Text(unavailableReason)
-                        .font(.caption).foregroundStyle(.secondary)
-                        .padding(.leading, 18)
+                        .toggleCaption()
                 }
                 // Schedule status belongs under its own toggle, not between the two checkboxes.
                 if calendar.notifyAtStart, unavailableReason == nil {
@@ -164,12 +161,10 @@ private struct CalendarReminderOptionsView: View {
                                     .lineLimit(2)
                                     .help(next.title)
                             }
-                            .font(.caption).foregroundStyle(.secondary)
-                            .padding(.leading, 18)
+                            .toggleCaption()
                         } else if reminders.message == nil {
                             Text("No upcoming reminders scheduled.")
-                                .font(.caption).foregroundStyle(.secondary)
-                                .padding(.leading, 18)
+                                .toggleCaption()
                         }
                     }
                 }
@@ -366,19 +361,14 @@ struct MeetingRowButtonStyle: ButtonStyle {
 
     private struct Row: View {
         let configuration: ButtonStyleConfiguration
-        @State private var hovering = false
 
         var body: some View {
             configuration.label
                 .padding(.horizontal, MeetingHistorySection.hoverInset)
                 .padding(.vertical, 3)
-                .background(
-                    Color.primary.opacity(configuration.isPressed ? 0.1 : hovering ? 0.06 : 0),
-                    in: RoundedRectangle(cornerRadius: 6)
-                )
+                .hoverHighlight(cornerRadius: 6, pressed: configuration.isPressed)
                 .padding(.horizontal, -MeetingHistorySection.hoverInset)
                 .padding(.vertical, -3)
-                .onHover { hovering = $0 }
         }
     }
 }

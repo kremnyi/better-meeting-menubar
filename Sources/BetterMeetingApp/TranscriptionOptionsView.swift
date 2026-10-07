@@ -8,11 +8,12 @@ struct CaptureOptionsView: View {
 
     /// The login item status as last read. SwiftUI rebuilds this view on every menu redraw and each read
     /// is a round trip to the login items service, so it is read when the menu opens and after changes.
-    private(set) static var knownLaunchAtLoginStatus = SMAppService.mainApp.status
+    /// `nil` until the first background read lands, so no view ever performs that read on the main thread.
+    private(set) static var knownLaunchAtLoginStatus: SMAppService.Status?
 
     /// The menu calls this on every open; the status read can block for seconds, so it lands after.
     /// Pass the toggle's binding where the caller also shows the value.
-    static func refreshLaunchAtLoginStatusInBackground(updating state: Binding<SMAppService.Status>? = nil) {
+    static func refreshLaunchAtLoginStatusInBackground(updating state: Binding<SMAppService.Status?>? = nil) {
         Task.detached(priority: .utility) {
             let status = SMAppService.mainApp.status
             await MainActor.run {
@@ -24,7 +25,7 @@ struct CaptureOptionsView: View {
 
     @EnvironmentObject private var model: AppModel
     @State var page: Page = .options
-    @State var launchAtLoginStatus = Self.knownLaunchAtLoginStatus
+    @State var launchAtLoginStatus: SMAppService.Status? = Self.knownLaunchAtLoginStatus
     @State var launchAtLoginError: String?
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
@@ -96,6 +97,8 @@ struct CaptureOptionsView: View {
                     get: { launchAtLoginStatus == .enabled },
                     set: setLaunchAtLogin
                 ))
+                // Unknown only until the background status read lands, moments after the menu opens.
+                .disabled(launchAtLoginStatus == nil)
                 if launchAtLoginStatus == .requiresApproval || launchAtLoginError != nil {
                     VStack(alignment: .leading, spacing: 4) {
                         if launchAtLoginStatus == .requiresApproval {
@@ -111,9 +114,8 @@ struct CaptureOptionsView: View {
                                 .foregroundStyle(.tint)
                         }
                     }
-                    .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 18)
+                    .toggleCaption()
                     .help(launchAtLoginError ?? "")
                 }
                 Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
@@ -225,8 +227,7 @@ struct CaptureOptionsView: View {
                         .help("After saving each transcript, export a bundle with screenshots and screen text into an artifacts folder.")
                     if model.exportAfterRecording {
                         Text("Saves extra files beside the transcript.")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .padding(.leading, 18)
+                            .toggleCaption()
                     }
                 }
                 .gridCellColumns(2)
@@ -679,7 +680,6 @@ private struct OptionsNavigationRow: View {
     let systemImage: String
     let help: String
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -701,8 +701,7 @@ private struct OptionsNavigationRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(hovering ? Color.primary.opacity(0.06) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
-        .onHover { hovering = $0 }
+        .hoverHighlight(cornerRadius: 6)
         .help(help)
     }
 }
