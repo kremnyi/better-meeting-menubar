@@ -13,8 +13,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Tests and the app bundle run on separate runners, so a push finishes in the
+# longer of the two rather than their sum.
 jobs:
-  macos:
+  tests:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
@@ -28,12 +30,32 @@ jobs:
           restore-keys: spm-${{ runner.os }}-
       - name: Run tests
         run: swift test
+      - name: Save crash reports if a check fails
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tests-crash-reports
+          path: ~/Library/Logs/DiagnosticReports/*
+          if-no-files-found: ignore
+
+  bundle:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache SwiftPM dependencies
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build/checkouts
+            .build/artifacts
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
       - name: Build the app bundle
         run: ./scripts/build-app.sh
       - name: Save crash reports if a check fails
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: macos-crash-reports
+          name: bundle-crash-reports
           path: ~/Library/Logs/DiagnosticReports/*
           if-no-files-found: ignore
