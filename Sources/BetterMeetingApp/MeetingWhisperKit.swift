@@ -37,7 +37,7 @@ extension WhisperKit {
         var probabilities: [[String: Float]] = []
         for window in voiced.isEmpty ? windows : voiced {
             try Task.checkCancellation()
-            // WhisperKit 1.1.0 spells the method this way and reports only the likeliest language's log probability.
+            // WhisperKit 1.1.1 still spells the array variant this way and reports only the likeliest language's log probability.
             probabilities.append(try await detectLangauge(audioArray: window).langProbs.mapValues { exp($0) })
         }
         return probabilities

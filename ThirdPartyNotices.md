@@ -15,8 +15,8 @@ https://github.com/sparkle-project/Sparkle
 FluidAudio provides the Parakeet engine under the Apache License 2.0. Its
 license is included in the app as `FluidAudio-LICENSE.txt`, with the licenses
 for its bundled components as `NemoTextProcessing-LICENSE.md`,
-`fastcluster-LICENSE.md`, and `vbx-LICENSE.md`. Source and
-attribution:
+`fastcluster-LICENSE.md`, `vbx-LICENSE.md`, `JapaneseG2P-LICENSE.md`, and
+`KokoroAneSpanishFrenchG2P-LICENSE.md`. Source and attribution:
 
 https://github.com/FluidInference/FluidAudio
 

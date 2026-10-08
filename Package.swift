@@ -13,10 +13,10 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/argmaxinc/argmax-oss-swift.git",
-            exact: "1.1.0"
+            exact: "1.1.1"
         ),
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.4"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7"),
     ],
     targets: [
         .executableTarget(
