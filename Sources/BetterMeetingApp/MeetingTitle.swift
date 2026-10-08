@@ -95,7 +95,6 @@ enum MeetingTitle {
 
         var names: [String: (text: String, count: Int, index: Int)] = [:]
         var nameKeys: Set<String> = []
-        var subjectKeys: Set<String> = []
         for (index, word) in words.enumerated() where word.text.contains(where: \.isUppercase) {
             guard !Task.isCancelled else { return nil }
             let sentence = tagger.tokenRange(for: word.range, unit: .sentence)
@@ -104,11 +103,10 @@ enum MeetingTitle {
             guard word.text.first?.isUppercase == true, word.text != word.text.uppercased(),
                   !untaggedIgnored.contains(word.key) else { continue }
             names[word.key, default: (word.text, 0, index)].count += 1
-            if insideSentence { subjectKeys.insert(word.key) }
         }
 
         func isTopicWord(_ word: (text: String, key: String, range: Range<String.Index>)) -> Bool {
-            word.text.allSatisfy { $0.isLetter || "'’ʼ".contains($0) } && word.text.filter(\.isLetter).count >= 4
+            word.key.allSatisfy { $0.isLetter || $0 == "'" } && word.key.filter(\.isLetter).count >= 4
                 && !nameKeys.contains(word.key) && !untaggedIgnored.contains(word.key)
         }
         var topics: [String: (text: String, count: Int, length: Int, index: Int)] = [:]
@@ -123,7 +121,7 @@ enum MeetingTitle {
             }
         }
         return title(
-            names: names.filter { subjectKeys.contains($0.key) && $0.value.count >= 2 }.map(\.value),
+            names: names.filter { nameKeys.contains($0.key) && $0.value.count >= 2 }.map(\.value),
             topics: Array(topics.values)
         )
     }
@@ -151,7 +149,7 @@ enum MeetingTitle {
     /// and up to two trailing vowels, soft signs or "й" dropped from words of six letters or more. A heuristic, not
     /// morphology: consonant endings ("системам") stay apart, and two unrelated words can occasionally meet.
     private static func stem(_ word: String) -> String {
-        var stem = String(word.lowercased().map { "’ʼ".contains($0) ? "'" : $0 })
+        var stem = word.lowercased().replacingOccurrences(of: "[’ʼ]", with: "'", options: .regularExpression)
         guard stem.count >= 6 else { return stem }
         for _ in 0..<2 where "аеєиіїоуюяьйыэёaeiouy".contains(stem.last!) { stem.removeLast() }
         return stem

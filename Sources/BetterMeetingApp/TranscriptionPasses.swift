@@ -71,12 +71,10 @@ enum TranscriptionPasses {
         let hints = hints.trimmingCharacters(in: .whitespacesAndNewlines)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        func cacheURL(_ language: String) -> URL {
-            audioURL.deletingLastPathComponent().appendingPathComponent("pass_\(language).json")
-        }
+        let cacheFolder = audioURL.deletingLastPathComponent()
         func cachedPass(_ language: String) throws -> [ScoredSegment]? {
             let options = try encoder.encode(settings.decodingOptions(language: language))
-            guard let stamp, let data = try? Data(contentsOf: cacheURL(language)),
+            guard let stamp, let data = try? Data(contentsOf: cacheFolder.appendingPathComponent("pass_\(language).json")),
                   let cache = try? JSONDecoder().decode(Cache.self, from: data),
                   cache.model == settings.model.rawValue, cache.backend == backend, cache.options == options,
                   (cache.hints ?? "") == hints,
@@ -116,7 +114,7 @@ enum TranscriptionPasses {
                     options: try encoder.encode(options), hints: hints.isEmpty ? nil : hints, audioSize: stamp?.size,
                     audioModified: stamp?.modified, segments: pass
                 )
-                try encoder.encode(cache).write(to: cacheURL(language), options: .atomic)
+                try encoder.encode(cache).write(to: cacheFolder.appendingPathComponent("pass_\(language).json"), options: .atomic)
             }
             segments.append(contentsOf: pass)
             report(1)
