@@ -15,6 +15,21 @@ Project website: [kremnyi.github.io/better-meeting-menubar](https://kremnyi.gith
 
 The app's menu, shown with fictional calendar events and meetings.
 
+- [Install with Homebrew](#install-with-homebrew)
+- [Update the app](#update-the-app)
+- [Record a meeting](#record-a-meeting)
+- [Calendar integration](#calendar-integration)
+- [Calls that are not on the calendar](#calls-that-are-not-on-the-calendar)
+- [Recording settings](#recording-settings)
+- [Transcription settings](#transcription-settings)
+- [Saved meetings](#saved-meetings)
+- [Meeting files and titles](#meeting-files-and-titles)
+- [Screenshots and export bundles](#screenshots-and-export-bundles)
+- [Privacy and model storage](#privacy-and-model-storage)
+- [Build from source](#build-from-source)
+- [Limits](#limits)
+- [Project origin and license](#project-origin-and-license)
+
 ## Install with Homebrew
 
 ```bash
