@@ -158,7 +158,9 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             let outputConfiguration = SCRecordingOutputConfiguration()
             outputConfiguration.outputURL = outputURL
             outputConfiguration.outputFileType = .mp4
-            outputConfiguration.videoCodecType = .h264
+            // HEVC is about half the size of H.264 at the same quality; H.264 stays the fallback.
+            outputConfiguration.videoCodecType = outputConfiguration.availableVideoCodecTypes.contains(.hevc)
+                ? .hevc : .h264
             let output = SCRecordingOutput(configuration: outputConfiguration, delegate: self)
             try stream.addRecordingOutput(output)
             recordingOutput = output
@@ -195,7 +197,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     ) -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
         let scale = min(1, CGFloat(resolution.rawValue) / max(sourceSize.width, sourceSize.height))
-        // H.264 needs even dimensions; keep the aspect ratio without upscaling.
+        // HEVC and H.264 need even dimensions; keep the aspect ratio without upscaling.
         configuration.width = max(2, Int(sourceSize.width * scale) / 2 * 2)
         configuration.height = max(2, Int(sourceSize.height * scale) / 2 * 2)
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: Int32(quality.rawValue))

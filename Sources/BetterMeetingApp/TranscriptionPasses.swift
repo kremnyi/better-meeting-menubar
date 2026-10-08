@@ -51,12 +51,17 @@ enum TranscriptionPasses {
         let segments: [ScoredSegment]
     }
 
+    /// A candidate language gets its own pass only when some sampled window detects it at least this likely.
+    static let detectionThreshold: Float = 0.3
+
+    /// `detectLanguages` returns each sampled window's language probabilities; without it every candidate runs.
     static func run(
         audioURL: URL, languages: [String], hints: String = "",
         settings: SpeechSettings = SpeechSettings(),
         audioReady: (@Sendable () async throws -> Void)? = nil,
-        progressHandler: @Sendable (LocalTranscriptionProgress) -> Void,
-        transcribe: (DecodingOptions, Int) async throws -> [ScoredSegment]
+        detectLanguages: (() async throws -> [[String: Float]])? = nil,
+        progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void,
+        transcribe: (DecodingOptions, _ report: @escaping @Sendable (Double) -> Void) async throws -> [ScoredSegment]
     ) async throws -> [TranscriptSegment] {
         try settings.validate()
         guard !languages.isEmpty, languages.allSatisfy(Constants.languageCodes.contains),
@@ -66,21 +71,41 @@ enum TranscriptionPasses {
         let hints = hints.trimmingCharacters(in: .whitespacesAndNewlines)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        var segments: [ScoredSegment] = []
-        for (index, language) in languages.enumerated() {
+        func cacheURL(_ language: String) -> URL {
+            audioURL.deletingLastPathComponent().appendingPathComponent("pass_\(language).json")
+        }
+        func cachedPass(_ language: String) throws -> [ScoredSegment]? {
+            let options = try encoder.encode(settings.decodingOptions(language: language))
+            guard let stamp, let data = try? Data(contentsOf: cacheURL(language)),
+                  let cache = try? JSONDecoder().decode(Cache.self, from: data),
+                  cache.model == settings.model.rawValue, cache.backend == backend, cache.options == options,
+                  (cache.hints ?? "") == hints,
+                  cache.audioSize == stamp.size, cache.audioModified == stamp.modified else { return nil }
+            return cache.segments
+        }
+        // Detection needs the model, so it runs only when a candidate's pass is still missing.
+        var passes = languages
+        if languages.count > 1, let detectLanguages, try languages.contains(where: { try cachedPass($0) == nil }) {
+            let windows = try await detectLanguages()
             try Task.checkCancellation()
-            let options = settings.decodingOptions(language: language)
-            let encodedOptions = try encoder.encode(options)
-            let cacheURL = audioURL.deletingLastPathComponent().appendingPathComponent("pass_\(language).json")
-            let cache = (try? Data(contentsOf: cacheURL)).flatMap { try? JSONDecoder().decode(Cache.self, from: $0) }
+            let detected = languages.filter { language in windows.contains { $0[language] ?? 0 >= detectionThreshold } }
+            passes = detected.isEmpty ? [languages[0]] : detected
+        }
+        let total = passes.count
+        var segments: [ScoredSegment] = []
+        for (index, language) in passes.enumerated() {
+            try Task.checkCancellation()
+            let report: @Sendable (Double) -> Void = { fraction in
+                progressHandler(.transcribing(
+                    (Double(index) + fraction) / Double(total), language: language, pass: index + 1, total: total
+                ))
+            }
             let pass: [ScoredSegment]
-            if let cache, let stamp, cache.model == settings.model.rawValue,
-               cache.backend == backend, cache.options == encodedOptions,
-               (cache.hints ?? "") == hints,
-               cache.audioSize == stamp.size, cache.audioModified == stamp.modified {
-                pass = cache.segments
+            if let cached = try cachedPass(language) {
+                pass = cached
             } else {
-                pass = try await transcribe(options, index)
+                let options = settings.decodingOptions(language: language)
+                pass = try await transcribe(options, report)
                 try Task.checkCancellation()
                 if stamp == nil, let audioReady {
                     try await audioReady()
@@ -88,18 +113,15 @@ enum TranscriptionPasses {
                 }
                 let cache = Cache(
                     model: settings.model.rawValue, backend: backend,
-                    options: encodedOptions, hints: hints.isEmpty ? nil : hints, audioSize: stamp?.size,
+                    options: try encoder.encode(options), hints: hints.isEmpty ? nil : hints, audioSize: stamp?.size,
                     audioModified: stamp?.modified, segments: pass
                 )
-                try encoder.encode(cache).write(to: cacheURL, options: .atomic)
+                try encoder.encode(cache).write(to: cacheURL(language), options: .atomic)
             }
             segments.append(contentsOf: pass)
-            progressHandler(.transcribing(
-                Double(index + 1) / Double(languages.count),
-                language: language, pass: index + 1, total: languages.count
-            ))
+            report(1)
         }
-        return (languages.count > 1 ? merge(segments, noSpeechThreshold: settings.noSpeechThreshold, logProbThreshold: settings.logProbThreshold) : segments.sorted { $0.start < $1.start }).map(\.transcript)
+        return (total > 1 ? merge(segments, noSpeechThreshold: settings.noSpeechThreshold, logProbThreshold: settings.logProbThreshold) : segments.sorted { $0.start < $1.start }).map(\.transcript)
     }
 
     // Port of GivenFLY/better-meeting's asr.py _merge at e9b524d, except that a candidate must add at

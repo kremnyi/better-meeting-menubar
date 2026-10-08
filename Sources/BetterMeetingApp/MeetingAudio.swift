@@ -80,6 +80,7 @@ final class MeetingAudio: Sendable {
                 channels = max(channels, Int(format.mChannelsPerFrame))
             }
         }
+        let seconds = try await asset.load(.duration).seconds
         let cancelled = OSAllocatedUnfairLock(initialState: false)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -87,7 +88,7 @@ final class MeetingAudio: Sendable {
                     continuation.resume(with: Result {
                         try read(asset, tracks: tracks, mix: AudioExtractor.mix(for: url, tracks: allTracks),
                                  rate: rate > 0 ? rate : 48_000, channels: min(channels, 2),
-                                 cancelled: cancelled)
+                                 seconds: seconds.isFinite ? seconds : 0, cancelled: cancelled)
                     })
                 }
             }
@@ -98,7 +99,7 @@ final class MeetingAudio: Sendable {
 
     private static func read(
         _ asset: AVURLAsset, tracks: [AVAssetTrack], mix: AVAudioMix?, rate: Double, channels: Int,
-        cancelled: OSAllocatedUnfairLock<Bool>
+        seconds: Double, cancelled: OSAllocatedUnfairLock<Bool>
     ) throws -> [Float] {
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
@@ -124,6 +125,8 @@ final class MeetingAudio: Sendable {
 
         let sampleRate = Double(WhisperKit.sampleRate)
         var samples: [Float] = []
+        // Grown by appends, the array would briefly hold two copies of a long meeting while reallocating.
+        samples.reserveCapacity(Int(seconds * sampleRate) + WhisperKit.sampleRate)
         // WhisperKit decodes the m4a in 10-minute windows read 1,323,000 frames at a time, mixing each
         // read to mono and resampling it alone; flush at the same frames so the samples match it.
         let window = AVAudioFramePosition(600 * rate)

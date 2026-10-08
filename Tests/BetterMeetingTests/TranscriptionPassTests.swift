@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreML
+import os
 import WhisperKit
 import XCTest
 @testable import BetterMeetingApp
@@ -67,7 +68,10 @@ final class TranscriptionPassTests: XCTestCase {
             return []
         }
         XCTAssertEqual(calls, ["ru", "en"])
-        let cached = try await TranscriptionPasses.run(audioURL: audio, languages: languages, progressHandler: { _ in }) { _, _ in
+        let cached = try await TranscriptionPasses.run(audioURL: audio, languages: languages, detectLanguages: {
+            XCTFail("Completed passes must not load the model to detect languages")
+            return []
+        }, progressHandler: { _ in }) { _, _ in
             XCTFail("Completed passes must not invoke the model")
             throw Interrupted.pass
         }
@@ -112,6 +116,36 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertEqual(calls, languages)
     }
 
+    func testOnlyDetectedCandidatesGetPasses() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let audio = root.appendingPathComponent("audio.m4a")
+        try Data([1]).write(to: audio)
+        let cases: [(windows: [[String: Float]], passes: [String], reports: [String])] = [
+            // Any window counts, unlikely guesses do not, and passes keep the candidates' order.
+            ([["en": 0.9], ["ru": 0.1], ["uk": 0.6]], ["uk", "en"], ["uk 1/2", "en 2/2"]),
+            // Without a detected candidate, the first one still runs.
+            ([["ru": 0.1], ["de": 0.9]], ["uk"], ["uk 1/1"]),
+            ([], ["uk"], ["uk 1/1"]),
+        ]
+        for (windows, passes, reports) in cases {
+            for language in ["uk", "ru", "en"] {
+                try? FileManager.default.removeItem(at: root.appendingPathComponent("pass_\(language).json"))
+            }
+            let reported = OSAllocatedUnfairLock<[String]>(initialState: [])
+            var calls: [String] = []
+            _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "ru", "en"], detectLanguages: { windows }, progressHandler: { progress in
+                guard case .transcribing(_, let language, let pass, let total) = progress else { return }
+                reported.withLock { $0.append("\(language) \(pass)/\(total)") }
+            }) { options, _ in
+                calls.append(try XCTUnwrap(options.language))
+                return []
+            }
+            XCTAssertEqual(calls, passes)
+            XCTAssertEqual(reported.withLock { $0 }, reports, "Progress must count only the passes that run")
+        }
+    }
+
     func testPinnedDecodingAndNoSpeechProbability() throws {
         let options = SpeechSettings().decodingOptions(language: "uk")
         XCTAssertEqual(options.language, "uk")
@@ -139,8 +173,8 @@ final class TranscriptionPassTests: XCTestCase {
         let audio = root.appendingPathComponent("audio.m4a")
         try Data([1]).write(to: audio)
         let task = Task {
-            try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], progressHandler: { _ in }) { _, index in
-                if index == 1 { withUnsafeCurrentTask { $0?.cancel() } }
+            try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], progressHandler: { _ in }) { options, _ in
+                if options.language == "en" { withUnsafeCurrentTask { $0?.cancel() } }
                 return []
             }
         }
@@ -150,8 +184,8 @@ final class TranscriptionPassTests: XCTestCase {
         } catch is CancellationError {}
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("pass_uk.json").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("pass_en.json").path))
-        _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], progressHandler: { _ in }) { _, index in
-            XCTAssertEqual(index, 1)
+        _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], progressHandler: { _ in }) { options, _ in
+            XCTAssertEqual(options.language, "en")
             return []
         }
     }

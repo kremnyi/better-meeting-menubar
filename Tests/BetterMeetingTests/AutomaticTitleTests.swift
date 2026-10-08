@@ -4,6 +4,8 @@ import XCTest
 
 final class AutomaticTitleTests: XCTestCase {
     private let pricing = "Anna will lead the pricing review. Anna reviewed pricing yesterday. The pricing review needs another look. We should finish the pricing review on Friday."
+    // NaturalLanguage has no name or word-class tags for Ukrainian, so these go through the untagged fallback.
+    private let payments = "Сьогодні Тарас розповів, як працює нова система оплати. Тарас уже перевірив систему оплати на тестових даних. Завтра ми займемося системою оплати разом із клієнтами."
 
     func testNamesAndRecurringTopics() {
         XCTAssertEqual(MeetingTitle.suggest(from: pricing), "Anna — Pricing Review")
@@ -13,6 +15,16 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertNil(MeetingTitle.suggest(from: "Anna called today. We talked about the weather and said goodbye."))
         XCTAssertNil(MeetingTitle.suggest(from: "We discussed the pricing review. We finished the pricing review."))
         XCTAssertNil(MeetingTitle.suggest(from: "Anna will call tomorrow. Anna will call tomorrow."))
+
+        // Untagged languages used to get no title at all. Catches losing the fallback (nil), and losing the stem
+        // that joins "система", "систему" and "системою" (the topic would shrink to the single word "Оплати").
+        XCTAssertEqual(MeetingTitle.suggest(from: payments), "Тарас — Система Оплати")
+        // A name with only fillers and time words repeated. Catches a missing Ukrainian ignore list
+        // ("Тарас — Будь Ласка") and a fallback that titles a name without a repeated topic.
+        XCTAssertNil(MeetingTitle.suggest(from: "Тарас, будь ласка, надішли звіт зараз. Будь ласка, Тарас, зроби це зараз, бо завтра вже пізно."))
+        // A repeated topic whose only capitals start sentences. Catches treating a sentence-initial word as a name
+        // ("Система — Система Оплати").
+        XCTAssertNil(MeetingTitle.suggest(from: "Система оплати ще не готова. Система оплати запрацює після тестів."))
     }
 
     func testCancellationStopsTitleSuggestion() async {
@@ -23,6 +35,13 @@ final class AutomaticTitleTests: XCTestCase {
         }
         let cancelledTitle = await cancelled.value
         XCTAssertNil(cancelledTitle)
+        // The untagged fallback for Ukrainian must stop on cancellation too.
+        let cancelledUntagged = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return MeetingTitle.suggest(from: payments)
+        }
+        let cancelledUntaggedTitle = await cancelledUntagged.value
+        XCTAssertNil(cancelledUntaggedTitle)
         // The background variant must pass the caller's cancellation to its detached tagging task.
         let background = Task {
             withUnsafeCurrentTask { $0?.cancel() }

@@ -85,7 +85,14 @@ struct SpeechSettings: Codable, Equatable, Sendable {
     var usesWhisperOptions: Bool { selectedEngine == .whisper }
 
     /// Silence-separated chunks Whisper decodes at once; each worker holds one chunk's decoder state.
-    static let whisperWorkers = 8
+    /// One per performance core, from 4 to 8: on an M1 Pro, with eight performance cores, eight workers
+    /// were fastest and four about 7% slower; more workers than performance cores oversubscribe them.
+    static let whisperWorkers: Int = {
+        var cores: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        guard sysctlbyname("hw.perflevel0.logicalcpu", &cores, &size, nil, 0) == 0, cores > 0 else { return 8 }
+        return min(8, max(4, Int(cores)))
+    }()
 
     func validate() throws {
         guard (0...1).contains(temperature), (0...10).contains(fallbackCount),

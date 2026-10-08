@@ -17,9 +17,9 @@ enum MeetingTitle {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let tagger = NLTagger(tagSchemes: [.nameTypeOrLexicalClass, .lemma])
         tagger.string = text
-        guard let language = tagger.dominantLanguage,
-              NLTagger.availableTagSchemes(for: .word, language: language).contains(.nameTypeOrLexicalClass)
-        else { return nil }
+        guard let language = tagger.dominantLanguage else { return nil }
+        guard NLTagger.availableTagSchemes(for: .word, language: language).contains(.nameTypeOrLexicalClass)
+        else { return suggestUntagged(from: text) }
 
         var words: [(text: String, lemma: String, tag: NLTag?, range: Range<String.Index>)] = []
         tagger.enumerateTags(
@@ -33,12 +33,6 @@ enum MeetingTitle {
         }
         guard !Task.isCancelled else { return nil }
 
-        let ignored: Set<String> = [
-            "thing", "stuff", "meeting", "call", "topic", "time", "today", "tomorrow", "yesterday",
-            "day", "week", "month", "year", "monday", "tuesday", "wednesday", "thursday", "friday",
-            "saturday", "sunday", "january", "february", "march", "april", "may", "june", "july",
-            "august", "september", "october", "november", "december",
-        ]
         let nameKeys = Set(words.filter { $0.tag == .personalName || $0.tag == .organizationName }
             .map { $0.text.lowercased() })
         var productKeys: Set<String> = []
@@ -80,11 +74,69 @@ enum MeetingTitle {
                 topics[phrase, default: ("\(previous.text) \(word.text)", 0, 2, index - 1)].count += 1
             }
         }
+        return title(names: Array(names.values), topics: Array(topics.values))
+    }
 
-        let name = names.values.min {
+    /// For languages NaturalLanguage cannot tag, such as Ukrainian. The subject is a capitalized word mentioned at
+    /// least twice, once inside a sentence so that sentence-initial capitals do not count; the topic is a repeated
+    /// word or adjacent pair of words of four or more letters that is neither a name nor in `untaggedIgnored`.
+    private static func suggestUntagged(from text: String) -> String? {
+        let tagger = NLTagger(tagSchemes: [.tokenType])
+        tagger.string = text
+        var words: [(text: String, key: String, range: Range<String.Index>)] = []
+        tagger.enumerateTags(
+            in: text.startIndex..<text.endIndex, unit: .word, scheme: .tokenType,
+            options: [.omitWhitespace, .omitPunctuation, .omitOther]
+        ) { _, range in
+            words.append((String(text[range]), stem(String(text[range])), range))
+            return !Task.isCancelled
+        }
+        guard !Task.isCancelled else { return nil }
+
+        var names: [String: (text: String, count: Int, index: Int)] = [:]
+        var nameKeys: Set<String> = []
+        var subjectKeys: Set<String> = []
+        for (index, word) in words.enumerated() where word.text.contains(where: \.isUppercase) {
+            guard !Task.isCancelled else { return nil }
+            let sentence = tagger.tokenRange(for: word.range, unit: .sentence)
+            let insideSentence = text[sentence.lowerBound..<word.range.lowerBound].contains(where: \.isLetter)
+            if insideSentence { nameKeys.insert(word.key) }
+            guard word.text.first?.isUppercase == true, word.text != word.text.uppercased(),
+                  !untaggedIgnored.contains(word.key) else { continue }
+            names[word.key, default: (word.text, 0, index)].count += 1
+            if insideSentence { subjectKeys.insert(word.key) }
+        }
+
+        func isTopicWord(_ word: (text: String, key: String, range: Range<String.Index>)) -> Bool {
+            word.text.allSatisfy { $0.isLetter || "'’ʼ".contains($0) } && word.text.filter(\.isLetter).count >= 4
+                && !nameKeys.contains(word.key) && !untaggedIgnored.contains(word.key)
+        }
+        var topics: [String: (text: String, count: Int, length: Int, index: Int)] = [:]
+        for (index, word) in words.enumerated() where isTopicWord(word) {
+            topics[word.key, default: (word.text, 0, 1, index)].count += 1
+            guard index > 0, isTopicWord(words[index - 1]) else { continue }
+            let previous = words[index - 1]
+            let gap = text[previous.range.upperBound..<word.range.lowerBound]
+            if !gap.isEmpty, gap.allSatisfy({ $0 == " " || $0 == "\t" }) {
+                let phrase = "\(previous.key) \(word.key)"
+                topics[phrase, default: ("\(previous.text) \(word.text)", 0, 2, index - 1)].count += 1
+            }
+        }
+        return title(
+            names: names.filter { subjectKeys.contains($0.key) && $0.value.count >= 2 }.map(\.value),
+            topics: Array(topics.values)
+        )
+    }
+
+    /// Joins the most mentioned name, earliest on ties, with the repeated topic scoring highest on count × words.
+    private static func title(
+        names: [(text: String, count: Int, index: Int)],
+        topics: [(text: String, count: Int, length: Int, index: Int)]
+    ) -> String? {
+        let name = names.min {
             $0.count != $1.count ? $0.count > $1.count : $0.index < $1.index
         }
-        let topic = topics.values.filter { $0.count >= 2 }.min {
+        let topic = topics.filter { $0.count >= 2 }.min {
             let leftScore = $0.count * $0.length
             let rightScore = $1.count * $1.length
             if leftScore != rightScore { return leftScore > rightScore }
@@ -94,4 +146,43 @@ enum MeetingTitle {
         guard let name, let topic else { return nil }
         return MeetingArtifacts.sanitizedTitle("\(name.text) — \(topic.text.capitalized)")
     }
+
+    /// A crude stem so case forms meet ("система", "систему", "системою" → "систем"): lowercase, one apostrophe,
+    /// and up to two trailing vowels, soft signs or "й" dropped from words of six letters or more. A heuristic, not
+    /// morphology: consonant endings ("системам") stay apart, and two unrelated words can occasionally meet.
+    private static func stem(_ word: String) -> String {
+        var stem = String(word.lowercased().map { "’ʼ".contains($0) ? "'" : $0 })
+        guard stem.count >= 6 else { return stem }
+        for _ in 0..<2 where "аеєиіїоуюяьйыэёaeiouy".contains(stem.last!) { stem.removeLast() }
+        return stem
+    }
+
+    private static let ignored: Set<String> = [
+        "thing", "stuff", "meeting", "call", "topic", "time", "today", "tomorrow", "yesterday",
+        "day", "week", "month", "year", "monday", "tuesday", "wednesday", "thursday", "friday",
+        "saturday", "sunday", "january", "february", "march", "april", "may", "june", "july",
+        "august", "september", "october", "november", "december",
+    ]
+
+    /// Untagged text has no word classes to skip, so `ignored` plus Ukrainian, then Russian, meeting and time words,
+    /// fillers and function words. Compared by stem; forms the stem does not join are listed separately.
+    private static let untaggedIgnored = Set((Array(ignored) + """
+        зустріч дзвінок дзвінка мітинг тема теми тему темі часу сьогодні завтра вчора учора день днів
+        тиждень тижня тижні тижнів місяць місяців року роки років наступного наступний наступному минулого
+        минулий минулому понеділок понеділка вівторок вівторка середа четвер четверга п'ятниця субота неділя
+        січень січня лютий лютого березень березня квітень квітня травень травня червень червня липень липня
+        серпень серпня вересень вересня жовтень жовтня листопад грудень грудня
+        будь ласка наприклад тобто також зараз потім просто давайте давай можна треба можемо потрібно якщо
+        коли тоді тому чому дуже буде було були була будемо може можу мене мені тебе тобі його йому вона вони
+        цього цьому цієї який якої якого якому яких тільки більше щось типу значить звичайно звісно можливо
+        добре окей дякую думаю знаю дивись слухай взагалі коротше напевно мабуть через після перед навіть
+        інший інша інше інші такий така таке такі саме немає нема робити зробити всіх всім усіх
+        встреча созвон звонок звонка темы время времени сегодня вчера дней неделя месяц месяцев года году
+        следующий следующего прошлый прошлого понедельник вторник среда среду четверг пятница суббота
+        воскресенье январь февраль март марта апрель июнь июня июль июля август сентябрь октябрь ноябрь декабрь
+        пожалуйста например также тоже сейчас потом можно нужно надо можем если когда тогда потому почему
+        очень будет будем могу меня тебя него этот этого этой этом этих который которых только больше значит
+        конечно хорошо ладно спасибо смотри слушай вообще короче наверное даже другой такой такая такое такие
+        есть нету делать сделать
+        """.split(whereSeparator: \.isWhitespace).map(String.init)).map(stem))
 }

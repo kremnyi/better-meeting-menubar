@@ -357,7 +357,11 @@ actor LocalTranscriber {
     private func prepareSpeakerKit() async throws -> SpeakerKit {
         if let speakerKit { return speakerKit }
         try Task.checkCancellation()
-        let kit = try await SpeakerKit(PyannoteConfig(downloadBase: downloadBase.path, verbose: false))
+        // Fewer concurrent CoreML workers than SpeakerKit's 4 and 8: on a 17-minute two-voice sample the peak
+        // memory fell from 607 MB to 403 MB above baseline for 1.6 s more, with the same speaker turns.
+        let kit = try await SpeakerKit(PyannoteConfig(
+            downloadBase: downloadBase.path, verbose: false, concurrentSegmenterWorkers: 2, concurrentEmbedderWorkers: 4
+        ))
         try Task.checkCancellation()
         // Another caller may have finished loading while this one waited.
         if let speakerKit {
@@ -451,23 +455,21 @@ actor LocalTranscriber {
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         try await TranscriptionPasses.run(
-            audioURL: audioURL, languages: languages, hints: hints, settings: settings,
-            audioReady: audioReady, progressHandler: progressHandler
-        ) { options, index in
+            audioURL: audioURL, languages: languages, hints: hints, settings: settings, audioReady: audioReady,
+            detectLanguages: {
+                let whisper = try await self.prepare(model: settings.model, progressHandler: progressHandler)
+                return try await whisper.languageProbabilities(in: audio.load())
+            },
+            progressHandler: progressHandler
+        ) { options, report in
             let whisper = try await self.prepare(model: settings.model, progressHandler: progressHandler)
+            guard let language = options.language else { throw TranscriptionError.invalidLanguages }
             var options = options
             let hints = hints.trimmingCharacters(in: .whitespacesAndNewlines)
             if !hints.isEmpty {
                 guard let tokenizer = whisper.tokenizer else { throw WhisperError.tokenizerUnavailable() }
                 // Cache the text alongside decoding options; tokenize only on a cache miss.
                 options.promptTokens = tokenizer.encode(text: " " + hints)
-            }
-            let language = languages[index]
-            let report: @Sendable (Double) -> Void = { fraction in
-                progressHandler(.transcribing(
-                    (Double(index) + fraction) / Double(languages.count),
-                    language: language, pass: index + 1, total: languages.count
-                ))
             }
             report(0)
             // Decoded samples let WhisperKit split the audio at silences and decode several chunks at once.

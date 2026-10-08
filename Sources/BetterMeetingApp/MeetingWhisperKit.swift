@@ -18,6 +18,32 @@ final class MeetingWhisperKit: WhisperKit {
     }
 }
 
+extension WhisperKit {
+    /// Language probabilities in up to `limit` 30-second windows spread evenly over the samples.
+    /// Whisper names a language even for silence, so windows that are mostly silent are skipped unless all are.
+    func languageProbabilities(in samples: [Float], limit: Int = 12) async throws -> [[String: Float]] {
+        let length = Constants.defaultWindowSamples
+        let count = min(limit, (samples.count + length - 1) / length)
+        let windows = (0..<count).map { index in
+            let start = count > 1 ? index * (samples.count - length) / (count - 1) : 0
+            return Array(samples[start..<min(start + length, samples.count)])
+        }
+        let detector = voiceActivityDetector ?? EnergyVAD()
+        // A window has speech when a tenth of it, three seconds, passes the energy threshold transcription splits at.
+        let voiced = windows.filter { window in
+            let activity = detector.voiceActivity(in: window)
+            return activity.filter { $0 }.count * 10 >= activity.count
+        }
+        var probabilities: [[String: Float]] = []
+        for window in voiced.isEmpty ? windows : voiced {
+            try Task.checkCancellation()
+            // WhisperKit 1.1.0 spells the method this way and reports only the likeliest language's log probability.
+            probabilities.append(try await detectLangauge(audioArray: window).langProbs.mapValues { exp($0) })
+        }
+        return probabilities
+    }
+}
+
 // WhisperKit 1.1.0 hardcodes noSpeechProb to zero. Read the unfiltered SOT logits,
 // as OpenAI Whisper does, so the original repo's silence filter has real input.
 // Remove this adapter when WhisperKit supplies the probability itself.
