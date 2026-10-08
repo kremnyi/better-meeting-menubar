@@ -16,6 +16,8 @@ fi
 export CLANG_MODULE_CACHE_PATH="$build_dir/module-cache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$build_dir/module-cache"
 
+# The speech libraries make up most of the binary, so the size flags go on the command line to reach every
+# package: -Osize, then full LTO with link-time internalization so the linker can drop their unused code.
 swift build \
     --package-path "$package_dir" \
     --scratch-path "$build_dir" \
@@ -23,6 +25,9 @@ swift build \
     --config-path "$build_dir/config" \
     --security-path "$build_dir/security" \
     -c release \
+    -Xswiftc -Osize \
+    --experimental-lto-mode=full \
+    -Xswiftc -Xfrontend -Xswiftc -internalize-at-link \
     --product BetterMeeting
 
 rm -rf "$app_dir"
@@ -37,6 +42,14 @@ sparkle_framework="$app_dir/Contents/Frameworks/Sparkle.framework"
 ditto "$sparkle_dir/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$sparkle_framework"
 # ponytail: this app is not sandboxed; restore Sparkle's XPC services if sandboxing is added.
 rm -rf "$sparkle_framework/Versions/B/XPCServices" "$sparkle_framework/XPCServices"
+# The app ships arm64 only; drop the x86_64 slices and the build-time headers from the embedded framework.
+for binary in "$sparkle_framework/Versions/B/Sparkle" "$sparkle_framework/Versions/B/Autoupdate" \
+    "$sparkle_framework/Versions/B/Updater.app/Contents/MacOS/Updater"; do
+    lipo "$binary" -thin arm64 -output "$binary.arm64" && mv "$binary.arm64" "$binary"
+done
+for extra in Headers PrivateHeaders Modules; do
+    rm -rf "$sparkle_framework/Versions/B/$extra" "$sparkle_framework/$extra"
+done
 for component in "$sparkle_framework/Versions/B/Autoupdate" "$sparkle_framework/Versions/B/Updater.app" "$sparkle_framework"; do
     codesign --force --options 0 --sign "$signing_identity" "$component"
 done
