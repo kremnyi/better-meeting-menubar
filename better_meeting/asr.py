@@ -189,7 +189,11 @@ def _slice_pipeline_cache(work: Path, start: float, end, lang, model: str,
 def _merge(passes: list) -> list:
     """Жадібне покриття таймлайну: у кожній точці беремо сегмент з найкращим
     avg_logprob серед тих, що її накривають. Сегменти-галюцинації (стандартна
-    whisper-евристика: високий no_speech і низький logprob) відкидаються."""
+    whisper-евристика: високий no_speech і низький logprob) відкидаються.
+
+    Кандидат мусить додати за курсором щонайменше половину своєї тривалості:
+    інакше той самий фрагмент з іншого прогону, вже покритий, повторює речення
+    і ставить репліки не в тому порядку."""
     segs = [s for p in passes for s in p
             if not (s["nospeech"] > 0.6 and s["score"] < -1.0)]
     if not segs:
@@ -200,7 +204,8 @@ def _merge(passes: list) -> list:
     cursor = segs[0]["start"]
     while True:
         cands = [s for s in segs
-                 if s["end"] > cursor + 0.2 and s["start"] <= cursor + 2.0]
+                 if s["end"] > cursor + 0.2 and s["start"] <= cursor + 2.0
+                 and s["end"] - max(s["start"], cursor) >= (s["end"] - s["start"]) / 2]
         if not cands:
             rest = [s["start"] for s in segs if s["start"] > cursor]
             if not rest:
