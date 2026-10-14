@@ -15,17 +15,7 @@ final class TranscriptionQueueTests: XCTestCase {
         let bytes = Data([1, 2, 3])
         try bytes.write(to: recording)
         let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
-        let source = root.appendingPathComponent("sample.wav")
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600))
-        buffer.frameLength = buffer.frameCapacity
-        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
-        do { let file = try AVAudioFile(forWriting: source, settings: format.settings); try file.write(from: buffer) }
-        let audio = folder.appendingPathComponent("audio.m4a")
-        try await AudioExtractor.extract(from: source, to: audio) { _ in }
-        _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["en"], settings: settings, progressHandler: { _ in }) { _, _ in
-            [ScoredSegment(start: 0, end: 0.1, text: "The recording finished saving.", lang: "en", score: -0.1, nospeech: 0)]
-        }
+        try await cacheEnglishTranscript(in: folder, settings: settings, text: "The recording finished saving.")
         let model = AppModel(defaults: defaults)
         model.speechSettings = settings
         model.transcriptionLanguages = ["en"]
@@ -212,21 +202,11 @@ final class TranscriptionQueueTests: XCTestCase {
         let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
         let first = try MeetingArtifacts.createDirectory(in: root, title: "First meeting", recordedAt: date)
         let second = try MeetingArtifacts.createDirectory(in: root, title: "Old name", recordedAt: date)
-        let source = root.appendingPathComponent("sample.wav")
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600))
-        buffer.frameLength = buffer.frameCapacity
-        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
-        do { let file = try AVAudioFile(forWriting: source, settings: format.settings); try file.write(from: buffer) }
         for folder in [first, second] {
-            let audio = folder.appendingPathComponent("audio.m4a")
-            try await AudioExtractor.extract(from: source, to: audio) { _ in }
-            // Cache ordinary Whisper results so the production queue needs no model download.
-            _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["en"], settings: settings, progressHandler: { _ in }) { _, _ in
-                [ScoredSegment(start: 0, end: 0.1,
-                               text: "Microsoft discussed the product launch. Microsoft will prepare the product launch. We will review the product launch next week.",
-                               lang: "en", score: -0.1, nospeech: 0)]
-            }
+            try await cacheEnglishTranscript(
+                in: folder, settings: settings,
+                text: "Microsoft discussed the product launch. Microsoft will prepare the product launch. We will review the product launch next week."
+            )
         }
         // A real filesystem error occurs only after the second job has renamed its folder.
         try FileManager.default.createDirectory(at: second.appendingPathComponent("transcript.json"), withIntermediateDirectories: false)
@@ -264,6 +244,44 @@ final class TranscriptionQueueTests: XCTestCase {
         let finished = try XCTUnwrap(model.transcriptionHistory.first { $0.folderURL.standardizedFileURL != first.standardizedFileURL })
         XCTAssertFalse(finished.needsTranscription)
         XCTAssertEqual(model.completedFolder?.standardizedFileURL, finished.folderURL.standardizedFileURL)
+    }
+
+    /// A failed job ends only itself: the recording queued behind it still runs with the name typed during it,
+    /// the inline failure never moves to that meeting, and Wait and quit stays open after the failure.
+    func testRecordingQueuedBehindAFailedJobStillRuns() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("QueueAfterFailure")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let date = Date()
+        let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
+        // Unreadable audio and no recording, so the first job fails for real.
+        let failing = try MeetingArtifacts.createDirectory(in: root, title: "Broken audio", recordedAt: date)
+        try Data([1]).write(to: failing.appendingPathComponent("audio.m4a"))
+        let queued = try MeetingArtifacts.createDirectory(in: root, title: "Untitled", recordedAt: date)
+        try await cacheEnglishTranscript(in: queued, settings: settings, text: "We agreed on the budget.")
+        let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
+        model.quitWhenFinished = true
+        let (stopped, finishStop) = AsyncStream<Void>.makeStream()
+        model.processing.enqueue(ProcessingRun(folder: failing, recordedAt: date, title: "Broken audio", titleWasProvided: true,
+                                    replacing: nil, languages: ["en"], hints: "", settings: settings))
+        model.processing.enqueue(ProcessingRun(folder: queued, recordedAt: date, title: "Budget review", titleWasProvided: true,
+                                    replacing: nil, languages: ["en"], hints: "", settings: settings,
+                                    stopTask: Task<Void, Error> { for await _ in stopped {} }, folderTitle: "Untitled"))
+        await model.processing.task?.value
+        for _ in 0..<100 where model.processingFolder != queued { await Task.yield() }
+        XCTAssertEqual(model.processingFolder, queued, "The recording behind the failed job must still run")
+        XCTAssertEqual(model.failedTranscriptionMeeting?.folderURL.standardizedFileURL, failing.standardizedFileURL)
+        XCTAssertFalse(model.quitWhenFinished, "Wait and quit must not quit once a job has failed")
+        model.quitWhenFinished = false // A regression must not quit the test runner.
+
+        finishStop.finish()
+        await model.processing.task?.value
+        await model.historyRefreshTask?.value
+        let saved = try XCTUnwrap(model.completedFolder.flatMap { MeetingArtifacts.meeting(in: $0) })
+        XCTAssertEqual(saved.title, "Budget review", "The name typed while recording must reach the meeting")
+        XCTAssertFalse(saved.needsTranscription)
+        XCTAssertNil(model.failedTranscriptionMeeting, "The failure panel must not name or retry the saved meeting")
+        XCTAssertEqual(model.failedTranscriptionFolders, [failing.standardizedFileURL], "The failed meeting stays marked on its row")
     }
 
     /// A recording stopped during a batch waits behind it; cancelling the batch must not leave the
@@ -308,7 +326,12 @@ final class TranscriptionQueueTests: XCTestCase {
         try await withMeetings { model in
             let batchFolder = try XCTUnwrap(model.unfinishedRecordings.first).folderURL
             var release: CheckedContinuation<Bool, Never>?
-            model.transcribeAllRecordings { _ in await withCheckedContinuation { release = $0 } }
+            model.transcribeAllRecordings { item in
+                let processed = await withCheckedContinuation { release = $0 }
+                // As finishRecording does, a saved meeting reports through transcriptSaved.
+                if processed { model.transcriptSaved(in: item.folderURL) }
+                return processed
+            }
             for _ in 0..<100 where release == nil { await Task.yield() }
             let recording = try MeetingArtifacts.createDirectory(in: model.outputRoot, title: "Capture failed", recordedAt: Date())
             try Data([1]).write(to: recording.appendingPathComponent("audio.m4a"))
@@ -325,6 +348,16 @@ final class TranscriptionQueueTests: XCTestCase {
                            "The meeting still transcribing must not be marked failed")
             XCTAssertEqual(model.processingFolder, batchFolder)
 
+            // The running meeting saves, then the next one starts, while the capture failure is still on screen.
+            let firstMeeting = try XCTUnwrap(release)
+            release = nil
+            firstMeeting.resume(returning: true)
+            for _ in 0..<100 where release == nil { await Task.yield() }
+            XCTAssertEqual(model.transcriptionBatchIndex, 2)
+            XCTAssertEqual(model.state, .failed, "A batch step must not clear a capture failure")
+            XCTAssertNotNil(model.lastError)
+            XCTAssertEqual(model.completedFolder, recording, "Retry must still target the failed recording, not the saved meeting")
+
             try XCTUnwrap(release).resume(returning: false)
             await model.processing.task?.value
             XCTAssertFalse(model.isProcessing)
@@ -339,18 +372,7 @@ final class TranscriptionQueueTests: XCTestCase {
         let date = Date()
         let whisper = SpeechSettings(engine: .whisper, speakerLabels: false)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Whisper meeting", recordedAt: date)
-        let source = root.appendingPathComponent("sample.wav")
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600))
-        buffer.frameLength = buffer.frameCapacity
-        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
-        do { let file = try AVAudioFile(forWriting: source, settings: format.settings); try file.write(from: buffer) }
-        let audio = folder.appendingPathComponent("audio.m4a")
-        try await AudioExtractor.extract(from: source, to: audio) { _ in }
-        // Cache ordinary Whisper results so the queue needs no Whisper model.
-        _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["en"], settings: whisper, progressHandler: { _ in }) { _, _ in
-            [ScoredSegment(start: 0, end: 0.1, text: "Whisper finished.", lang: "en", score: -0.1, nospeech: 0)]
-        }
+        try await cacheEnglishTranscript(in: folder, settings: whisper, text: "Whisper finished.")
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
         model.speechSettings = SpeechSettings(engine: .parakeet, speakerLabels: false)
@@ -371,6 +393,53 @@ final class TranscriptionQueueTests: XCTestCase {
         try await preparation.value
         await queue.value
         XCTAssertEqual(saved?.needsTranscription, false)
+    }
+
+    /// Options and a transcription must not download the same model into the same folder at once.
+    func testTranscriptionWaitsForAnOptionsDownloadOfItsModel() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("SameModelDownload")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let date = Date()
+        let whisper = SpeechSettings(engine: .whisper, speakerLabels: false)
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Whisper meeting", recordedAt: date)
+        try await cacheEnglishTranscript(in: folder, settings: whisper, text: "Whisper finished.")
+        let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
+        var finishDownload: CheckedContinuation<Void, Never>?
+        let item = StoredModelInfo(title: "Whisper", kind: .whisper(whisper.model), url: root,
+                                   installed: false, sizeBytes: 0, downloadBytes: 0)
+        model.downloadStoredModel(item) { _ in
+            await withCheckedContinuation { finishDownload = $0 }
+            try Task.checkCancellation()
+        }
+        let download = try XCTUnwrap(model.modelDownloadTask)
+        let waiting = expectation(description: "transcription waits for the download")
+        waiting.assertForOverFulfill = false
+        let observation = model.processing.$phase.sink { if $0 == .downloadingModel { waiting.fulfill() } }
+        defer { observation.cancel() }
+
+        let run = ProcessingRun(folder: folder, recordedAt: date, title: "Whisper meeting", titleWasProvided: true,
+                                replacing: nil, languages: ["en"], hints: "", settings: whisper)
+        model.processing.enqueue(run)
+        let waitingJob = try XCTUnwrap(model.processing.task)
+        await fulfillment(of: [waiting], timeout: 10)
+        XCTAssertEqual(MeetingArtifacts.meeting(in: folder)?.needsTranscription, true, "The transcript must wait for the download")
+
+        // Cancelling the job ends only its wait; the download started in Options keeps going.
+        let cancelled = expectation(description: "the cancelled job ends before the download")
+        Task { await waitingJob.value; cancelled.fulfill() }
+        model.cancelTranscription()
+        await fulfillment(of: [cancelled], timeout: 5)
+        XCTAssertNotNil(model.modelDownloadTask)
+
+        model.processing.enqueue(run)
+        let queue = try XCTUnwrap(model.processing.task)
+        for _ in 0..<100 where finishDownload == nil { await Task.yield() }
+        try XCTUnwrap(finishDownload).resume()
+        await download.value
+        await queue.value
+        XCTAssertNil(model.modelDownloadError, "Cancelling the transcription must not cancel the download")
+        XCTAssertEqual(MeetingArtifacts.meeting(in: folder)?.needsTranscription, false)
     }
 
     func testEmptyQueueAndNativeQueueLayouts() async throws {

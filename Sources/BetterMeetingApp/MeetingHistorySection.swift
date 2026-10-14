@@ -164,7 +164,7 @@ struct MeetingHistorySection: View {
             return .working("\(verb) · \(fraction.formatted(.percent.precision(.fractionLength(0))))")
         }
         if model.queuedFolders.contains(where: { $0.standardizedFileURL.path == path }) { return .queued }
-        if model.failedTranscriptionFolders.contains(URL(fileURLWithPath: path)) { return .failed }
+        if model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL) { return .failed }
         return item.needsTranscription ? .notTranscribed : nil
     }
 

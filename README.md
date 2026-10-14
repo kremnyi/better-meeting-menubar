@@ -136,7 +136,9 @@ The app checks available capacity on the recording drive before capture. Below
 250 MB it asks you to free space or choose another save folder before retrying.
 Below 2 GB it shows a low-space warning, rechecking every ten seconds while
 recording. A notification also appears when the menu is closed. The warning clears
-after space is freed; recording continues until you stop it or a write fails.
+after space is freed. If free space falls below 250 MB while recording, the app
+stops the recording, saves it, and starts its transcription, because a screen
+recording that fills the drive cannot be opened. A notification gives the reason.
 Free-space estimates do not guarantee that a long recording will fit.
 
 While recording, the menu-bar icon dims and brightens every two seconds; it spins
@@ -232,7 +234,9 @@ Whisper when you retry or re-transcribe them. The
 language, model, vocabulary, and decoding rows apply to Whisper only. Changing
 engines only downloads the model if it is missing; it loads on the next
 transcription. Parakeet segments get a script-based uk/ru/en tag for the
-transcript and bundles — treat it as a hint, not model output. **Advanced transcription →
+transcript and bundles — treat it as a hint, not model output. Latin-script lines
+get the English tag only when macOS language detection also finds English, so
+German, Polish, French, or Dutch lines stay untagged. **Advanced transcription →
 Models** lists every model with its size, where each one can be deleted or
 downloaded ahead of time.
 
@@ -360,6 +364,9 @@ skips these meetings. **Show in Finder** remains available to inspect the saved 
 
 **Cancel** next to the progress bar stops processing and keeps the recording and completed
 language passes. Use **Transcribe** in the menu to resume later, even after a restart.
+A failure or **Cancel** ends only the current job: a recording you stopped while it ran
+still transcribes next. When that recording finishes, the inline error closes; the failed
+meeting keeps **Retry** on its row. After a failure, **Wait and quit** keeps the app open.
 
 With Whisper, each completed language pass is saved as `pass_uk.json`, `pass_ru.json`, or
 `pass_en.json` in the meeting folder. Retry reuses matching passes and reruns any
@@ -489,7 +496,8 @@ use also includes the decoded recording, so longer meetings need more memory.
 their size with a **Delete…** button, which asks for confirmation on the row; models
 that are missing show their approximate download size with a **Download** button, so
 they can be fetched ahead of time. An interrupted download shows **Partial download**
-with both buttons: download to finish it, or delete the partial files. Progress appears on the row during a download, **Show models
+with both buttons: download to finish it, or delete the partial files. Progress appears on the row during a download, and a transcription
+that needs the same model waits for it instead of downloading it again. **Show models
 folder** opens the whole folder, and a deleted model downloads again the next
 time it is needed. Deleting one that is in memory releases it first.
 A deletion failure appears on the Models page. Model sizes add together:

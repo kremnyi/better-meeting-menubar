@@ -100,12 +100,12 @@ final class ProcessingQueue: ObservableObject {
             var succeeded = false
             do {
                 let destination = try await createBundle(for: meeting)
-                model.completedFolder = meeting.folderURL
+                model.showJobResult(in: meeting.folderURL)
                 model.completionMessage = "Export bundle saved in the meeting folder."
                 NSWorkspace.shared.open(destination)
                 succeeded = true
             } catch {
-                model.completedFolder = meeting.folderURL
+                model.showJobResult(in: meeting.folderURL)
                 model.completionMessage = Task.isCancelled
                     ? "Export cancelled. Existing meeting files and bundle are kept."
                     : "Export failed: \(error.localizedDescription)"
@@ -170,19 +170,20 @@ final class ProcessingQueue: ObservableObject {
                     title = run.title
                     succeeded = await finishRecording(run)
                 }
-                if !succeeded { pendingJobs.removeAll() }
             }
         }
         queueFinished(succeeded: succeeded)
     }
 
     private func queueFinished(succeeded: Bool) {
-        // A cancelled job ends here; a recording queued behind it is a new job that can report and cancel.
+        // A failed or cancelled job ends here; a recording queued behind it is a new job that can report and cancel.
         if cancelling {
             cancelling = false
             if let phase { statusText = phase.statusText }
         }
         guard pendingJobs.isEmpty else {
+            // Wait and quit keeps the app open after a failure, even when a later job succeeds.
+            if !succeeded { model.completeTermination(false) }
             task = Task { [model] in await model.processing.runQueue() }
             return
         }
@@ -294,6 +295,15 @@ final class ProcessingQueue: ObservableObject {
                 }
                 try Task.checkCancellation()
             }
+            // A download started in Options would race this job's own download into the same folder.
+            // Polled, so cancelling the job ends only the wait and the download keeps going.
+            if model.modelDownloadKind?.isUsed(by: run.settings) == true {
+                setPhase(.downloadingModel)
+                while model.modelDownloadKind?.isUsed(by: run.settings) == true {
+                    setFraction(model.modelDownload?.fraction)
+                    try await Task.sleep(for: .milliseconds(250))
+                }
+            }
             var segments = try await model.transcriber.transcribe(
                 audioURL: audioURL, audio: meetingAudio,
                 languages: run.languages, hints: run.hints, settings: run.settings, audioReady: audioReady
@@ -389,11 +399,10 @@ final class ProcessingQueue: ObservableObject {
             }
             let failedFolder = folder
             if Task.isCancelled {
-                model.completedFolder = failedFolder
+                model.transcriptionCancelled(in: failedFolder)
                 model.completionMessage = replacing == nil
                     ? "Transcription cancelled. Recording kept; transcribe it from the menu to resume."
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
-                model.refreshHistory()
                 return false
             }
             model.transcriptionFailed(in: failedFolder, error: error)

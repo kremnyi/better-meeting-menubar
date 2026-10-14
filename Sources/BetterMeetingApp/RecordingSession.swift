@@ -8,9 +8,10 @@ final class RecordingSession: ObservableObject {
     @Published var state: AppState = .idle { didSet { model.refreshCaptureAccess() } }
     @Published var statusText = "Ready to record your display and audio."
     @Published private(set) var audioWarning = false
-    @Published private(set) var audioWarningTitle = "No audio detected yet"
+    private static let noAudioTitle = "No audio detected yet"
+    @Published private(set) var audioWarningTitle = RecordingSession.noAudioTitle
     var audioWarningDetail: String {
-        audioWarningTitle == "No audio detected yet"
+        audioWarningTitle == Self.noAudioTitle
             ? "Check your microphone and meeting audio."
             : "Check the source if audio is expected."
     }
@@ -244,7 +245,7 @@ final class RecordingSession: ObservableObject {
     func checkAudio(elapsed: TimeInterval, audioDetected: Bool, health: RecordingAudioHealth? = nil) {
         guard state == .recording else { return }
         let title: String? = elapsed < 30 ? nil
-            : (!audioDetected ? "No audio detected yet" : health?.warning)
+            : (!audioDetected ? Self.noAudioTitle : health?.warning)
         let warning = title != nil
         guard audioWarning != warning || (warning && audioWarningTitle != title) else { return }
         if let title { audioWarningTitle = title }
@@ -276,6 +277,18 @@ final class RecordingSession: ObservableObject {
 
     func checkDiskSpace(_ space: RecordingDiskSpace?) {
         guard state == .recording || state == .preparing else { return }
+        // A screen recording that hits a full drive cannot be opened, so stop while it can still be finished.
+        if state == .recording, let space, space.isTooLowToRecord {
+            let recordingID = id
+            let message = "Recording stopped with \(space.available) left on the recording drive. Free space before the next recording."
+            finish(stoppingCapture: true)
+            model.accessibilityAnnouncement(message)
+            // The menu has no place for the reason once the recording is processing, so always notify.
+            if let recordingID {
+                Task { await MeetingNotifications.post(MeetingNotifications.diskWarning(recordingID: recordingID, message: message)) }
+            }
+            return
+        }
         let wasLow = diskSpace?.isLow == true
         diskSpace = space
         guard let space, space.isLow else {
@@ -309,7 +322,7 @@ final class RecordingSession: ObservableObject {
         clearAudioWarning()
         clearDiskWarning()
         audioWarning = false
-        audioWarningTitle = "No audio detected yet"
+        audioWarningTitle = Self.noAudioTitle
         diskSpace = nil
         id = nil
         model.meters.update(microphone: 0, system: 0)

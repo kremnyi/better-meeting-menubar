@@ -1,3 +1,5 @@
+import NaturalLanguage
+
 /// Parakeet v3 returns no per-segment language, so transcripts and bundles lose
 /// their language tags. Tags the uk/ru/en mix from script and function-word
 /// evidence; inconclusive segments stay untagged.
@@ -13,7 +15,11 @@ enum ParakeetLanguage {
             return ukrainian > russian ? "uk" : "ru"
         }
         guard words.contains(where: { englishWords.contains(String($0)) }) else { return nil }
-        return "en"
+        // "was", "will", "to", "on" and "is" are also German, Polish, French or Dutch words.
+        let recognizer = NLLanguageRecognizer()
+        recognizer.languageConstraints = SpeechSettings.parakeetLanguages.map(NLLanguage.init(rawValue:))
+        recognizer.processString(text)
+        return recognizer.dominantLanguage == .english ? "en" : nil
     }
 
     static func tagging(_ segments: [TranscriptSegment]) -> [TranscriptSegment] {

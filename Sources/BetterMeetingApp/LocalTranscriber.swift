@@ -24,6 +24,15 @@ struct StoredModelInfo: Identifiable, Sendable {
         case whisper(SpeechModel)
         case parakeet
         case speakerLabels
+
+        /// Whether a transcription with these settings runs from this model.
+        func isUsed(by settings: SpeechSettings) -> Bool {
+            switch self {
+            case .whisper(let model): settings.selectedEngine == .whisper && settings.model == model
+            case .parakeet: settings.selectedEngine == .parakeet
+            case .speakerLabels: settings.speakerLabels == true
+            }
+        }
     }
 
     let title: String

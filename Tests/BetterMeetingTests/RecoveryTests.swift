@@ -980,6 +980,36 @@ final class RecoveryTests: XCTestCase {
         XCTAssertNil(model.recordingDiskSpace, "Late callbacks must not warn after capture ends")
     }
 
+    /// ScreenCaptureKit cannot finish an MP4 on a full drive, so the recording must stop while it still can.
+    @MainActor
+    func testRecordingStopsBeforeTheDriveFills() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingDiskStop")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let date = Date()
+        let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Long meeting", recordedAt: date)
+        try await cacheEnglishTranscript(in: folder, settings: settings, text: "We kept talking.")
+        let model = AppModel(defaults: defaults)
+        model.speechSettings = settings
+        model.transcriptionLanguages = ["en"]
+        model.meetingTitle = "Long meeting"
+        var announcements: [String] = []
+        model.accessibilityAnnouncement = { announcements.append($0) }
+        var stops = 0
+        model.recording.stopCapture = { stops += 1 }
+        model.recording.activeFolder = folder
+        model.recording.didStart(at: date)
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 250_000_000))
+        XCTAssertEqual(model.state, .recording, "Low space only warns while a recording can still start")
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 249_999_999))
+        XCTAssertEqual(model.state, .stopping)
+        XCTAssertEqual(announcements.last?.hasPrefix("Recording stopped with"), true)
+        await model.processing.task?.value
+        XCTAssertEqual(stops, 1)
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertEqual(MeetingArtifacts.meeting(in: folder)?.needsTranscription, false, "The stopped recording transcribes as usual")
+    }
+
     @MainActor
     func testAudioMeterHandlesSilenceStereoAndClipping() throws {
         for interleaved in [false, true] {

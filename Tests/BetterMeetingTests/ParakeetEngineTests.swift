@@ -76,6 +76,12 @@ final class ParakeetEngineTests: XCTestCase {
         XCTAssertNil(ParakeetLanguage.tag("Ок"))
         XCTAssertNil(ParakeetLanguage.tag("Так"))
         XCTAssertNil(ParakeetLanguage.tag("Hallo zusammen"))
+        XCTAssertEqual(ParakeetLanguage.tag("So the API is down again"), "en")
+        // "was", "to", "is" and "on" are English words too; these lines must not be tagged English.
+        XCTAssertNil(ParakeetLanguage.tag("Was machen wir heute?"))
+        XCTAssertNil(ParakeetLanguage.tag("To jest dobry plan i termin"))
+        XCTAssertNil(ParakeetLanguage.tag("Het is goed, we gaan door"))
+        XCTAssertNil(ParakeetLanguage.tag("On va voir demain"))
     }
 
     func testParakeetTaggingUsesEachSegmentsText() throws {

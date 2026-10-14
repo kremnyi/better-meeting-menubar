@@ -83,6 +83,8 @@ final class AppModel: ObservableObject {
     private(set) var modelPreparationTask: Task<Void, Error>?
     private var modelPreparationToken = 0
     private(set) var modelDownloadTask: Task<Void, Never>?
+    /// The model the Options download fetches, so a transcription that uses it waits instead of fetching it too.
+    private(set) var modelDownloadKind: StoredModelInfo.Kind?
     @Published private(set) var displays: [(id: CGDirectDisplayID, name: String)] = []
     @Published private(set) var microphones: [(id: String, name: String)] = []
     private var inputWatches: [AnyCancellable] = []
@@ -377,12 +379,29 @@ final class AppModel: ObservableObject {
     }
 
     func downloadStoredModel(_ item: StoredModelInfo) {
+        downloadStoredModel(item) { [transcriber] report in
+            switch item.kind {
+            case .whisper(let model):
+                try await transcriber.download(model: model, progress: report)
+            case .parakeet:
+                try await transcriber.downloadParakeet(progress: report)
+            case .speakerLabels:
+                try await transcriber.downloadSpeakerModels()
+            }
+        }
+    }
+
+    func downloadStoredModel(
+        _ item: StoredModelInfo, _ download: @escaping (@escaping @Sendable (Double) -> Void) async throws -> Void
+    ) {
         guard modelDownloadTask == nil, modelPreparationTask == nil, !isProcessing else { return }
         modelDownloadError = nil
         modelDownload = (item.id, 0)
+        modelDownloadKind = item.kind
         modelDownloadTask = Task {
             defer {
                 modelDownload = nil
+                modelDownloadKind = nil
                 modelDownloadTask = nil
             }
             let report: @Sendable (Double) -> Void = { [weak self] fraction in
@@ -393,14 +412,7 @@ final class AppModel: ObservableObject {
                 }
             }
             do {
-                switch item.kind {
-                case .whisper(let model):
-                    try await transcriber.download(model: model, progress: report)
-                case .parakeet:
-                    try await transcriber.downloadParakeet(progress: report)
-                case .speakerLabels:
-                    try await transcriber.downloadSpeakerModels()
-                }
+                try await download(report)
                 modelDownload = nil
                 modelReady = Self.modelIsCached(speechSettings)
                 await refreshStoredModels()
@@ -434,6 +446,8 @@ final class AppModel: ObservableObject {
             lastError = MeetingActionError.transcriptRecovery(backup)
             return
         }
+        // The retry replaces a capture failure on screen; a batch step leaves one alone.
+        if recording.state == .failed { recording.state = .idle }
         prepareSavedTranscription(item)
         processing.enqueue(run(
             for: item, replacing: item.needsTranscription ? nil : item,
@@ -442,10 +456,11 @@ final class AppModel: ObservableObject {
         ))
     }
 
-    /// Retries the failed meeting with the options its last attempt used.
+    /// Retries the failed meeting with the options its last attempt used. A capture failure's meeting
+    /// never ran a transcription, so it uses its saved and current options, not another job's.
     func retryFailedTranscription() {
         guard let item = retryableMeeting else { return }
-        let options = processing.lastOptions
+        let options = transcriptionError != nil ? processing.lastOptions : nil
         retryTranscription(item, languages: options?.languages, hints: options?.hints, settings: options?.settings)
     }
 
@@ -501,12 +516,14 @@ final class AppModel: ObservableObject {
 
     func prepareSavedTranscription(_ item: MeetingHistoryItem) {
         completionMessage = nil
-        completedFolder = nil
-        if recording.state == .failed { recording.state = .idle }
         transcriptionError = nil
         if !isCapturing { elapsed = item.duration }
-        lastError = nil
-        privacyPermission = nil
+        // A capture that failed during a batch keeps its error and Retry target until the user acts on them.
+        if state != .failed {
+            completedFolder = nil
+            lastError = nil
+            privacyPermission = nil
+        }
         processing.show(item)
     }
 
@@ -691,16 +708,30 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// A finished job's meeting becomes the menu's result. A capture failure on screen keeps its own
+    /// recording for its title, Retry, and saved files.
+    func showJobResult(in folder: URL) {
+        if state != .failed { completedFolder = folder }
+    }
+
+    /// Closes an earlier job's inline failure; that meeting stays Failed, with Retry, on its row.
     func transcriptSaved(in folder: URL) {
-        completedFolder = folder
+        transcriptionError = nil
+        showJobResult(in: folder)
         updateFailedTranscriptionFolders { $0.remove(folder) }
         modelReady = Self.modelIsCached(speechSettings)
         modelSetupError = nil
         refreshHistory()
     }
 
+    func transcriptionCancelled(in folder: URL) {
+        transcriptionError = nil
+        showJobResult(in: folder)
+        refreshHistory()
+    }
+
     func transcriptionFailed(in folder: URL, error: Error) {
-        completedFolder = folder
+        showJobResult(in: folder)
         updateFailedTranscriptionFolders { $0.insert(folder) }
         if state == .idle {
             // Shown inline: the next recording must still start with one click.

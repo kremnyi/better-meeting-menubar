@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import SwiftUI
 import XCTest
@@ -68,4 +69,22 @@ func removeTempRoot(_ root: URL) {
 func removeTempDefaults(_ defaults: UserDefaults, suite: String, root: URL) {
     defaults.removePersistentDomain(forName: suite)
     removeTempRoot(root)
+}
+
+/// Writes a short silent audio.m4a into a meeting folder and caches one English Whisper pass for it,
+/// so the production queue transcribes the meeting without a model.
+func cacheEnglishTranscript(in folder: URL, settings: SpeechSettings, text: String) async throws {
+    let scratch = makeTempRoot("Sample")
+    defer { removeTempRoot(scratch) }
+    let source = scratch.appendingPathComponent("sample.wav")
+    let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+    let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1_600))
+    buffer.frameLength = buffer.frameCapacity
+    try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
+    do { let file = try AVAudioFile(forWriting: source, settings: format.settings); try file.write(from: buffer) }
+    let audio = folder.appendingPathComponent("audio.m4a")
+    try await AudioExtractor.extract(from: source, to: audio) { _ in }
+    _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["en"], settings: settings, progressHandler: { _ in }) { _, _ in
+        [ScoredSegment(start: 0, end: 0.1, text: text, lang: "en", score: -0.1, nospeech: 0)]
+    }
 }
