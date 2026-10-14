@@ -61,11 +61,12 @@ when no update is offered, including beta releases.
 
 Enable **Download updates automatically** there to check GitHub on each launch and
 periodically while the app is open, preparing updates in the background. This is off
-by default. When an update is ready, **Restart to Update** appears beside **Options**
-in the menu footer; click it to install and reopen the app; a prepared update also
-installs when you quit. Recording or processing must finish before restarting. If macOS
-requires authorization, click **Install Update** to continue. Failed updates show
-an inline retry action.
+by default. When a check finds an update, **Update and Restart** appears on that page
+and beside **Options** in the menu footer; one click downloads it, installs it, and
+reopens the app. An update prepared in the background shows **Restart to Update**
+instead, and also installs when you quit. Recording or processing must finish before
+restarting; a clicked update waits and then installs. Failed updates show an inline
+retry action.
 
 **Include beta releases** on the same page opts into pre-release builds tagged as beta.
 They install the same way as stable releases, which still arrive either way. Turn

@@ -93,7 +93,7 @@ struct MenuBarControlView: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-        case .ready:
+        case .available, .downloaded, .ready:
             Button(updates.actionTitle) {
                 updates.performAction()
             }
@@ -105,7 +105,7 @@ struct MenuBarControlView: View {
                 ? "The update will install when this meeting finishes."
                 : updates.isBusy()
                     ? "Finish recording or processing before updating."
-                    : "Install the update and relaunch Better Meeting")
+                    : "Download and install the update, then relaunch Better Meeting")
         case .failed:
             Button {
                 optionsPage = .appSettings

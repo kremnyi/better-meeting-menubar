@@ -31,6 +31,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     var allowsBetaUpdates = false
     let isBusy: () -> Bool
     private var updateAction: (() -> Void)?
+    /// Set by an Update and Restart click, so the prepared update installs without a second click.
+    private var installWhenReady = false
     @Published private var pendingInstallation: (() -> Void)?
     private var updateVersion = ""
     private var informationURL: URL?
@@ -67,8 +69,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     var actionTitle: String {
         if informationURL != nil { return "View details" }
         switch status {
-        case .available, .downloading, .preparing: return "Download Update"
-        case .downloaded: return "Install Update"
+        case .available, .downloaded, .downloading, .preparing: return "Update and Restart"
         case .ready: return "Restart to Update"
         case .failed: return "Try Again"
         default: return "Check for Updates"
@@ -88,7 +89,11 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         guard canPerformAction else { return }
         if let action = updateAction {
             updateAction = nil
-            if case .ready = status { status = .installing }
+            switch status {
+            case .ready: status = .installing
+            case .available, .downloaded: installWhenReady = informationURL == nil
+            default: break
+            }
             action()
         } else {
             errorMessage = nil
@@ -172,6 +177,13 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     }
 
     func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {
+        // Sparkle still postpones the relaunch while a recording or transcription runs.
+        if installWhenReady {
+            installWhenReady = false
+            status = .installing
+            reply(.install)
+            return
+        }
         status = .ready(updateVersion)
         updateAction = { reply(.install) }
     }
@@ -196,6 +208,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     func showUpdateInstalledAndRelaunched(_ relaunched: Bool, acknowledgement: @escaping () -> Void) { acknowledgement() }
     func dismissUpdateInstallation() {
         updateAction = nil
+        installWhenReady = false
         pendingInstallation = nil
         informationURL = nil
         if status != .failed && status != .current { status = .unchecked }

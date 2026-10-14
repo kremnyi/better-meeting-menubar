@@ -44,11 +44,11 @@ final class AppUpdaterTests: XCTestCase {
         let windows = NSApp.windows.count
         updates.updater(updater, willDownloadUpdate: item, with: NSMutableURLRequest(url: AppUpdater.releaseURL))
         XCTAssertEqual(updates.status, .downloading)
-        XCTAssertEqual(updates.actionTitle, "Download Update")
+        XCTAssertEqual(updates.actionTitle, "Update and Restart")
         XCTAssertFalse(updates.canPerformAction)
         updates.updater(updater, willExtractUpdate: item)
         XCTAssertEqual(updates.status, .preparing)
-        XCTAssertEqual(updates.actionTitle, "Download Update")
+        XCTAssertEqual(updates.actionTitle, "Update and Restart")
         var installations = 0
         XCTAssertTrue(updates.updater(updater, willInstallUpdateOnQuit: item) { installations += 1 })
         XCTAssertEqual(updates.status, .ready(item.displayVersionString))
@@ -80,6 +80,38 @@ final class AppUpdaterTests: XCTestCase {
         updates.dismissUpdateInstallation()
         XCTAssertTrue(acknowledged)
         XCTAssertEqual(updates.status, .current)
+    }
+
+    /// A found update installs and relaunches after one click, not a second one once it is downloaded.
+    @MainActor
+    func testOneClickDownloadsInstallsAndRelaunches() throws {
+        _ = NSApplication.shared
+        let updates = AppUpdater(isBusy: { false })
+        let item = SUAppcastItem.empty()
+        // Sparkle hides the initializer; an empty archive decodes as a found update that is not downloaded yet.
+        let archiver = NSKeyedArchiver(requiringSecureCoding: true)
+        archiver.finishEncoding()
+        let state = try XCTUnwrap(SPUUserUpdateState(coder: try NSKeyedUnarchiver(forReadingFrom: archiver.encodedData)))
+        XCTAssertEqual(state.stage, .notDownloaded)
+        var choices: [SPUUserUpdateChoice] = []
+        updates.showUpdateFound(with: item, state: state, reply: { choices.append($0) })
+        XCTAssertEqual(updates.status, .available(item.displayVersionString))
+        XCTAssertEqual(updates.actionTitle, "Update and Restart")
+        XCTAssertTrue(updates.canPerformAction)
+        updates.performAction()
+        XCTAssertEqual(choices, [.install], "The click starts the download")
+        updates.showDownloadInitiated {}
+        updates.showDownloadDidStartExtractingUpdate()
+        XCTAssertFalse(updates.canPerformAction)
+        updates.showReady(toInstallAndRelaunch: { choices.append($0) })
+        XCTAssertEqual(choices, [.install, .install], "The prepared update installs without a second click")
+        XCTAssertEqual(updates.status, .installing)
+
+        // A ready update that arrives without that click still waits for one.
+        updates.dismissUpdateInstallation()
+        updates.showReady(toInstallAndRelaunch: { choices.append($0) })
+        XCTAssertEqual(updates.status, .ready(""))
+        XCTAssertEqual(choices.count, 2)
     }
 
     @MainActor
