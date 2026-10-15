@@ -25,7 +25,7 @@ private struct Waiting<T> {
 /// A meeting's audio as 16 kHz mono samples, decoded on first use and shared by every
 /// Whisper language pass and speaker labeling instead of decoding the file for each.
 final class MeetingAudio: Sendable {
-    /// The extracted m4a, or the recording itself when `isRecording` is set.
+    /// The extracted m4a, or the recording itself.
     let url: URL
     private let decoder: @Sendable (URL) async throws -> [Float]
     // One shared decode; a second caller awaits it instead of repeating it.
@@ -33,10 +33,8 @@ final class MeetingAudio: Sendable {
 
     /// A recording decodes with AudioExtractor's track mix, so transcription need not wait for the
     /// m4a export. The samples differ from the m4a's only by the export's AAC encoding.
-    convenience init(url: URL, isRecording: Bool = false) {
-        self.init(url: url) { url in
-            try await isRecording ? Self.decodeRecording(url) : Self.decodeFile(url)
-        }
+    convenience init(url: URL) {
+        self.init(url: url, decoder: Self.decode)
     }
 
     init(url: URL, decoder: @escaping @Sendable (URL) async throws -> [Float]) {
@@ -73,10 +71,6 @@ final class MeetingAudio: Sendable {
         }
     }
 
-    private static func decodeFile(_ url: URL) async throws -> [Float] {
-        try await blocking { _ in try AudioProcessor.loadAudioAsFloatArray(fromPath: url.path) }
-    }
-
     /// Runs blocking work on a dispatch queue. Cancelling the caller resumes it with CancellationError at once;
     /// the work stops when it polls `isCancelled`, and otherwise finishes unobserved.
     static func blocking<T: Sendable>(_ work: @escaping @Sendable (_ isCancelled: @Sendable () -> Bool) throws -> T) async throws -> T {
@@ -101,7 +95,8 @@ final class MeetingAudio: Sendable {
         }
     }
 
-    private static func decodeRecording(_ url: URL) async throws -> [Float] {
+    /// Decodes in steps that stop on cancel, into memory reserved for the whole file.
+    @Sendable private static func decode(_ url: URL) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         let allTracks = try await asset.loadTracks(withMediaType: .audio)
         guard !allTracks.isEmpty else { throw AudioExtractionError.cannotCreateExporter }

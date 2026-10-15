@@ -484,9 +484,15 @@ final class TranscriptionQueueTests: XCTestCase {
         let model = AppModel(defaults: defaults)
         await model.historyRefreshTask?.value
         model.exportAfterRecording = true
+        model.quitWhenFinished = true
         // Cancel once, during the first export; the cancel runs after the export has started.
         var cancelled = false
+        var quitPendingForNextJob: Bool?
         let observation = model.processing.$phase.sink { phase in
+            if cancelled, phase != nil, quitPendingForNextJob == nil, model.processing.title == "Second meeting" {
+                quitPendingForNextJob = model.quitWhenFinished
+                model.quitWhenFinished = false // Keep the test runner open.
+            }
             guard phase == .extractingScreens, !cancelled else { return }
             cancelled = true
             Task { @MainActor in model.cancelTranscription() }
@@ -498,6 +504,7 @@ final class TranscriptionQueueTests: XCTestCase {
         while let task = model.processing.task { await task.value }
 
         XCTAssertTrue(cancelled)
+        XCTAssertEqual(quitPendingForNextJob, true, "A cancelled export must not drop a pending Wait and quit")
         for run in runs {
             XCTAssertEqual(MeetingArtifacts.meeting(in: run.folder)?.needsTranscription, false,
                            "\(run.title) must be transcribed; cancelling an export keeps the transcript")

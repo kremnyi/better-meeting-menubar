@@ -53,10 +53,13 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private var starting = false
     /// Whether this stream's capture was already stopped, so clean-up does not stop it again.
     private var captureStopped = false
+    /// Capture needs screen-recording permission, so tests replace these.
+    var startCapture: (SCStream) async throws -> Void = { try await $0.startCapture() }
+    var stopCapture: (SCStream) async throws -> Void = { try await $0.stopCapture() }
     // Audio buffers arrive on their own queue so the main thread isn't woken for each one;
     // the recording timer reads the latest levels from here.
     private nonisolated let meter = OSAllocatedUnfairLock(initialState: MeterState())
-    private nonisolated let audioQueue = DispatchQueue(label: "com.kremnyi.bettermeeting.audio-levels", qos: .userInitiated)
+    nonisolated let audioQueue = DispatchQueue(label: "com.kremnyi.bettermeeting.audio-levels", qos: .userInitiated)
 
     nonisolated func audioLevel(microphone: Bool) -> Double {
         let type: SCStreamOutputType = microphone ? .microphone : .audio
@@ -149,7 +152,12 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             configuration.height = 2
             configuration.minimumFrameInterval = CMTime(seconds: 1, preferredTimescale: 1)
         }
-        let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        try await begin(SCStream(filter: filter, configuration: configuration, delegate: self),
+                        to: outputURL, microphone: microphone, mode: mode)
+    }
+
+    /// Records `stream` to `outputURL` and starts its capture.
+    func begin(_ stream: SCStream, to outputURL: URL, microphone: AVCaptureDevice?, mode: CaptureMode) async throws {
         let streamID = ObjectIdentifier(stream)
         meter.withLock { $0.stream = streamID }
         try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
@@ -183,7 +191,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             startContinuation = continuation
             startCaptureTask = Task {
                 do {
-                    try await stream.startCapture()
+                    try await startCapture(stream)
                     if mode == .audioOnly { finishStart(with: .success(())) }
                 } catch {
                     finishStart(with: .failure(error))
@@ -214,7 +222,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             Task {
                 do {
                     captureStopped = true
-                    try await stream.stopCapture()
+                    try await stopCapture(stream)
                     if audioRecording.withLock({ $0 != nil }) { finalizeAudio(error: nil) }
                 } catch {
                     // Clean-up may still need to stop a capture that failed to stop here.
@@ -380,7 +388,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         Task {
             if error != nil, !captureStopped, let stream {
                 captureStopped = true
-                try? await stream.stopCapture()
+                try? await stopCapture(stream)
             }
             // The capture queue can still hold its last buffers when capture ends.
             await withCheckedContinuation { continuation in
@@ -438,9 +446,10 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         // still-in-flight startCapture when an early delegate failure triggers cleanUp.
         let startTask = startCaptureTask
         startCaptureTask = nil
+        let stopCapture = stopCapture
         Task {
             _ = await startTask?.value
-            try? await previousStream?.stopCapture()
+            if let previousStream { try? await stopCapture(previousStream) }
         }
     }
 }

@@ -46,7 +46,7 @@ final class AudioOnlyRecordingTests: XCTestCase {
         try await AudioExtractor.extract(from: disabled, to: disabledAudio) { _ in }
         var levels: [Double] = []
         for (source, exported) in [(recording, audioURL), (disabled, disabledAudio)] {
-            let direct = try await MeetingAudio(url: source, isRecording: true).load()
+            let direct = try await MeetingAudio(url: source).load()
             let loaded = try await MeetingAudio(url: exported).load()
             XCTAssertEqual(direct.count, loaded.count, accuracy: 160, source.lastPathComponent)
             let rms = { (samples: [Float]) in Double(vDSP.rootMeanSquare(samples)) }
@@ -117,6 +117,34 @@ final class AudioOnlyRecordingTests: XCTestCase {
         let audio = try AVAudioFile(forReading: audioURL)
         XCTAssertEqual(Double(audio.length) / audio.processingFormat.sampleRate, 0.5, accuracy: 0.06,
                        "The media written before the stall remains recoverable")
+    }
+
+    @MainActor
+    func testFailedStopKeepsTheAudioOnlyRecording() async throws {
+        struct StopFailure: Error {}
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let url = root.appendingPathComponent("recording.mov")
+        let recorder = MeetingRecorder()
+        recorder.startCapture = { _ in }
+        recorder.stopCapture = { _ in throw StopFailure() }
+        let stream = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+        try await recorder.begin(stream, to: url, microphone: nil, mode: .audioOnly)
+        for index in 0..<25 {
+            let buffer = try sample(at: Double(index) * 0.02, frequency: 440, channels: 2)
+            recorder.audioQueue.sync { recorder.stream(stream, didOutputSampleBuffer: buffer, of: .audio) }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        do {
+            try await recorder.stop()
+            XCTFail("A failed stop must be reported")
+        } catch is StopFailure {}
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "A failed stop must not delete the recording")
+        let audioURL = root.appendingPathComponent("recording.m4a")
+        try await AudioExtractor.extract(from: url, to: audioURL) { _ in }
+        let audio = try AVAudioFile(forReading: audioURL)
+        XCTAssertEqual(Double(audio.length) / audio.processingFormat.sampleRate, 0.5, accuracy: 0.06,
+                       "The audio recorded before a failed stop must be kept")
     }
 
     func testEitherSourceCanRecordWhenTheOtherSendsNoBuffers() async throws {

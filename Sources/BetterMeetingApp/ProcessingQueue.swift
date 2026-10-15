@@ -142,7 +142,7 @@ final class ProcessingQueue: ObservableObject {
 
     private func runQueue() async {
         var succeeded = true
-        while succeeded, !pendingJobs.isEmpty {
+        jobs: while succeeded, !pendingJobs.isEmpty {
             switch pendingJobs.removeFirst() {
             case .batch(let item, let process):
                 // A batch ends after its last meeting or at the first that fails or is cancelled.
@@ -168,8 +168,10 @@ final class ProcessingQueue: ObservableObject {
                 do { try await run.stopTask?.value } catch { succeeded = false }
                 if succeeded {
                     title = run.title
-                    // Cancelling an export still saves the transcript; the cancellation must not reach the next job.
-                    succeeded = await finishRecording(run) && !Task.isCancelled
+                    succeeded = await finishRecording(run)
+                    // Cancelling an export still saves the transcript. The next job runs in a new task, so the
+                    // cancellation does not reach it, and a pending "Wait and quit" still quits at the end.
+                    if Task.isCancelled { break jobs }
                 }
             }
         }
@@ -255,7 +257,7 @@ final class ProcessingQueue: ObservableObject {
                         exporting.cancel()
                     }
                 }
-                let decoded = MeetingAudio(url: recordingURL, isRecording: true)
+                let decoded = MeetingAudio(url: recordingURL)
                 do {
                     duration = Double(try await decoded.load().count) / Double(WhisperKit.sampleRate)
                     meetingAudio = decoded
