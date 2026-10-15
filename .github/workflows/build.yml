@@ -13,11 +13,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Tests and the app bundle run on separate runners, so a push finishes in the
-# longer of the two rather than their sum.
+# Each matrix entry runs on its own runner, so the tests and the app bundle
+# run in parallel and a push finishes in the longer of the two, not their sum.
+# Entries share one job definition; the matrix sets the job name, the run
+# command, and the crash-report artifact name.
 jobs:
-  tests:
+  check:
+    name: ${{ matrix.name }}
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: tests
+            run: swift test
+          - name: bundle
+            run: ./scripts/build-app.sh
     steps:
       - uses: actions/checkout@v7
       - name: Cache SwiftPM dependencies
@@ -28,34 +39,12 @@ jobs:
             .build/artifacts
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
-      - name: Run tests
-        run: swift test
+      - name: Run ${{ matrix.name }}
+        run: ${{ matrix.run }}
       - name: Save crash reports if a check fails
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: tests-crash-reports
-          path: ~/Library/Logs/DiagnosticReports/*
-          if-no-files-found: ignore
-
-  bundle:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v7
-      - name: Cache SwiftPM dependencies
-        uses: actions/cache@v6
-        with:
-          path: |
-            .build/checkouts
-            .build/artifacts
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
-      - name: Build the app bundle
-        run: ./scripts/build-app.sh
-      - name: Save crash reports if a check fails
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: bundle-crash-reports
+          name: ${{ matrix.name }}-crash-reports
           path: ~/Library/Logs/DiagnosticReports/*
           if-no-files-found: ignore

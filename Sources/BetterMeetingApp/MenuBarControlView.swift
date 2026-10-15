@@ -131,11 +131,7 @@ struct MenuBarControlView: View {
     private var content: some View {
         switch model.state {
         case .idle:
-            if model.isTranscribingBatch || model.isProcessing {
-                processingContent
-            } else {
-                idleContent
-            }
+            idleContent
         case .preparing, .stopping:
             preparingContent
         case .recording:
@@ -145,32 +141,43 @@ struct MenuBarControlView: View {
         }
     }
 
+    /// One stack for both idle states, so the history list keeps its scroll position and search focus
+    /// when processing starts or ends; only the part between the start controls and the list changes.
     private var idleContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             captureSummary
 
             startControls
 
-            // Both panels arrive rather than pop: the list below has to make room for them, and
-            // that shift is what the travel explains. Reduce Motion keeps the arrival, drops it.
-            Group { transcriptionFailureStatus }
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: model.errorMessage)
-
-            modelSetupStatus
-
-            Group { completionStatus }
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: model.completionMessage)
-
-            Divider()
-
-            UpcomingMeetingView(calendar: model.calendar) {
-                optionsPage = .meetings
-                captureOptionsPresented = true
-            } record: { event in
-                model.startCalendarRecording(event)
+            if model.isTranscribingBatch || model.isProcessing {
+                processingStatus
+            } else {
+                idleStatus
             }
 
             MeetingHistorySection(retranscribingMeeting: $retranscribingMeeting)
+        }
+    }
+
+    @ViewBuilder
+    private var idleStatus: some View {
+        // Both panels arrive rather than pop: the list below has to make room for them, and
+        // that shift is what the travel explains. Reduce Motion keeps the arrival, drops it.
+        Group { transcriptionFailureStatus }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: model.errorMessage)
+
+        modelSetupStatus
+
+        Group { completionStatus }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: model.completionMessage)
+
+        Divider()
+
+        UpcomingMeetingView(calendar: model.calendar) {
+            optionsPage = .meetings
+            captureOptionsPresented = true
+        } record: { event in
+            model.startRecording(calendarEvent: event)
         }
     }
 
@@ -190,7 +197,7 @@ struct MenuBarControlView: View {
     /// name was typed, so the one Start button also carries the event's details.
     private func startFromMenu(mode: CaptureMode = .screen) {
         if let event = StartRecordingButton.imminentEvent(in: model.calendar, title: model.meetingTitle, at: Date()) {
-            model.startCalendarRecording(event, mode: mode)
+            model.startRecording(calendarEvent: event, mode: mode)
         } else {
             model.startRecording(mode: mode)
         }
@@ -249,11 +256,8 @@ struct MenuBarControlView: View {
         if model.hasCompletedTranscript {
             Button("Open Transcript") { AppModel.openTranscript(in: folder) }
             Button {
-                do {
-                    try AppModel.copyTranscript(in: folder)
+                if AppModel.copyTranscriptOrAlert(in: folder) {
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { copiedTranscript = true }
-                } catch {
-                    NSAlert(error: error).runActive()
                 }
             } label: {
                 // The words swap like a state change, in step with the button losing its width.
@@ -377,63 +381,57 @@ struct MenuBarControlView: View {
         }
     }
 
-    private var processingContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            captureSummary
+    @ViewBuilder
+    private var processingStatus: some View {
+        Divider()
 
-            startControls
-
-            Divider()
-
-            HStack(spacing: 8) {
-                Image(systemName: model.isExportingBundle ? "shippingbox" : "waveform")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-                    .contentTransition(.symbolEffect(.replace))
-                    // The waveform sweeps while audio is being turned into text.
-                    .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating,
-                                  isActive: !reduceMotion && !model.isExportingBundle)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(processingHeadline)
-                        .font(.callout.weight(.medium))
-                    Text(processingSubject)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .help(processingSubject)
-                }
-                Spacer(minLength: 0)
-                Button("Cancel", action: model.cancelTranscription)
-                    .disabled(!model.canCancelTranscription)
-                    .accessibilityLabel(model.isTranscribingBatch ? "Cancel transcription queue"
-                        : model.isExportingBundle ? "Cancel export" : "Cancel transcription")
-                    .help(model.isTranscribingBatch ? "Stops the queue and keeps saved transcripts and recordings"
-                        : model.isExportingBundle ? "Keeps the transcript and previous export bundle"
-                        : "Keeps the recording and completed language passes so you can resume later")
+        HStack(spacing: 8) {
+            Image(systemName: model.isExportingBundle ? "shippingbox" : "waveform")
+                .font(.title2)
+                .foregroundStyle(.tint)
+                .contentTransition(.symbolEffect(.replace))
+                // The waveform sweeps while audio is being turned into text.
+                .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating,
+                              isActive: !reduceMotion && !model.isExportingBundle)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(processingHeadline)
+                    .font(.callout.weight(.medium))
+                Text(processingSubject)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .help(processingSubject)
             }
-
-            processingIndicator
-                .accessibilityLabel(model.processingStatusText)
-
-            HStack(alignment: .top) {
-                Text(model.processingStatusText)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                if model.isTranscribingBatch {
-                    Text("\(model.transcriptionBatchWaiting) waiting")
-                        .fixedSize()
-                } else if let phase = model.processingPhase {
-                    Text(phase.stepText)
-                        .fixedSize()
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            Divider()
-            MeetingHistorySection(retranscribingMeeting: $retranscribingMeeting)
+            Spacer(minLength: 0)
+            Button("Cancel", action: model.cancelTranscription)
+                .disabled(!model.canCancelTranscription)
+                .accessibilityLabel(model.isTranscribingBatch ? "Cancel transcription queue"
+                    : model.isExportingBundle ? "Cancel export" : "Cancel transcription")
+                .help(model.isTranscribingBatch ? "Stops the queue and keeps saved transcripts and recordings"
+                    : model.isExportingBundle ? "Keeps the transcript and previous export bundle"
+                    : "Keeps the recording and completed language passes so you can resume later")
         }
+
+        processingIndicator
+            .accessibilityLabel(model.processingStatusText)
+
+        HStack(alignment: .top) {
+            Text(model.processingStatusText)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if model.isTranscribingBatch {
+                Text("\(model.transcriptionBatchWaiting) waiting")
+                    .fixedSize()
+            } else if let phase = model.processingPhase {
+                Text(phase.stepText)
+                    .fixedSize()
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+        Divider()
     }
 
     private var processingHeadline: String {

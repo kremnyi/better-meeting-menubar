@@ -198,6 +198,18 @@ extension AppModel {
         guard pasteboard.setString(text, forType: .string) else { throw MeetingActionError.clipboardUnavailable }
     }
 
+    /// Copies the transcript and reports whether it worked; a failure is shown to the user.
+    @discardableResult
+    static func copyTranscriptOrAlert(in folder: URL) -> Bool {
+        do {
+            try copyTranscript(in: folder)
+            return true
+        } catch {
+            NSAlert(error: error).runActive()
+            return false
+        }
+    }
+
     /// Opens the transcript, or the folder when there is none or no app opens Markdown.
     static func openTranscript(in folder: URL) {
         let transcript = folder.appendingPathComponent("transcript.md")

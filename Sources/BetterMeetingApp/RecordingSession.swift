@@ -58,7 +58,6 @@ final class RecordingSession: ObservableObject {
                 checkDiskSpace(space)
                 try space?.preflight()
                 try await recorder.requestPermissions()
-                await MeetingNotifications.requestPermission()
 
                 // Resolve only the exact event the user clicked, never a title/time match.
                 let event: CalendarEvent?
@@ -85,6 +84,8 @@ final class RecordingSession: ObservableObject {
                     resolution: model.captureResolution, quality: model.captureQuality, mode: mode
                 )
                 didStart(at: startedAt)
+                // Capture never waits for the user to answer the prompt.
+                Task { await MeetingNotifications.requestPermission() }
             } catch {
                 discardUnstartedFolder()
                 model.fail(error, folder: activeFolder)

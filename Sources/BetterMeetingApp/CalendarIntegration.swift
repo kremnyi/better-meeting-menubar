@@ -35,8 +35,7 @@ final class EventKitCalendarReader: CalendarReading {
         // Decided here so the detached load below touches no mutable state.
         let refreshSources = now.timeIntervalSince(lastRefreshSources) >= 60
         if refreshSources { lastRefreshSources = now }
-        return try await Task.detached(priority: .userInitiated) { () throws -> CalendarSnapshot in
-            try Task.checkCancellation()
+        return try await Task.detached(priority: .userInitiated) { () -> CalendarSnapshot in
             if refreshSources { store.refreshSourcesIfNecessary() }
             let calendars = store.calendars(for: .event)
             let choices = calendars.map {
@@ -63,8 +62,8 @@ final class CalendarIntegration: ObservableObject {
     @Published private(set) var selectedIDs: Set<String>
     @Published private(set) var events: [CalendarEvent] = []
     @Published private(set) var isLoading = false
-    @Published private(set) var hasLoaded = false
     @Published private(set) var lastSuccessfulRefresh: Date?
+    var hasLoaded: Bool { lastSuccessfulRefresh != nil }
     @Published private(set) var isStale = false
     @Published private(set) var requestingAccess = false
     @Published private(set) var errorMessage: String?
@@ -76,7 +75,6 @@ final class CalendarIntegration: ObservableObject {
     private let reader: any CalendarReading
     private var revision = 0
     private var loadTask: Task<Void, Never>?
-    private var loadToken = 0
     private var monitoring: AnyCancellable?
 
     init(defaults: UserDefaults = .standard, reader: (any CalendarReading)? = nil, reminders: CalendarReminders? = nil) {
@@ -107,7 +105,6 @@ final class CalendarIntegration: ObservableObject {
     private func clearSnapshot() {
         events = []
         calendars = []
-        hasLoaded = false
         lastSuccessfulRefresh = nil
         isStale = false
         isLoading = false
@@ -127,7 +124,6 @@ final class CalendarIntegration: ObservableObject {
         defaults.set(selectedIDs.sorted(), forKey: "selectedCalendarIDs")
         revision += 1
         events = []
-        hasLoaded = false
         lastSuccessfulRefresh = nil
         isStale = false
         errorMessage = nil
@@ -187,10 +183,8 @@ final class CalendarIntegration: ObservableObject {
             await self.performRefresh(now: now, revision: currentRevision)
         }
         loadTask = task
-        loadToken += 1
-        let token = loadToken
         await task.value
-        if loadToken == token { loadTask = nil }
+        if loadTask == task { loadTask = nil }
     }
 
     private func performRefresh(now: Date, revision currentRevision: Int) async {
@@ -209,9 +203,6 @@ final class CalendarIntegration: ObservableObject {
         let snapshot: CalendarSnapshot
         do {
             snapshot = try await reader.load(selectedIDs: selectedIDs, now: now)
-        } catch is CancellationError {
-            if revision == currentRevision { isLoading = false }
-            return
         } catch {
             guard stillCurrent() else { return }
             isStale = hasLoaded
@@ -224,7 +215,6 @@ final class CalendarIntegration: ObservableObject {
         guard stillCurrent() else { return }
         calendars = snapshot.calendars
         events = snapshot.events
-        hasLoaded = true
         lastSuccessfulRefresh = now
         isStale = false
         errorMessage = nil

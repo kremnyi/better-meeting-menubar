@@ -72,12 +72,9 @@ final class RecoveryTests: XCTestCase {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
         let sourceURL = root.appendingPathComponent("source.wav")
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
-        buffer.frameLength = buffer.frameCapacity
-        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
+        let buffer = try silentBuffer(rate: 48_000, frames: 4_800)
         do {
-            let source = try AVAudioFile(forWriting: sourceURL, settings: format.settings)
+            let source = try AVAudioFile(forWriting: sourceURL, settings: buffer.format.settings)
             try source.write(from: buffer)
         }
         let audioURL = root.appendingPathComponent("audio.m4a")
@@ -100,10 +97,7 @@ final class RecoveryTests: XCTestCase {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
         let finishedURL = root.appendingPathComponent("finished.m4a")
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4_800))
-        buffer.frameLength = buffer.frameCapacity
-        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: 0, count: Int(buffer.frameLength))
+        let buffer = try silentBuffer(rate: 48_000, frames: 4_800)
         do {
             let file = try AVAudioFile(forWriting: finishedURL, settings: [
                 AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 1,
@@ -358,9 +352,6 @@ final class RecoveryTests: XCTestCase {
         let processing = try XCTUnwrap(model.processing.task)
         XCTAssertTrue(model.isProcessing)
         let view = hostingView(MenuBarControlView(), model: model)
-        func searchField(in view: NSView) -> NSSearchField? {
-            (view as? NSSearchField) ?? view.subviews.lazy.compactMap { searchField(in: $0) }.first
-        }
         let field = try XCTUnwrap(searchField(in: view), "Processing must keep the history search visible")
         XCTAssertTrue(field.isEnabled)
         XCTAssertTrue(model.updates.isBusy())
@@ -635,9 +626,6 @@ final class RecoveryTests: XCTestCase {
         let menu = hostingView(MenuBarControlView(), model: model)
         menu.frame = NSRect(origin: .zero, size: initial)
         menu.layoutSubtreeIfNeeded()
-        func searchField(in view: NSView) -> NSSearchField? {
-            (view as? NSSearchField) ?? view.subviews.lazy.compactMap { searchField(in: $0) }.first
-        }
         let field = try XCTUnwrap(searchField(in: menu))
         XCTAssertEqual(field.bounds.width, initial.width - 24, accuracy: 1, "Search must fill the padded content width")
         let window = NSWindow(contentRect: menu.frame, styleMask: .borderless, backing: .buffered, defer: false)
@@ -775,10 +763,10 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testPreferencesPersistAndHistoryKeepsOlderUnfinishedMeetings() async throws {
-        let suite = "BetterMeetingTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = makeTempRoot()
-        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let (defaults, suite, temp) = try makeTempDefaults("BetterMeetingTests")
+        defer { removeTempDefaults(defaults, suite: suite, root: temp) }
+        // The saved folder starts elsewhere, so a persisted change of folder is detectable.
+        let root = temp.appendingPathComponent("Meetings")
         for index in 0..<12 {
             let date = Date(timeIntervalSince1970: Double(index * 60))
             let folder = try MeetingArtifacts.createDirectory(in: root, title: "Meeting \(index)", recordedAt: date)
@@ -876,22 +864,16 @@ final class RecoveryTests: XCTestCase {
             XCTAssertEqual(dark.fittingSize, initialSize)
             try writePreview(dark, to: panels.appendingPathComponent("recording-audio-warning-dark.png"))
         }
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 100))
-        buffer.frameLength = 100
-        let samples = try XCTUnwrap(buffer.floatChannelData)[0]
+        let silence = try meterSample(0), tone = try meterSample(0.1)
         for source: SCStreamOutputType in [.microphone, .audio] {
             let recorder = MeetingRecorder()
-            samples.update(repeating: 0, count: 100)
-            recorder.updateAudioLevel(buffer, type: source, at: .now)
+            try recordLevel(of: silence, on: recorder, type: source)
             XCTAssertFalse(recorder.hasDetectedAudio)
-            samples.update(repeating: 0.1, count: 100)
-            recorder.updateAudioLevel(buffer, type: source, at: .now)
+            try recordLevel(of: tone, on: recorder, type: source)
             XCTAssertTrue(recorder.hasDetectedAudio, "Either source must count as detected audio")
             model.recording.checkAudio(elapsed: 120, audioDetected: recorder.hasDetectedAudio)
             XCTAssertFalse(model.audioWarning)
-            samples.update(repeating: 0, count: 100)
-            recorder.updateAudioLevel(buffer, type: source, at: .now)
+            try recordLevel(of: silence, on: recorder, type: source)
             XCTAssertTrue(recorder.hasDetectedAudio, "Later silence must not erase the earlier signal")
             model.recording.checkAudio(elapsed: 600, audioDetected: recorder.hasDetectedAudio)
             XCTAssertFalse(model.audioWarning)
@@ -917,30 +899,25 @@ final class RecoveryTests: XCTestCase {
             removeTempDefaults(defaults, suite: suite, root: root)
         }
         let recorder = MeetingRecorder()
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 100))
-        buffer.frameLength = 100
-        let samples = try XCTUnwrap(buffer.floatChannelData)[0]
+        let silence = try meterSample(0), tone = try meterSample(0.1)
         let date = Date()
         let start = ContinuousClock.now
-        samples.update(repeating: 0.1, count: 100)
         for source: SCStreamOutputType in [.microphone, .audio] {
-            recorder.updateAudioLevel(buffer, type: source, at: start)
+            try recordLevel(of: tone, on: recorder, type: source, at: start)
         }
         model.recording.didStart(at: date)
         let initialSize = hostingView(MenuBarControlView(), model: model).fittingSize
-        samples.update(repeating: 0, count: 100)
-        recorder.updateAudioLevel(buffer, type: .audio, at: start.advanced(by: .seconds(30)))
+        try recordLevel(of: silence, on: recorder, type: .audio, at: start.advanced(by: .seconds(30)))
         model.recording.checkAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(30))))
         XCTAssertTrue(model.audioWarning, "Audio heard earlier must not hide a disconnected microphone")
         XCTAssertEqual(model.audioWarningTitle, "Microphone stopped sending audio")
         XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
-        recorder.updateAudioLevel(buffer, type: .microphone, at: start.advanced(by: .seconds(30)))
+        try recordLevel(of: silence, on: recorder, type: .microphone, at: start.advanced(by: .seconds(30)))
         model.recording.checkAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(30))))
         XCTAssertFalse(model.audioWarning, "Silent buffers prove the sources recovered")
-        recorder.updateAudioLevel(buffer, type: .microphone, at: start.advanced(by: .seconds(41)))
+        try recordLevel(of: silence, on: recorder, type: .microphone, at: start.advanced(by: .seconds(41)))
         model.recording.checkAudio(elapsed: 41, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(41))))
         XCTAssertEqual(model.audioWarningTitle, "System audio stopped sending data")
@@ -1011,6 +988,29 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
+    private func searchField(in view: NSView) -> NSSearchField? {
+        (view as? NSSearchField) ?? view.subviews.lazy.compactMap { self.searchField(in: $0) }.first
+    }
+
+    /// 100 mono frames of one constant value, as ScreenCaptureKit delivers them.
+    private func meterSample(_ value: Float) throws -> CMSampleBuffer {
+        let buffer = try silentBuffer(rate: 48_000, frames: 100)
+        try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: value, count: 100)
+        return try audioSampleBuffer(buffer)
+    }
+
+    private func measured(_ buffer: AVAudioPCMBuffer) throws -> Double {
+        try XCTUnwrap(MeetingRecorder.meterLevel(audioSampleBuffer(buffer)))
+    }
+
+    private func recordLevel(
+        of sample: CMSampleBuffer, on recorder: MeetingRecorder, type: SCStreamOutputType,
+        at time: ContinuousClock.Instant = .now
+    ) throws {
+        recorder.recordLevel(try XCTUnwrap(MeetingRecorder.meterLevel(sample)), type: type, at: time)
+    }
+
+    @MainActor
     func testAudioMeterHandlesSilenceStereoAndClipping() throws {
         for interleaved in [false, true] {
             let format = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: interleaved))
@@ -1021,11 +1021,11 @@ final class RecoveryTests: XCTestCase {
                 channels[0][frame * buffer.stride] = 0
                 channels[1][frame * buffer.stride] = 0
             }
-            XCTAssertEqual(MeetingRecorder.meterLevel(buffer), 0)
+            XCTAssertEqual(try measured(buffer), 0)
             for frame in 0..<100 { channels[1][frame * buffer.stride] = 0.1 }
-            XCTAssertEqual(MeetingRecorder.meterLevel(buffer), 2.0 / 3, accuracy: 0.001)
+            XCTAssertEqual(try measured(buffer), 2.0 / 3, accuracy: 0.001)
             for frame in 0..<100 { channels[1][frame * buffer.stride] = 2 }
-            XCTAssertEqual(MeetingRecorder.meterLevel(buffer), 1)
+            XCTAssertEqual(try measured(buffer), 1)
         }
         for commonFormat: AVAudioCommonFormat in [.pcmFormatInt16, .pcmFormatInt32] {
             let format = try XCTUnwrap(AVAudioFormat(commonFormat: commonFormat, sampleRate: 48_000, channels: 1, interleaved: false))
@@ -1033,7 +1033,7 @@ final class RecoveryTests: XCTestCase {
             buffer.frameLength = 100
             buffer.int16ChannelData?[0].update(repeating: 16384, count: 100)
             buffer.int32ChannelData?[0].update(repeating: 1073741824, count: 100)
-            XCTAssertEqual(MeetingRecorder.meterLevel(buffer), (20 * log10(0.5) + 60) / 60, accuracy: 0.001)
+            XCTAssertEqual(try measured(buffer), (20 * log10(0.5) + 60) / 60, accuracy: 0.001)
         }
     }
 

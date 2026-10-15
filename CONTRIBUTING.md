@@ -67,10 +67,6 @@ models into `.build/model-check` and writes pass caches beside the audio:
 BETTER_MEETING_MODEL_SWITCH_CHECK=/path/to/pricing.wav swift test --filter testActualModelSwitching
 ```
 
-With the same environment variable, `--filter testTurboSilenceLimitation` records
-the turbo model's known silence hallucination as an expected failure. Keep the
-default confidence thresholds; do not tune them just to pass a silent fixture.
-
 To check actual speaker detection, use disposable speech audio. This downloads
 the SpeakerKit models into `.build/speaker-check` and processes the audio locally:
 
@@ -139,6 +135,11 @@ recording permissions.
 
 - Keep recording and transcription local, with one folder per meeting.
 - Preserve typed titles, the date fallback, and recovery from saved recordings.
+- Re-transcription replaces transcript files through a hidden `.transcript-<UUID>`
+  staging folder in the meeting folder, which holds `previous-*` backups until the
+  `committed` marker is written. If restoring them fails, the folder stays and its
+  path appears in the error. Keep `recoverTranscript(in:)` working for interrupted
+  replacements (see `MeetingArtifacts.swift`).
 - Keep changes and commits focused; verify the changed behavior for a bug fix.
 - For code changes, run the affected tests. Run the full tests and app-bundle build
   for changes spanning multiple subsystems or affecting packaging, resources,
@@ -190,14 +191,9 @@ to inspect the public key; do not replace the existing key when setting up relea
 
 ### Live validation before stable
 
-Complete [the live release-validation checklist](docs/release-validation.md) on
-an actual signed candidate before promoting a beta to stable. Retain a report
-with the tested version/build, source revision, hardware, exact archive checksum,
-and evidence for each check. Failed, blocked, and unverified applicable checks
-block stable publication; beta notes must explicitly name any outstanding checks.
-A passing `swift test`, signed build, or signature check is not evidence that live
-capture, OS notifications, or update installation worked. The release script
-performs automated checks only; it does not complete or waive this checklist.
+Complete [the live release-validation checklist](docs/release-validation.md) on a
+signed candidate before promoting a beta to stable. The release script runs
+automated checks only; it does not complete or waive that checklist.
 
 ### Release script
 
@@ -285,16 +281,8 @@ keeps the current stable item, so stable users only ever see stable releases.
 Opted-in users receive beta cuts through Sparkle like any other update.
 
 Publish betas with `scripts/release.sh beta <version> --notes <file>` (see
-[Release script](#release-script)). It performs these steps:
-
-1. Set `CFBundleShortVersionString` to the upcoming version with a `b<number>`
-   suffix (for example `0.3.42b1`) and increment `CFBundleVersion` past the
-   published stable build. The stable release that ends the series needs a higher
-   `CFBundleVersion` than every beta in it, so beta users move on to it.
-2. Run `swift test`, then `./scripts/package-release.sh beta`. The script signs the
-   archive as usual and writes a feed that pairs the beta with the current stable
-   archive found in `dist/` or `.build/sparkle-release/`. It stops with an error
-   when that ZIP is missing.
-3. Commit `App/Info.plist` and `appcast.xml`, tag the commit `v<version>`, and publish
-   the GitHub release with the ZIP and checksum from `dist/`. Leave
-   `Casks/better-meeting.rb` on the stable release.
+[Release script](#release-script)). Use a `b<number>` suffix on the upcoming version
+(for example `0.3.42b1`). Keep `Casks/better-meeting.rb` on the stable release. The
+stable release that ends the series needs a higher `CFBundleVersion` than every beta
+in it, so beta users move on to it. The feed pairs the beta with the current stable
+archive from `dist/` or `.build/sparkle-release/`; packaging stops when that ZIP is missing.

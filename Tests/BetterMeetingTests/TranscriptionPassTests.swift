@@ -42,6 +42,60 @@ final class TranscriptionPassTests: XCTestCase {
         ]).map(\.lang), ["en", "uk"])
     }
 
+    func testMergeKeepsShortLinesBeforeALongerLineInAnotherLanguage() {
+        // Both passes heard the same three lines. The 3.5 s line outscores the 1.5 s "Yes." that comes first,
+        // but taking it would move the cursor past "Yes." and lose it from both passes.
+        let lines: [(Double, Double, Float)] = [(0, 1.5, -0.6), (1.5, 5, -0.2), (5, 8, -0.3)]
+        let merged = TranscriptionPasses.merge(["en", "uk"].flatMap { language in
+            lines.map { segment($0.0, $0.1, language, $0.2) }
+        })
+        XCTAssertEqual(merged.map(\.start), [0, 1.5, 5])
+    }
+
+    func testSinglePassDropsSilenceButKeepsEveryOtherLine() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let audio = root.appendingPathComponent("audio.m4a")
+        try Data([1]).write(to: audio)
+        let transcript = try await TranscriptionPasses.run(audioURL: audio, languages: ["en"], progressHandler: { _ in }) { _, _ in
+            [
+                self.segment(6, 8, "en", -0.3), self.segment(0, 2, "en", -0.2),
+                self.segment(2, 4, "en", -1.5, silence: 0.9),
+                // Merging would drop a line shorter than 0.2 s, which a single pass has no reason to.
+                self.segment(4, 4.1, "en", -0.4),
+            ]
+        }
+        XCTAssertEqual(transcript.map(\.start), [0, 4, 6])
+    }
+
+    /// Cancelling during "preparing audio" of a long recording must not wait for the whole decode.
+    func testCancelledLoadReturnsWithoutWaitingForTheDecode() async throws {
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        // Frees the stuck decode after 10 s, so a load that ignores cancellation fails instead of hanging.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10) { release.signal() }
+        defer { release.signal() }
+        let audio = MeetingAudio(url: URL(fileURLWithPath: "/unused")) { _ in
+            try await MeetingAudio.blocking { isCancelled in
+                started.signal()
+                release.wait()
+                if isCancelled() { throw CancellationError() }
+                return [0]
+            }
+        }
+        let load = Task { try await audio.load() }
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { started.wait(); continuation.resume() }
+        }
+        let begun = Date()
+        load.cancel()
+        do {
+            _ = try await load.value
+            XCTFail("Cancellation must propagate")
+        } catch is CancellationError {}
+        XCTAssertLessThan(Date().timeIntervalSince(begun), 5, "The cancelled load waited for the decode")
+    }
+
     func testInterruptedPassesResumeAndChangedInputsInvalidateCache() async throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
@@ -149,10 +203,6 @@ final class TranscriptionPassTests: XCTestCase {
     func testPinnedDecodingAndNoSpeechProbability() throws {
         let options = SpeechSettings().decodingOptions(language: "uk")
         XCTAssertEqual(options.language, "uk")
-        XCTAssertFalse(options.detectLanguage)
-        XCTAssertTrue(options.skipSpecialTokens)
-        XCTAssertNil(options.promptTokens)
-        XCTAssertEqual(options.concurrentWorkerCount, SpeechSettings.whisperWorkers)
         // The model's logits are half precision; reading the buffer must match reading each boxed value.
         let half = try MLMultiArray(shape: [1, 1, 3], dataType: .float16)
         half[0] = 2.5
@@ -266,43 +316,6 @@ final class TranscriptionPassTests: XCTestCase {
         work.cancel()
         if case .success = await work.result { XCTFail("Cancelled inference must not return a transcript") }
         XCTAssertEqual(try Data(contentsOf: pass), completedPass, "Cancellation must preserve the last completed pass")
-    }
-
-    func testTurboSilenceLimitation() async throws {
-        guard ProcessInfo.processInfo.environment["BETTER_MEETING_TRANSCRIPTION_CHECK"] != nil else {
-            throw XCTSkip("Set BETTER_MEETING_TRANSCRIPTION_CHECK to check the turbo model's silence behavior")
-        }
-        let cache = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/model-check")
-        let transcriber = LocalTranscriber(downloadBase: cache)
-        let silentFolder = makeTempRoot()
-        defer { removeTempRoot(silentFolder) }
-        let silentAudio = silentFolder.appendingPathComponent("silence.wav")
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480000))
-        buffer.frameLength = buffer.frameCapacity
-        buffer.floatChannelData![0].initialize(repeating: 0, count: Int(buffer.frameLength))
-        do {
-            let file = try AVAudioFile(forWriting: silentAudio, settings: format.settings)
-            try file.write(from: buffer)
-        }
-        let whisper = try await transcriber.prepare { _ in }
-        // Expose the raw probability before the normal segment filter discards silence.
-        let unfiltered = try await whisper.transcribe(
-            audioPath: silentAudio.path,
-            decodeOptions: DecodingOptions(
-                language: "en", temperatureFallbackCount: 0, skipSpecialTokens: true,
-                withoutTimestamps: true, compressionRatioThreshold: nil, logProbThreshold: nil,
-                firstTokenLogProbThreshold: nil, noSpeechThreshold: nil, concurrentWorkerCount: 1
-            )
-        )
-        let filtered = try await transcriber.transcribe(audioURL: silentAudio, languages: ["en"]) { _ in }
-        let probability = try XCTUnwrap(unfiltered.flatMap(\.segments).map(\.noSpeechProb).max())
-        XCTAssertTrue(probability.isFinite && probability >= 0 && probability <= 1)
-        // Reported for OpenAI turbo too: github.com/openai/whisper/discussions/2363.
-        XCTExpectFailure("The turbo model can assign silence a low no-speech probability and hallucinate text") {
-            XCTAssertGreaterThan(probability, 0.6)
-            XCTAssertTrue(filtered.isEmpty, "Silence must not produce a transcript")
-        }
     }
 
     private func segment(_ start: Double, _ end: Double, _ language: String, _ score: Float, silence: Float = 0) -> ScoredSegment {

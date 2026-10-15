@@ -6,10 +6,6 @@ struct ModelStorageView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var pendingDelete: StoredModelInfo?
 
-    private var busy: Bool {
-        model.isProcessing || model.isCapturing || model.modelPreparationTask != nil || model.modelDownloadTask != nil
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(model.storedModels) { item in
@@ -49,7 +45,7 @@ struct ModelStorageView: View {
                 Task { await model.deleteStoredModel(item) }
             }
             .accessibilityLabel("Confirm delete \(item.title)")
-            .disabled(busy)
+            .disabled(model.modelWorkInProgress)
             // System red fails AA on white in light mode; darken there, keep it in dark mode.
             .foregroundStyle(colorScheme == .dark ? Color.red : Color(red: 0.70, green: 0.13, blue: 0.12))
         } else if let download = model.modelDownload, download.id == item.id {
@@ -63,13 +59,13 @@ struct ModelStorageView: View {
         } else {
             if item.existsOnDisk {
                 Button("Delete…") { pendingDelete = item }
-                    .disabled(busy)
+                    .disabled(model.modelWorkInProgress)
                     .accessibilityLabel("Delete \(item.title)")
                     .help("Deletes the downloaded files and frees their disk space. They download again when next needed.")
             }
             if !item.installed {
                 Button("Download") { model.downloadStoredModel(item) }
-                    .disabled(busy)
+                    .disabled(model.modelWorkInProgress)
                     .accessibilityLabel("Download \(item.title)")
                     .help("Downloads now so transcription does not wait later")
             }

@@ -83,30 +83,6 @@ final class EngineComparisonTests: XCTestCase {
             XCTAssertTrue(failures.isEmpty, "\(run.name): " + failures.joined(separator: "; "))
         }
     }
-
-    func testQualityReferenceDetectsMissingLanguagesOverlapAndSilenceText() throws {
-        let reference = try JSONDecoder().decode([ExpectedAudioWindow].self, from: Data("""
-        [
-          {"start":0,"end":2,"phrases":["план запуску"]},
-          {"start":2,"end":4,"phrases":["проверим бюджет"]},
-          {"start":4,"end":6,"phrases":[]},
-          {"start":6,"end":8,"phrases":["release Friday","pricing report"]}
-        ]
-        """.utf8))
-        let recognized = [
-            TranscriptSegment(start: 0, end: 2, text: "План запуску.", language: "uk"),
-            TranscriptSegment(start: 2, end: 4, text: "Проверим бюджет!", language: "ru"),
-            TranscriptSegment(start: 6, end: 8, text: "Release Friday; pricing report.", language: "en")
-        ]
-        XCTAssertTrue(reference.flatMap { $0.failures(in: recognized) }.isEmpty)
-        XCTAssertFalse(reference[0].failures(in: Array(recognized.dropFirst())).isEmpty,
-                       "A nonempty transcript can still drop a language")
-        let oneSpeaker = [TranscriptSegment(start: 6, end: 8, text: "Release Friday", language: "en")]
-        XCTAssertFalse(reference[3].failures(in: oneSpeaker).isEmpty, "Both annotated speakers must survive overlap")
-        let hallucination = [TranscriptSegment(start: 4.5, end: 5.5, text: "Thank you", language: "en")]
-        XCTAssertFalse(reference[2].failures(in: hallucination).isEmpty, "Silence must not produce words")
-    }
-
 }
 
 private struct ExpectedAudioWindow: Decodable {

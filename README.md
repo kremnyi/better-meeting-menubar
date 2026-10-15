@@ -181,8 +181,8 @@ warning. With **When a calendar meeting starts** enabled
 under **Suggest recording**, the app also sends a notification when the event starts.
 
 The integration is off by default, reads events only, and never edits them.
-macOS requires full calendar access for reading; the app offers to request it
-when you first enable the feature. If a refresh fails, the last successful
+macOS requires full calendar access for reading; the app requests it only when you
+click **Allow calendar access** in **Options → Meetings**. If a refresh fails, the last successful
 snapshot stays visible and is marked stale in **Options → Meetings**; disabling
 the integration or losing access clears it. Event details stay on your Mac. Links
 between recordings and calendar events are stored in the meeting folder; see
@@ -237,9 +237,9 @@ engines only downloads the model if it is missing; it loads on the next
 transcription. Parakeet segments get a script-based uk/ru/en tag for the
 transcript and bundles — treat it as a hint, not model output. Latin-script lines
 get the English tag only when macOS language detection also finds English, so
-German, Polish, French, or Dutch lines stay untagged. **Advanced transcription →
-Models** lists every model with its size, where each one can be deleted or
-downloaded ahead of time.
+German, Polish, French, or Dutch lines stay untagged. Manage downloaded models
+under **Advanced transcription → Models**; see
+[Privacy and model storage](#privacy-and-model-storage).
 
 ### Languages
 
@@ -355,13 +355,12 @@ and updates wait for that completion. Cancelling also waits for capture to stop
 before moving its folder to the Trash. A stop or Trash failure is shown and keeps
 the remaining files available for recovery.
 
-If the app quits during re-transcription file replacement, the next history scan
+If the app quits while re-transcription replaces a transcript, the next history scan
 restores the previous complete transcript, including manual edits. A replacement
 that finished saving keeps its new transcript. If restoration is blocked by file
-permissions, the backup stays in the meeting folder and the meeting shows **Recovery
-required**. Fix the folder's permissions, then choose **Retry recovery**. Transcription,
-renaming, and export stay unavailable until restoration succeeds; bulk transcription
-skips these meetings. **Show in Finder** remains available to inspect the saved files.
+permissions, the meeting shows **Recovery required**; fix the folder's permissions,
+then choose **Retry recovery**. Transcription, renaming, and export stay unavailable
+until then, and bulk transcription skips the meeting. **Show in Finder** remains available to inspect the saved files.
 
 **Cancel** next to the progress bar stops processing and keeps the recording and completed
 language passes. Use **Transcribe** in the menu to resume later, even after a restart.
@@ -369,11 +368,12 @@ A failure or **Cancel** ends only the current job: a recording you stopped while
 still transcribes next. When that recording finishes, the inline error closes; the failed
 meeting keeps **Retry** on its row. After a failure, **Wait and quit** keeps the app open.
 
-With Whisper, each completed language pass is saved as `pass_uk.json`, `pass_ru.json`, or
-`pass_en.json` in the meeting folder. Retry reuses matching passes and reruns any
-missing or damaged ones. Changing the audio, model, or decoding options invalidates
-the affected cache. Parakeet runs one pass without a cache, so a cancelled or failed
-Parakeet run starts over. Finished transcripts are not regenerated automatically.
+With Whisper, each completed language pass is saved in the meeting folder as
+`pass_<language>.json`, for example `pass_uk.json`. Retry reuses matching passes and
+reruns any missing or damaged ones. Changing the audio, model, or decoding options
+invalidates the affected cache. The files are safe to delete. Parakeet runs one pass
+without a cache, so a cancelled or failed Parakeet run starts over. Finished
+transcripts are not regenerated automatically.
 
 ## Meeting files and titles
 
@@ -402,13 +402,10 @@ recovery, re-transcription, and export; audio-only exports have empty screen fil
 `transcript.md` has timestamps and a link to the recording. `transcript.json` stores
 segment times, text, language tags, and optional speaker IDs. `metadata.json` stores the title,
 recording date, duration, speech settings, and transcription status.
-`pass_<language>.json` files are Whisper's per-language transcription caches, reused when the
-same recording is transcribed again; they are safe to delete. Meetings with speaker labels
+`pass_<language>.json` files are Whisper's per-language caches; see
+[Retry or cancel transcription](#retry-or-cancel-transcription). Meetings with speaker labels
 also keep `speaker_turns.json`, and meetings started from a calendar event keep
-`calendar.json`; see [docs/calendar-data.md](docs/calendar-data.md). Re-transcription keeps the
-earlier transcript files in a hidden staging folder until the replacement is saved; if
-restoring them fails, the error message names the folder that still holds them. A failed
-rename restores the earlier files in place.
+`calendar.json`; see [docs/calendar-data.md](docs/calendar-data.md).
 
 For unnamed meetings, Apple's `NaturalLanguage` framework looks for a person,
 company, or product and a repeated topic. A discussion with Anna about a pricing

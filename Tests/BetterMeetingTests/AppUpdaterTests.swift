@@ -7,9 +7,8 @@ import XCTest
 final class AppUpdaterTests: XCTestCase {
     @MainActor
     func testPreservesUpdateOptIn() throws {
-        let suite = "BetterMeetingUpdates.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingUpdates")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         XCTAssertFalse(AppModel(defaults: defaults).automaticUpdateChecks)
         defaults.set(true, forKey: "checkUpdatesOnLaunch")
         let model = AppModel(defaults: defaults)
@@ -20,18 +19,21 @@ final class AppUpdaterTests: XCTestCase {
 
     @MainActor
     func testBetaChannelOptInDefaultsOffAndAppliesToUpdater() throws {
-        let suite = "BetterMeetingUpdates.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingUpdates")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let model = AppModel(defaults: defaults)
         XCTAssertFalse(model.betaUpdates)
         XCTAssertFalse(model.updates.allowsBetaUpdates)
+        let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: model.updates, delegate: model.updates)
+        XCTAssertEqual(model.updates.allowedChannels(for: updater), [], "Stable users must not see beta items")
         model.betaUpdates = true
         XCTAssertTrue(model.updates.allowsBetaUpdates)
+        XCTAssertEqual(model.updates.allowedChannels(for: updater), ["beta"])
         XCTAssertTrue(AppModel(defaults: defaults).betaUpdates)
         XCTAssertTrue(AppModel(defaults: defaults).updates.allowsBetaUpdates)
         model.betaUpdates = false
         XCTAssertFalse(model.updates.allowsBetaUpdates)
+        XCTAssertEqual(model.updates.allowedChannels(for: updater), [])
     }
 
     @MainActor

@@ -47,7 +47,7 @@ protocol CalendarReminderCenter {
 
 extension UNUserNotificationCenter: CalendarReminderCenter {
     func calendarAccess(request: Bool) async throws -> Bool {
-        if request { _ = try await requestAuthorization(options: [.alert, .sound]) }
+        if request { _ = try await requestAuthorization(options: MeetingNotifications.authorizationOptions) }
         let settings = await notificationSettings()
         return (settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional)
             && settings.alertSetting == .enabled

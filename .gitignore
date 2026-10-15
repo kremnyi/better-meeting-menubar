@@ -23,3 +23,8 @@ xcuserdata/
 .vscode/
 *.swp
 /notes.md
+
+# Claude Code session state and local review output
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.impeccable/

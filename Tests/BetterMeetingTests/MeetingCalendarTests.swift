@@ -224,7 +224,7 @@ final class MeetingCalendarTests: XCTestCase {
         let (defaults, suite, root) = try makeTempDefaults("SetupQuit")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let model = AppModel(defaults: defaults)
-        model.startCalendarRecording(try calendarEventFixture())
+        model.startRecording(calendarEvent: try calendarEventFixture())
         XCTAssertEqual(model.state, .preparing)
         XCTAssertEqual(model.terminationReply(confirm: { _ in .alertFirstButtonReturn }), .terminateCancel)
         XCTAssertEqual(model.terminationReply(confirm: { _ in .alertSecondButtonReturn }), .terminateNow)

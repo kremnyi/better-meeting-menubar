@@ -454,6 +454,28 @@ final class MeetingActionTests: XCTestCase {
                        ["Today", "Today", "Yesterday"])
     }
 
+    func testIncompleteStagingFolderIsRemovedWithoutTouchingTranscript() throws {
+        let fm = FileManager.default
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let date = Date()
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Saved meeting", recordedAt: date)
+        try MeetingArtifacts.write(title: "Saved meeting", recordedAt: date, duration: 12,
+                                   segments: [TranscriptSegment(start: 0, end: 1, text: "Original", language: "en")], to: folder)
+        let names = ["transcript.md", "transcript.json", "metadata.json"]
+        let originals = try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }
+        // Backups are written last, so a stage missing one has not replaced anything yet.
+        let staging = folder.appendingPathComponent(".transcript-incomplete")
+        try fm.createDirectory(at: staging, withIntermediateDirectories: false)
+        try Data("Partial".utf8).write(to: staging.appendingPathComponent("transcript.md"))
+        try originals[0].write(to: staging.appendingPathComponent("previous-transcript.md"))
+
+        try MeetingArtifacts.recoverTranscript(in: folder)
+
+        XCTAssertFalse(fm.fileExists(atPath: staging.path))
+        XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, originals)
+    }
+
     func testLibraryReusesUnchangedFoldersAndRereadsEditedOnes() throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
@@ -485,6 +507,5 @@ final class MeetingActionTests: XCTestCase {
 
         try "# Alpha\n\nPricing notes\n".write(to: transcript, atomically: false, encoding: .utf8)
         XCTAssertEqual(library.search(meetings, query: "pricing"), meetings, "An edited transcript is searched again")
-        XCTAssertEqual(MeetingLibrary().search(meetings, query: "pricing"), meetings)
     }
 }

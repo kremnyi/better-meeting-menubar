@@ -16,41 +16,51 @@ struct AudioStamp: Sendable {
     }
 }
 
+/// The caller of `MeetingAudio.blocking`, shared with its cancellation handler.
+private struct Waiting<T> {
+    var cancelled = false
+    var continuation: CheckedContinuation<T, Error>?
+}
+
 /// A meeting's audio as 16 kHz mono samples, decoded on first use and shared by every
 /// Whisper language pass and speaker labeling instead of decoding the file for each.
 final class MeetingAudio: Sendable {
     /// The extracted m4a, or the recording itself when `isRecording` is set.
     let url: URL
-    private let isRecording: Bool
+    private let decoder: @Sendable (URL) async throws -> [Float]
     // One shared decode; a second caller awaits it instead of repeating it.
     private let decode = OSAllocatedUnfairLock<Task<[Float], Error>?>(initialState: nil)
 
     /// A recording decodes with AudioExtractor's track mix, so transcription need not wait for the
     /// m4a export. The samples differ from the m4a's only by the export's AAC encoding.
-    init(url: URL, isRecording: Bool = false) {
+    convenience init(url: URL, isRecording: Bool = false) {
+        self.init(url: url) { url in
+            try await isRecording ? Self.decodeRecording(url) : Self.decodeFile(url)
+        }
+    }
+
+    init(url: URL, decoder: @escaping @Sendable (URL) async throws -> [Float]) {
         self.url = url
-        self.isRecording = isRecording
+        self.decoder = decoder
     }
 
     /// The decoded samples. The decode runs on a dispatch queue rather than the cooperative pool.
+    /// Cancelling a caller cancels the shared decode, which every caller of one job shares, and returns at once.
     func load() async throws -> [Float] {
         try Task.checkCancellation()
         let url = url
-        let isRecording = isRecording
+        let decoder = decoder
         let task = decode.withLock { task in
             if let task { return task }
-            let started = Task<[Float], Error> {
-                if isRecording { return try await Self.decodeRecording(url) }
-                return try await withCheckedThrowingContinuation { continuation in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        continuation.resume(with: Result { try AudioProcessor.loadAudioAsFloatArray(fromPath: url.path) })
-                    }
-                }
-            }
+            let started = Task<[Float], Error> { try await decoder(url) }
             task = started
             return started
         }
-        let samples = try await task.value
+        let samples = try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
         try Task.checkCancellation()
         return samples
     }
@@ -60,6 +70,34 @@ final class MeetingAudio: Sendable {
         decode.withLock { task in
             task?.cancel()
             task = nil
+        }
+    }
+
+    private static func decodeFile(_ url: URL) async throws -> [Float] {
+        try await blocking { _ in try AudioProcessor.loadAudioAsFloatArray(fromPath: url.path) }
+    }
+
+    /// Runs blocking work on a dispatch queue. Cancelling the caller resumes it with CancellationError at once;
+    /// the work stops when it polls `isCancelled`, and otherwise finishes unobserved.
+    static func blocking<T: Sendable>(_ work: @escaping @Sendable (_ isCancelled: @Sendable () -> Bool) throws -> T) async throws -> T {
+        let state = OSAllocatedUnfairLock(initialState: Waiting<T>())
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let cancelled = state.withLock { waiting in
+                    if !waiting.cancelled { waiting.continuation = continuation }
+                    return waiting.cancelled
+                }
+                if cancelled { return continuation.resume(throwing: CancellationError()) }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let result = Result { try work { state.withLock { $0.cancelled } } }
+                    state.withLock { $0.continuation.take() }?.resume(with: result)
+                }
+            }
+        } onCancel: {
+            state.withLock { waiting in
+                waiting.cancelled = true
+                return waiting.continuation.take()
+            }?.resume(throwing: CancellationError())
         }
     }
 
@@ -81,25 +119,17 @@ final class MeetingAudio: Sendable {
             }
         }
         let seconds = try await asset.load(.duration).seconds
-        let cancelled = OSAllocatedUnfairLock(initialState: false)
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    continuation.resume(with: Result {
-                        try read(asset, tracks: tracks, mix: AudioExtractor.mix(for: url, tracks: allTracks),
-                                 rate: rate > 0 ? rate : 48_000, channels: min(channels, 2),
-                                 seconds: seconds.isFinite ? seconds : 0, cancelled: cancelled)
-                    })
-                }
-            }
-        } onCancel: {
-            cancelled.withLock { $0 = true }
+        let mix = AudioExtractor.mix(for: url, tracks: allTracks)
+        let (readTracks, readRate, readChannels) = (tracks, rate > 0 ? rate : 48_000, min(channels, 2))
+        return try await blocking { isCancelled in
+            try read(asset, tracks: readTracks, mix: mix, rate: readRate, channels: readChannels,
+                     seconds: seconds.isFinite ? seconds : 0, isCancelled: isCancelled)
         }
     }
 
     private static func read(
         _ asset: AVURLAsset, tracks: [AVAssetTrack], mix: AVAudioMix?, rate: Double, channels: Int,
-        seconds: Double, cancelled: OSAllocatedUnfairLock<Bool>
+        seconds: Double, isCancelled: @Sendable () -> Bool
     ) throws -> [Float] {
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
@@ -145,7 +175,7 @@ final class MeetingAudio: Sendable {
             samples.append(contentsOf: UnsafeBufferPointer(start: data[0], count: Int(resampled.frameLength)))
         }
         while let buffer = output.copyNextSampleBuffer() {
-            if cancelled.withLock({ $0 }) { throw CancellationError() }
+            if isCancelled() { throw CancellationError() }
             let frames = CMSampleBufferGetNumSamples(buffer)
             guard frames > 0 else { continue }
             try buffer.withAudioBufferList { list, _ in

@@ -30,8 +30,6 @@ let package = Package(
             path: "Sources/BetterMeetingApp",
             linkerSettings: [
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
-                // Drop unreferenced code from the static speech libraries (TTS, streaming ASR, diarization).
-                .unsafeFlags(["-Xlinker", "-dead_strip"], .when(configuration: .release)),
             ]
         ),
         .testTarget(

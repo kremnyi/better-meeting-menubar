@@ -168,7 +168,8 @@ final class ProcessingQueue: ObservableObject {
                 do { try await run.stopTask?.value } catch { succeeded = false }
                 if succeeded {
                     title = run.title
-                    succeeded = await finishRecording(run)
+                    // Cancelling an export still saves the transcript; the cancellation must not reach the next job.
+                    succeeded = await finishRecording(run) && !Task.isCancelled
                 }
             }
         }

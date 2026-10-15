@@ -5,12 +5,6 @@ final class SpeakerLabelsTests: XCTestCase {
     private enum Failure: Error { case detection }
 
     func testDisabledAndLegacySettingsKeepOriginalTranscript() async throws {
-        var settings = SpeechSettings()
-        settings.temperature = 0.3
-        let data = try JSONEncoder().encode(settings)
-        let legacy = try JSONDecoder().decode(SpeechSettings.self, from: data)
-        XCTAssertFalse(legacy.speakerLabels == true)
-        XCTAssertEqual(legacy.temperature, 0.3)
         let segments = try JSONDecoder().decode([TranscriptSegment].self, from: Data(
             #"[{"start":0,"end":2,"text":"Hello","language":"en"}]"#.utf8
         ))

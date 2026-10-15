@@ -219,7 +219,12 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                 } catch {
                     // Clean-up may still need to stop a capture that failed to stop here.
                     if stream === self.stream { captureStopped = false }
-                    finishStop(with: .failure(error))
+                    // Cancelling the audio writer would delete the file; finishing it keeps what was recorded.
+                    if audioRecording.withLock({ $0 != nil }) {
+                        finalizeAudio(error: error)
+                    } else {
+                        finishStop(with: .failure(error))
+                    }
                 }
             }
         }
@@ -239,34 +244,30 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         let now = ContinuousClock.now
         guard meter.withLock({ $0.stream == streamID }),
               sampleBuffer.isValid, CMSampleBufferDataIsReady(sampleBuffer),
-              let description = sampleBuffer.formatDescription else { return }
+              sampleBuffer.formatDescription != nil else { return }
         audioRecording.withLock { $0 }?.append(sampleBuffer, type: type)
         guard meter.withLock({ state in
             state.levels[type].map { $0.time.duration(to: now) >= .milliseconds(100) } ?? true
         }) else { return }
-        let frames = sampleBuffer.numSamples
-        guard frames > 0, let format = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
-              // Measures the samples in place; nothing is copied just for the meter.
-              let level = try? sampleBuffer.withAudioBufferList(body: { buffers, _ in
-                  Self.meterLevel(buffers, format: format, frames: frames)
-              }) else { return }
+        guard let level = Self.meterLevel(sampleBuffer) else { return }
         recordLevel(level, type: type, at: now)
     }
 
-    nonisolated func updateAudioLevel(_ buffer: AVAudioPCMBuffer, type: SCStreamOutputType, at time: ContinuousClock.Instant) {
-        recordLevel(Self.meterLevel(buffer), type: type, at: time)
-    }
-
-    private nonisolated func recordLevel(_ level: Double, type: SCStreamOutputType, at time: ContinuousClock.Instant) {
+    nonisolated func recordLevel(_ level: Double, type: SCStreamOutputType, at time: ContinuousClock.Instant) {
         meter.withLock { state in
             state.levels[type] = Level(value: level, time: time)
             state.detected = state.detected || level > 0
         }
     }
 
-    nonisolated static func meterLevel(_ buffer: AVAudioPCMBuffer) -> Double {
-        meterLevel(UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList),
-                   format: buffer.format.streamDescription.pointee, frames: Int(buffer.frameLength))
+    /// Measures the samples in place; nothing is copied just for the meter.
+    nonisolated static func meterLevel(_ sampleBuffer: CMSampleBuffer) -> Double? {
+        let frames = sampleBuffer.numSamples
+        guard frames > 0, let description = sampleBuffer.formatDescription,
+              let format = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee else { return nil }
+        return try? sampleBuffer.withAudioBufferList(body: { buffers, _ in
+            meterLevel(buffers, format: format, frames: frames)
+        })
     }
 
     /// The loudest channel's RMS on a -60…0 dB scale. Interleaved channels share one buffer

@@ -119,7 +119,18 @@ enum TranscriptionPasses {
             segments.append(contentsOf: pass)
             report(1)
         }
-        return (total > 1 ? merge(segments, noSpeechThreshold: settings.noSpeechThreshold, logProbThreshold: settings.logProbThreshold) : segments.sorted { $0.start < $1.start }).map(\.transcript)
+        let noSpeechThreshold = settings.noSpeechThreshold, logProbThreshold = settings.logProbThreshold
+        // One pass has nothing to choose between; merge's cursor rules could drop its short or overlapping lines.
+        return (total > 1
+            ? merge(segments, noSpeechThreshold: noSpeechThreshold, logProbThreshold: logProbThreshold)
+            : withoutSilence(segments, noSpeechThreshold: noSpeechThreshold, logProbThreshold: logProbThreshold)
+                .sorted { $0.start < $1.start }
+        ).map(\.transcript)
+    }
+
+    /// Drops lines Whisper flags as silence that it also scored as unlikely text.
+    static func withoutSilence(_ segments: [ScoredSegment], noSpeechThreshold: Float, logProbThreshold: Float) -> [ScoredSegment] {
+        segments.filter { !($0.nospeech > noSpeechThreshold && $0.score < logProbThreshold) }
     }
 
     // Port of GivenFLY/better-meeting's asr.py _merge at e9b524d, except that a candidate must add at
@@ -127,7 +138,7 @@ enum TranscriptionPasses {
     // covered, which repeated sentences and placed lines out of order.
     // Upstream rescans every segment for each pick; this sweep gives the same picks in near-linear time.
     static func merge(_ passes: [ScoredSegment], noSpeechThreshold: Float = 0.6, logProbThreshold: Float = -1) -> [ScoredSegment] {
-        let segments = passes.filter { !($0.nospeech > noSpeechThreshold && $0.score < logProbThreshold) }
+        let segments = withoutSilence(passes, noSpeechThreshold: noSpeechThreshold, logProbThreshold: logProbThreshold)
             .sorted { $0.start < $1.start }
         guard var cursor = segments.first?.start else { return [] }
         var merged: [ScoredSegment] = []
@@ -144,9 +155,12 @@ enum TranscriptionPasses {
             open.removeAll { !(segments[$0].end > cursor + 0.2) }
             // Keep the first candidate on ties, matching Python's max().
             var best: ScoredSegment?
+            // Only a language's next line competes; its later lines would otherwise win and skip the next one.
+            var seen = Set<String>()
             for index in open {
                 let segment = segments[index]
                 guard segment.end - max(segment.start, cursor) >= (segment.end - segment.start) / 2 else { continue }
+                guard seen.insert(segment.lang).inserted else { continue }
                 if let current = best, !(current.score < segment.score) { continue }
                 best = segment
             }

@@ -164,17 +164,7 @@ final class AudioOnlyRecordingTests: XCTestCase {
                 data[channel][frame] = Float(0.2 * sin(2 * .pi * frequency * (time + Double(frame) / rate)))
             }
         }
-        var sample: CMSampleBuffer?
-        XCTAssertEqual(CMAudioSampleBufferCreateWithPacketDescriptions(
-            allocator: kCFAllocatorDefault, dataBuffer: nil, dataReady: false,
-            makeDataReadyCallback: nil, refcon: nil, formatDescription: format.formatDescription,
-            sampleCount: frames, presentationTimeStamp: CMTime(seconds: time, preferredTimescale: Int32(rate)),
-            packetDescriptions: nil, sampleBufferOut: &sample
-        ), noErr)
-        let result = try XCTUnwrap(sample)
-        XCTAssertEqual(CMSampleBufferSetDataBufferFromAudioBufferList(result, blockBufferAllocator: kCFAllocatorDefault,
-            blockBufferMemoryAllocator: kCFAllocatorDefault, flags: 0, bufferList: buffer.audioBufferList), noErr)
-        return result
+        return try audioSampleBuffer(buffer, at: time)
     }
 
     private func amplitude(_ samples: UnsafePointer<Float>, rate: Double, frequency: Double,

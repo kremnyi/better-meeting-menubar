@@ -8,10 +8,11 @@ final class SpeechSettingsTests: XCTestCase {
         let audio = folder.appendingPathComponent("audio.m4a")
         try Data([1]).write(to: audio)
         var settings = SpeechSettings()
-        for index in 0..<4 {
+        for index in 0..<5 {
             if index == 1 { settings.speakerLabels = true }
-            if index == 2 { settings.model = .small }
-            if index == 3 { settings.temperature = 0.3; settings.fallbackCount = 2 }
+            if index == 2 { settings.engine = .parakeet }
+            if index == 3 { settings.model = .small }
+            if index == 4 { settings.temperature = 0.3; settings.fallbackCount = 2 }
             var ran = false
             _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["en"], settings: settings, progressHandler: { _ in }) { options, _ in
                 ran = true
@@ -19,7 +20,7 @@ final class SpeechSettingsTests: XCTestCase {
                 XCTAssertEqual(options.temperatureFallbackCount, settings.fallbackCount)
                 return []
             }
-            XCTAssertEqual(ran, index != 1)
+            XCTAssertEqual(ran, ![1, 2].contains(index), "Speaker labels and the engine do not change Whisper passes")
         }
     }
 
@@ -79,25 +80,6 @@ final class SpeechSettingsTests: XCTestCase {
 
         let results = TranscriptionLanguagePicker.orderedLanguages(query: "ru", selected: ["en", "ru"])
         XCTAssertEqual(results.first?.rawValue, "ru")
-    }
-
-    func testEngineSwitchKeepsCompletedWhisperPasses() async throws {
-        let folder = makeTempRoot()
-        defer { removeTempRoot(folder) }
-        let audio = folder.appendingPathComponent("audio.m4a")
-        try Data([1]).write(to: audio)
-        var settings = SpeechSettings()
-        var runs = 0
-        for engine: TranscriptionEngine in [.whisper, .parakeet] {
-            settings.engine = engine
-            _ = try await TranscriptionPasses.run(
-                audioURL: audio, languages: ["en"], settings: settings, progressHandler: { _ in }
-            ) { _, _ in
-                runs += 1
-                return []
-            }
-        }
-        XCTAssertEqual(runs, 1, "Switching engines must not invalidate completed Whisper passes")
     }
 
     @MainActor

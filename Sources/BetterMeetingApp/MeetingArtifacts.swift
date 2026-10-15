@@ -46,6 +46,10 @@ struct MeetingHistoryItem: Identifiable, Equatable, Sendable {
 enum MeetingArtifacts {
     private static let transcriptLock = NSRecursiveLock()
     private static let transcriptFiles = ["transcript.md", "transcript.json", "metadata.json"]
+    static let mediaFilenames = ["recording.mp4", "recording.mov", "audio.m4a"]
+
+    /// The Markdown line that points at the saved recording.
+    static func recordingLink(_ filename: String) -> String { "- Recording: [\(filename)](\(filename))" }
 
     static func createDirectory(in root: URL, title: String, recordedAt: Date) throws -> URL {
         try FileManager.default.createDirectory(
@@ -269,10 +273,11 @@ enum MeetingArtifacts {
         // Multiple abandoned attempts from older builds need manual recovery; retain every backup.
         guard pending.count <= 1 else { throw MeetingActionError.transcriptRecovery(pending[0]) }
         for staging in stages {
-            if !fm.fileExists(atPath: staging.appendingPathComponent("committed").path) {
-                let backups = transcriptFiles.map { staging.appendingPathComponent("previous-" + $0) }
-                // No destination is changed until every backup has been written.
-                guard backups.allSatisfy({ fm.fileExists(atPath: $0.path) }) else { continue }
+            let backups = transcriptFiles.map { staging.appendingPathComponent("previous-" + $0) }
+            // No destination is changed until every backup has been written, so a stage without
+            // all of them holds nothing to restore.
+            if !fm.fileExists(atPath: staging.appendingPathComponent("committed").path),
+               backups.allSatisfy({ fm.fileExists(atPath: $0.path) }) {
                 do {
                     let originals = try backups.map { try Data(contentsOf: $0) }
                     for (name, data) in zip(transcriptFiles, originals) {
@@ -298,12 +303,12 @@ enum MeetingArtifacts {
         return settings
     }
 
-    private static func hasMedia(in folder: URL) -> Bool {
+    static func hasMedia(in folder: URL) -> Bool {
         FileManager.default.fileExists(atPath: recordingURL(in: folder).path)
     }
 
     static func recordingURL(in folder: URL) -> URL {
-        let filename = ["recording.mp4", "recording.mov", "audio.m4a"].first {
+        let filename = mediaFilenames.first {
             FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path)
         } ?? "recording.mp4"
         return folder.appendingPathComponent(filename)
@@ -365,7 +370,7 @@ enum MeetingArtifacts {
             "",
             "- Recorded: \(date)",
             "- Duration: \(Timecode.string(duration))",
-            "- Recording: [\(recordingFilename)](\(recordingFilename))",
+            recordingLink(recordingFilename),
             "",
             "## Transcript",
             "",

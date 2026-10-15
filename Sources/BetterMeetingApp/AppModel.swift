@@ -83,6 +83,10 @@ final class AppModel: ObservableObject {
     private(set) var modelPreparationTask: Task<Void, Error>?
     private var modelPreparationToken = 0
     private(set) var modelDownloadTask: Task<Void, Never>?
+    /// A model is downloading or being prepared.
+    var modelTransferInProgress: Bool { modelPreparationTask != nil || modelDownloadTask != nil }
+    /// Model files must not be downloaded or deleted while a capture, a job or another download uses them.
+    var modelWorkInProgress: Bool { isProcessing || isCapturing || modelTransferInProgress }
     /// The model the Options download fetches, so a transcription that uses it waits instead of fetching it too.
     private(set) var modelDownloadKind: StoredModelInfo.Kind?
     @Published private(set) var displays: [(id: CGDirectDisplayID, name: String)] = []
@@ -306,7 +310,7 @@ final class AppModel: ObservableObject {
 
     // ponytail: download-only; each engine loads on first transcription so picking one never compiles in the background.
     func prepareSpeechModel() {
-        guard !modelReady, !isProcessing, state == .idle || state == .recording else { return }
+        guard !modelReady, !isProcessing, modelDownloadTask == nil, state == .idle || state == .recording else { return }
         let settings = speechSettings
         prepareSpeechModel { [transcriber] progress in
             let report: @Sendable (Double) -> Void = { progress(.downloadingModel($0)) }
@@ -362,7 +366,7 @@ final class AppModel: ObservableObject {
     }
 
     func deleteStoredModel(_ item: StoredModelInfo) async {
-        guard !isCapturing, !isProcessing, modelPreparationTask == nil, modelDownloadTask == nil else { return }
+        guard !modelWorkInProgress else { return }
         modelDownloadError = nil
         do {
             try await transcriber.deleteStoredModel(at: item.url)
@@ -394,7 +398,7 @@ final class AppModel: ObservableObject {
     func downloadStoredModel(
         _ item: StoredModelInfo, _ download: @escaping (@escaping @Sendable (Double) -> Void) async throws -> Void
     ) {
-        guard modelDownloadTask == nil, modelPreparationTask == nil, !isProcessing else { return }
+        guard !modelWorkInProgress else { return }
         modelDownloadError = nil
         modelDownload = (item.id, 0)
         modelDownloadKind = item.kind
@@ -678,11 +682,6 @@ final class AppModel: ObservableObject {
             NSAlert(error: error).runActive()
         }
         refreshHistory()
-    }
-
-    func startCalendarRecording(_ event: CalendarEvent, mode: CaptureMode = .screen) {
-        guard state == .idle || state == .failed else { return }
-        startRecording(calendarEvent: event, mode: mode)
     }
 
     func startRecording(calendarEvent: CalendarEvent? = nil, mode: CaptureMode = .screen) {

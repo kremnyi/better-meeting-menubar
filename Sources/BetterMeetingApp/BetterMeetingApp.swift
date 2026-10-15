@@ -140,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 let event = try await model.calendar.eventForRecording(id: id)
                 guard CalendarReminder.matches(request, event: event) else { throw CalendarRecordingError.eventUnavailable }
                 guard model.state == .idle || model.state == .failed else { return }
-                if let start { start(event) } else { model.startCalendarRecording(event) }
+                if let start { start(event) } else { model.startRecording(calendarEvent: event) }
             } catch {
                 if model.state == .idle {
                     model.completionMessage = "This meeting changed or is no longer available. Check the upcoming meeting, or start a manual recording."
@@ -186,11 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         case UNNotificationDefaultActionIdentifier, MeetingNotifications.openTranscriptAction:
             AppModel.openTranscript(in: folder)
         case MeetingNotifications.copyTranscriptAction:
-            do {
-                try AppModel.copyTranscript(in: folder)
-            } catch {
-                NSAlert(error: error).runActive()
-            }
+            AppModel.copyTranscriptOrAlert(in: folder)
         case MeetingNotifications.showInFinderAction:
             NSWorkspace.shared.activateFileViewerSelecting([folder])
         default:

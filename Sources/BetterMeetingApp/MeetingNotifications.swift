@@ -23,9 +23,12 @@ enum MeetingNotifications {
         return .current()
     }
 
+    /// macOS keeps the first answer, so every request asks for the same options.
+    static let authorizationOptions: UNAuthorizationOptions = [.alert, .sound]
+
     static func requestPermission() async {
         guard let center, await center.notificationSettings().authorizationStatus == .notDetermined else { return }
-        _ = try? await center.requestAuthorization(options: [.alert])
+        _ = try? await center.requestAuthorization(options: authorizationOptions)
     }
 
     static func post(title: String, folder: URL, failed: Bool) async {

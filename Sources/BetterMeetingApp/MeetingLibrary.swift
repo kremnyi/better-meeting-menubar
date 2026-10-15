@@ -1,9 +1,9 @@
 import Foundation
 import os
 
-/// Reads meeting folders for the menu and remembers what it parsed between scans and searches.
+/// Reads meeting folders for the menu and remembers what it parsed between scans.
 /// Entries are keyed by modification dates and sizes, so edits made in Finder or a text editor
-/// are read again on the next scan or search.
+/// are read again on the next scan.
 final class MeetingLibrary: Sendable {
     private struct Stamp: Equatable, Sendable {
         let modified: Date?
@@ -15,37 +15,9 @@ final class MeetingLibrary: Sendable {
         let meeting: MeetingHistoryItem?
     }
 
-    private struct SearchText: Sendable {
-        let stamps: [Stamp]
-        let transcript: String?
-        let calendarFields: [String]
-
-        var bytes: Int { (transcript?.utf8.count ?? 0) + calendarFields.reduce(0) { $0 + $1.utf8.count } }
-    }
-
     private struct Cache: Sendable {
         var folders: [URL: Folder] = [:]
-        var text: [URL: SearchText] = [:]
-        /// The bytes the cached text holds.
-        var textBytes = 0
-
-        mutating func storeText(_ entry: SearchText, for folder: URL) {
-            textBytes += entry.bytes - (text.updateValue(entry, forKey: folder)?.bytes ?? 0)
-            // The cache only speeds up search; once it outgrows its budget, start over.
-            if textBytes > searchTextLimit {
-                text.removeAll()
-                textBytes = 0
-            }
-        }
-
-        mutating func keepText(for folders: Set<URL>) {
-            text = text.filter { folders.contains($0.key) }
-            textBytes = text.values.reduce(0) { $0 + $1.bytes }
-        }
     }
-
-    /// Transcripts kept in memory between searches; a larger library reads from disk again.
-    private static let searchTextLimit = 16 << 20
 
     private let cache = OSAllocatedUnfairLock(initialState: Cache())
 
@@ -85,28 +57,13 @@ final class MeetingLibrary: Sendable {
                 matches.append(meeting)
                 continue
             }
-            let text = searchText(in: meeting.folderURL)
-            if text.calendarFields.contains(where: { $0.localizedStandardContains(query) })
-                || text.transcript?.localizedStandardContains(query) == true {
+            let transcript = try? String(contentsOf: meeting.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8)
+            if transcript?.localizedStandardContains(query) == true
+                || MeetingCalendar.searchFields(in: meeting.folderURL).contains(where: { $0.localizedStandardContains(query) }) {
                 matches.append(meeting)
             }
         }
-        let listed = Set(meetings.map(\.folderURL))
-        cache.withLock { $0.keepText(for: listed) }
         return matches
-    }
-
-    private func searchText(in folder: URL) -> SearchText {
-        let transcriptURL = folder.appendingPathComponent("transcript.md")
-        let stamps = [Self.stamp(transcriptURL), Self.stamp(folder.appendingPathComponent("calendar.json"))]
-        if let cached = cache.withLock({ $0.text[folder] }), cached.stamps == stamps { return cached }
-        let text = SearchText(
-            stamps: stamps,
-            transcript: try? String(contentsOf: transcriptURL, encoding: .utf8),
-            calendarFields: MeetingCalendar.searchFields(in: folder)
-        )
-        if Self.isSettled(stamps) { cache.withLock { $0.storeText(text, for: folder) } }
-        return text
     }
 
     private static func stamp(_ url: URL) -> Stamp {

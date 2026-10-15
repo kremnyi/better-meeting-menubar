@@ -39,7 +39,7 @@ struct CaptureOptionsView: View {
                 OptionsPageHeader(title: "Advanced transcription") { page = .options }
                 AdvancedTranscriptionView(
                     settings: $model.speechSettings, languages: $model.transcriptionLanguages, hints: $model.transcriptionHints,
-                    modelSelectionDisabled: model.modelPreparationTask != nil || model.modelDownloadTask != nil
+                    modelSelectionDisabled: model.modelTransferInProgress
                 )
                 .disabled(model.isProcessing)
             case .about:
@@ -386,7 +386,9 @@ struct RetranscriptionView: View {
                 OptionsPageHeader(title: "Advanced transcription", backTo: meeting.needsTranscription ? "Transcribe meeting" : "Re-transcribe meeting") {
                     advancedPresented = false
                 }
-                AdvancedTranscriptionView(settings: $settings, languages: $languages, hints: $hints)
+                AdvancedTranscriptionView(
+                    settings: $settings, languages: $languages, hints: $hints, caption: "Applies to this transcription only."
+                )
             } else {
                 HStack {
                     Text(meeting.needsTranscription ? "Transcribe meeting" : "Re-transcribe meeting").font(.headline)
@@ -436,12 +438,13 @@ struct AdvancedTranscriptionView: View {
     @Binding var languages: [String]
     @Binding var hints: String
     var modelSelectionDisabled = false
+    var caption = "Applies to future transcriptions."
     @State var decodingExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
-                Text("Applies to future transcriptions.")
+                Text(caption)
                     .wrappingCaption()
                 HelpPopover(text: "The engine picks speed or accuracy; the model trades memory for quality; vocabulary and decoding help Whisper with names and noisy audio. Defaults suit most meetings.")
                 Spacer(minLength: 0)

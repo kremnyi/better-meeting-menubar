@@ -442,6 +442,69 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertEqual(MeetingArtifacts.meeting(in: folder)?.needsTranscription, false)
     }
 
+    /// "Retry setup" must not start a second download of the model while Options › Storage downloads one.
+    func testRetrySetupDoesNotStartASecondDownloadWhileOptionsDownloads() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("RetryDuringDownload")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
+        // A failed setup leaves the model unready, as on a Mac that has not downloaded it.
+        model.prepareSpeechModel { _ in throw URLError(.notConnectedToInternet) }
+        _ = try? await model.modelPreparationTask?.value
+        XCTAssertFalse(model.modelReady)
+        XCTAssertNil(model.modelPreparationTask)
+        var finishDownload: CheckedContinuation<Void, Never>?
+        let item = StoredModelInfo(title: "Whisper", kind: .whisper(model.speechSettings.model), url: root,
+                                   installed: false, sizeBytes: 0, downloadBytes: 0)
+        model.downloadStoredModel(item) { _ in await withCheckedContinuation { finishDownload = $0 } }
+        let download = try XCTUnwrap(model.modelDownloadTask)
+        defer { model.modelPreparationTask?.cancel() }
+
+        model.prepareSpeechModel()
+        XCTAssertNil(model.modelPreparationTask, "A running download already fetches the model")
+
+        for _ in 0..<100 where finishDownload == nil { await Task.yield() }
+        try XCTUnwrap(finishDownload).resume()
+        await download.value
+    }
+
+    /// Cancelling an export ends that job only; a recording queued behind it still gets transcribed.
+    func testCancellingAnExportDoesNotCancelTheNextQueuedRecording() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("CancelExportQueue")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let date = Date()
+        let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
+        var runs: [ProcessingRun] = []
+        for name in ["First meeting", "Second meeting"] {
+            let folder = try MeetingArtifacts.createDirectory(in: root, title: name, recordedAt: date)
+            try await cacheEnglishTranscript(in: folder, settings: settings, text: "\(name) finished.")
+            runs.append(ProcessingRun(folder: folder, recordedAt: date, title: name, titleWasProvided: true,
+                                      replacing: nil, languages: ["en"], hints: "", settings: settings))
+        }
+        let model = AppModel(defaults: defaults)
+        await model.historyRefreshTask?.value
+        model.exportAfterRecording = true
+        // Cancel once, during the first export; the cancel runs after the export has started.
+        var cancelled = false
+        let observation = model.processing.$phase.sink { phase in
+            guard phase == .extractingScreens, !cancelled else { return }
+            cancelled = true
+            Task { @MainActor in model.cancelTranscription() }
+        }
+        defer { observation.cancel() }
+
+        model.processing.enqueue(runs[0])
+        model.processing.enqueue(runs[1])
+        while let task = model.processing.task { await task.value }
+
+        XCTAssertTrue(cancelled)
+        for run in runs {
+            XCTAssertEqual(MeetingArtifacts.meeting(in: run.folder)?.needsTranscription, false,
+                           "\(run.title) must be transcribed; cancelling an export keeps the transcript")
+        }
+        XCTAssertTrue(model.failedTranscriptionFolders.isEmpty)
+    }
+
     func testEmptyQueueAndNativeQueueLayouts() async throws {
         _ = NSApplication.shared
         try await withMeetings(count: 0) { model in

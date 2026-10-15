@@ -24,7 +24,7 @@ enum MeetingBundle {
         }
         let markdown = try String(contentsOf: folder.appendingPathComponent("transcript.md"), encoding: .utf8)
         let recording = MeetingArtifacts.recordingURL(in: folder)
-        let hasRecording = fm.fileExists(atPath: recording.path)
+        let hasRecording = MeetingArtifacts.hasMedia(in: folder)
         let staging = folder.appendingPathComponent(".artifacts-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? fm.removeItem(at: staging) }
@@ -58,8 +58,8 @@ enum MeetingBundle {
             ? "- Recording: available media is retained in the meeting folder; not included in this bundle."
             : "- Recording: the original recording is unavailable; this bundle contains transcript data only."
         // The Markdown can still link to deleted video even when audio.m4a remains.
-        let exportedMarkdown = ["recording.mp4", "recording.mov", "audio.m4a"].reduce(markdown) { text, filename in
-            text.replacingOccurrences(of: "- Recording: [\(filename)](\(filename))", with: recordingNotice)
+        let exportedMarkdown = MeetingArtifacts.mediaFilenames.reduce(markdown) { text, filename in
+            text.replacingOccurrences(of: MeetingArtifacts.recordingLink(filename), with: recordingNotice)
         }
         let screenNotice = hasVideo ? "" : !hasRecording
             ? "This is a transcript-only export. The original recording is unavailable, so screen files are empty."

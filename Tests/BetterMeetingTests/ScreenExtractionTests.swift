@@ -19,11 +19,18 @@ final class ScreenExtractionTests: XCTestCase {
         XCTAssertGreaterThan(selected.last ?? 0, 90)
     }
 
-    func testRealVideoFrameExtractionAndVisionOCR() async throws {
+    /// Audio routinely outlasts the last video frame, which stretches the movie past the video track; the
+    /// samples there can't decode, and they must not cost the screens that do.
+    func testAudioOutlastingVideoStillExtractsScreens() async throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
         let video = root.appendingPathComponent("recording.mp4")
-        try await Self.makeVideo(at: video)
+        try await Self.makeVideo(at: video, audioSeconds: 9)
+        let asset = AVURLAsset(url: video)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let videoEnd = try await XCTUnwrap(tracks.first).load(.timeRange).end.seconds
+        let duration = try await asset.load(.duration).seconds
+        XCTAssertGreaterThan(duration, videoEnd + 2, "The fixture must leave samples past the video track")
         let events = try await ScreenExtractor.extract(video: video, to: root, languages: ["en", "uk"]) { _ in }
         let text = events.flatMap(\.added).joined(separator: " ").lowercased()
         XCTAssertTrue(text.contains("pricing"), text)
@@ -42,25 +49,6 @@ final class ScreenExtractionTests: XCTestCase {
         do { _ = try await cancelled.value; XCTFail("Expected cancellation") }
         catch is CancellationError {}
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("cancelled").path))
-    }
-
-    /// Audio routinely outlasts the last video frame, which stretches the movie past the video track; the
-    /// samples there can't decode, and they must not cost the screens that do.
-    func testAudioOutlastingVideoStillExtractsScreens() async throws {
-        let root = makeTempRoot()
-        defer { removeTempRoot(root) }
-        let video = root.appendingPathComponent("recording.mp4")
-        try await Self.makeVideo(at: video, audioSeconds: 9)
-        let asset = AVURLAsset(url: video)
-        let tracks = try await asset.loadTracks(withMediaType: .video)
-        let videoEnd = try await XCTUnwrap(tracks.first).load(.timeRange).end.seconds
-        let duration = try await asset.load(.duration).seconds
-        XCTAssertGreaterThan(duration, videoEnd + 2, "The fixture must leave samples past the video track")
-        let events = try await ScreenExtractor.extract(video: video, to: root, languages: ["en"]) { _ in }
-        let text = events.flatMap(\.added).joined(separator: " ").lowercased()
-        XCTAssertTrue(text.contains("pricing"), text)
-        XCTAssertTrue(text.contains("release"), text)
-        XCTAssertEqual(events.compactMap(\.screenshot).count, 2)
     }
 
     /// Four seconds of video; `audioSeconds` adds a silent audio track of that length.
