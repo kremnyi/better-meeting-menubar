@@ -32,16 +32,12 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     var allowsBetaUpdates = false
     let isBusy: () -> Bool
     private var updateAction: (() -> Void)?
-    /// Set by an Update and Restart click, so the prepared update installs without a second click.
     private var installWhenReady = false
     @Published private var pendingInstallation: (() -> Void)?
     private var updateVersion = ""
     private var informationURL: URL?
-    /// Set after the one start attempt, successful or not.
     private var started = false
-    /// Set by a click, so a failure it causes stays visible even when Sparkle does not show it.
     private var userInitiated = false
-    /// Waits before each retry of a failed background check, once the Mac is online.
     private static let retryDelays: [Duration] = [.seconds(10), .seconds(60), .seconds(300), .seconds(900), .seconds(3600)]
     private var retries = 0
     private var retryTask: Task<Void, Never>?
@@ -61,7 +57,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         updater.automaticallyChecksForUpdates = automaticChecks
         updater.automaticallyDownloadsUpdates = true
-        // A failed start is reported once; toggling automatic checks must not retry it or stack subscriptions.
+        // Start once: toggling automatic checks must not retry a failed start or stack subscriptions.
         guard !started else { return }
         started = true
         do {
@@ -138,11 +134,16 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
             errorMessage = error.localizedDescription
             status = .failed
         } else {
-            // Sparkle hides background failures, such as a launch before the network connects; check again later.
+            // Sparkle hides background failures, such as a launch before the network connects; retry later.
             retryBackgroundCheck()
         }
-        userInitiated = false
         dismissUpdateInstallation()
+    }
+
+    // Sparkle calls this after every cycle, also one that ends without an error, such as View details.
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
+        userInitiated = false
+        if error == nil { retries = 0 }
     }
 
     private func retryBackgroundCheck() {
@@ -173,7 +174,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         install?()
     }
 
-    // Sparkle owns downloads, validation, and installation; its UI stays in our menu.
     func show(_ request: SPUUpdatePermissionRequest, reply: @escaping (SUUpdatePermissionResponse) -> Void) {
         reply(SUUpdatePermissionResponse(automaticUpdateChecks: false, sendSystemProfile: false))
     }
@@ -183,7 +183,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     func showUpdateFound(with appcastItem: SUAppcastItem, state: SPUUserUpdateState,
                          reply: @escaping (SPUUserUpdateChoice) -> Void) {
         errorMessage = nil
-        retries = 0
         updateVersion = appcastItem.displayVersionString
         if appcastItem.isInformationOnlyUpdate {
             let url = appcastItem.infoURL
@@ -242,7 +241,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         if status != .failed && status != .current { status = .unchecked }
     }
 
-    // A release-page link and an indeterminate progress indicator keep the menu compact.
     func showUpdateReleaseNotes(with downloadData: SPUDownloadData) {}
     func showUpdateReleaseNotesFailedToDownloadWithError(_ error: Error) {}
     func showDownloadDidReceiveExpectedContentLength(_ expectedContentLength: UInt64) {}

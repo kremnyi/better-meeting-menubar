@@ -84,7 +84,6 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertEqual(updates.status, .current)
     }
 
-    /// A found update installs and relaunches after one click, not a second one once it is downloaded.
     @MainActor
     func testOneClickDownloadsInstallsAndRelaunches() throws {
         _ = NSApplication.shared
@@ -109,7 +108,6 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertEqual(choices, [.install, .install], "The prepared update installs without a second click")
         XCTAssertEqual(updates.status, .installing)
 
-        // A ready update that arrives without that click still waits for one.
         updates.dismissUpdateInstallation()
         updates.showReady(toInstallAndRelaunch: { choices.append($0) })
         XCTAssertEqual(updates.status, .ready(""))
@@ -134,9 +132,8 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertFalse(updates.canPerformAction)
     }
 
-    /// A launch check that fails before the network connects must not leave "Update failed" until a click.
     @MainActor
-    func testBackgroundCheckFailureStaysQuietButClickedCheckFailureShows() {
+    func testBackgroundCheckFailureStaysQuietButClickedCheckFailureShows() throws {
         _ = NSApplication.shared
         let updates = AppUpdater(isBusy: { false })
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: updates, delegate: updates)
@@ -144,6 +141,16 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertEqual(updates.status, .unchecked)
         XCTAssertNil(updates.errorMessage)
         XCTAssertEqual(updates.actionTitle, "Check for Updates")
+
+        let archiver = NSKeyedArchiver(requiringSecureCoding: true)
+        archiver.finishEncoding()
+        let state = try XCTUnwrap(SPUUserUpdateState(coder: try NSKeyedUnarchiver(forReadingFrom: archiver.encodedData)))
+        updates.showUpdateFound(with: SUAppcastItem.empty(), state: state, reply: { _ in })
+        updates.performAction()
+        updates.dismissUpdateInstallation()
+        (updates as SPUUpdaterDelegate).updater?(updater, didFinishUpdateCycleFor: .updates, error: nil)
+        updates.updater(updater, didAbortWithError: URLError(.notConnectedToInternet))
+        XCTAssertEqual(updates.status, .unchecked, "A click whose cycle ended without an error must not make later background failures visible")
 
         updates.showUserInitiatedUpdateCheck {}
         updates.showUpdaterError(URLError(.notConnectedToInternet)) {}
