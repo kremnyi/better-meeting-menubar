@@ -38,7 +38,6 @@ struct TranscriptionLanguage: RawRepresentable, Hashable {
 }
 
 enum TranscriptionPasses {
-    // Bumped when decoding decoded samples split at silences, which segments speech differently than streaming did.
     private static let backend = "WhisperKit-1.1.0-nospeech-2-vad-samples"
 
     private struct Cache: Codable {
@@ -51,10 +50,8 @@ enum TranscriptionPasses {
         let segments: [ScoredSegment]
     }
 
-    /// A candidate language gets its own pass only when some sampled window detects it at least this likely.
     static let detectionThreshold: Float = 0.3
 
-    /// `detectLanguages` returns each sampled window's language probabilities; without it every candidate runs.
     static func run(
         audioURL: URL, languages: [String], hints: String = "",
         settings: SpeechSettings = SpeechSettings(),
@@ -81,7 +78,6 @@ enum TranscriptionPasses {
                   cache.audioSize == stamp.size, cache.audioModified == stamp.modified else { return nil }
             return cache.segments
         }
-        // Detection needs the model, so it runs only when a candidate's pass is still missing.
         var passes = languages
         if languages.count > 1, let detectLanguages, try languages.contains(where: { try cachedPass($0) == nil }) {
             let windows = try await detectLanguages()
@@ -128,22 +124,17 @@ enum TranscriptionPasses {
         ).map(\.transcript)
     }
 
-    /// Drops lines Whisper flags as silence that it also scored as unlikely text.
     static func withoutSilence(_ segments: [ScoredSegment], noSpeechThreshold: Float, logProbThreshold: Float) -> [ScoredSegment] {
         segments.filter { !($0.nospeech > noSpeechThreshold && $0.score < logProbThreshold) }
     }
 
-    // Port of GivenFLY/better-meeting's asr.py _merge at e9b524d, except that a candidate must add at
-    // least half its length past the cursor. Upstream also took a segment another pass had already
-    // covered, which repeated sentences and placed lines out of order.
-    // Upstream rescans every segment for each pick; this sweep gives the same picks in near-linear time.
+    // Port of GivenFLY/better-meeting asr.py _merge at e9b524d; unlike upstream, a candidate must add half its length past the cursor, or sentences repeat.
     static func merge(_ passes: [ScoredSegment], noSpeechThreshold: Float = 0.6, logProbThreshold: Float = -1) -> [ScoredSegment] {
         let segments = withoutSilence(passes, noSpeechThreshold: noSpeechThreshold, logProbThreshold: logProbThreshold)
             .sorted { $0.start < $1.start }
         guard var cursor = segments.first?.start else { return [] }
         var merged: [ScoredSegment] = []
-        // The cursor only moves forward, so segments that start within reach form a growing prefix,
-        // and a segment that ends before the reach stays out of it for good.
+        // The cursor only moves forward, so the reachable segments form a growing prefix.
         var reached = 0
         var open: [Int] = []
         var following = 0

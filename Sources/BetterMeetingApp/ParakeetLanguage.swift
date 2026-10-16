@@ -1,9 +1,6 @@
 import NaturalLanguage
 
-/// Parakeet v3 returns no per-segment language, so transcripts and bundles lose
-/// their language tags. Tags the uk/ru/en mix from script and function-word
-/// evidence; inconclusive segments stay untagged.
-///
+/// Parakeet v3 returns no per-segment language, so tags come from script and function-word evidence.
 /// ponytail: hint, not model output; extend the word lists if other languages need labels.
 enum ParakeetLanguage {
     static func tag(_ text: String) -> String? {

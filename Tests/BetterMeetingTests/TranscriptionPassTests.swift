@@ -30,21 +30,18 @@ final class TranscriptionPassTests: XCTestCase {
     }
 
     func testMergeSkipsSentencesAnotherPassAlreadyCovered() {
-        // Two passes heard the same sentence with slightly different ends; the longer copy
-        // outscores the next sentence but adds only half a second.
+        // The longer copy of the same sentence outscores the next sentence but adds only half a second.
         let merged = TranscriptionPasses.merge([
             segment(3, 9.5, "en", -0.2), segment(3, 10, "uk", -0.25), segment(10, 16, "ru", -0.3)
         ])
         XCTAssertEqual(merged.map(\.lang), ["en", "ru"])
-        // A segment that mostly continues past the cursor is still taken.
         XCTAssertEqual(TranscriptionPasses.merge([
             segment(0, 5, "en", -0.2), segment(4, 12, "uk", -0.3)
         ]).map(\.lang), ["en", "uk"])
     }
 
     func testMergeKeepsShortLinesBeforeALongerLineInAnotherLanguage() {
-        // Both passes heard the same three lines. The 3.5 s line outscores the 1.5 s "Yes." that comes first,
-        // but taking it would move the cursor past "Yes." and lose it from both passes.
+        // The 3.5 s line outscores the earlier "Yes."; taking it first would lose "Yes." from both passes.
         let lines: [(Double, Double, Float)] = [(0, 1.5, -0.6), (1.5, 5, -0.2), (5, 8, -0.3)]
         let merged = TranscriptionPasses.merge(["en", "uk"].flatMap { language in
             lines.map { segment($0.0, $0.1, language, $0.2) }
@@ -68,7 +65,6 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertEqual(transcript.map(\.start), [0, 4, 6])
     }
 
-    /// Cancelling during "preparing audio" of a long recording must not wait for the whole decode.
     func testCancelledLoadReturnsWithoutWaitingForTheDecode() async throws {
         let started = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)
@@ -131,7 +127,6 @@ final class TranscriptionPassTests: XCTestCase {
         }
         XCTAssertEqual(cached.first?.language, "uk")
 
-        // The file can be moved with the meeting; absolute paths are not cache keys.
         let moved = root.appendingPathComponent("renamed")
         try FileManager.default.createDirectory(at: moved, withIntermediateDirectories: true)
         for name in ["audio.m4a", "pass_uk.json", "pass_ru.json", "pass_en.json"] {
@@ -203,7 +198,6 @@ final class TranscriptionPassTests: XCTestCase {
     func testPinnedDecodingAndNoSpeechProbability() throws {
         let options = SpeechSettings().decodingOptions(language: "uk")
         XCTAssertEqual(options.language, "uk")
-        // The model's logits are half precision; reading the buffer must match reading each boxed value.
         let half = try MLMultiArray(shape: [1, 1, 3], dataType: .float16)
         half[0] = 2.5
         half[1] = 7

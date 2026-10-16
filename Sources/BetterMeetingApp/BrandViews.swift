@@ -28,7 +28,6 @@ enum BrandAssets {
         return image
     }
 
-    // The label redraws often while recording; build each appearance's icon once.
     private static let recordingIconLight = makeRecordingMenuBarIcon(dark: false)
     private static let recordingIconDark = makeRecordingMenuBarIcon(dark: true)
 
@@ -61,9 +60,7 @@ struct MenuBarStatusIcon: View {
     let state: AppState
     var processing = false
     var processingFrame = 0
-    /// Idle work waits: access to grant or a failed transcription.
     var attention = false
-    /// Brightness of the whole icon while capture is live, dot included.
     var breath: Double = 1
 
     var body: some View {
@@ -102,8 +99,7 @@ struct MenuBarStatusIcon: View {
     }
 }
 
-/// Frames for the menu-bar processing spinner. The timer lives here so 10 Hz
-/// updates redraw the label that observes this object, not the whole App scene.
+/// Separate object so the 10 Hz frames redraw only the label, not the whole App scene.
 @MainActor
 final class MenuBarSpinner: ObservableObject {
     @Published private(set) var frame = 0
@@ -136,20 +132,13 @@ struct MenuBarStatusLabel: View {
     let state: AppState
     // Plain values rather than the model, so progress updates don't redraw the menu bar item.
     var processing = false
-    /// Access to grant or a failed transcription; beats the calendar preview.
     var attention = false
-    /// Whether to show elapsed time beside the icon while recording.
     var showRecordingTime = false
 
-    // Menu bar space is scarce and macOS 26 sizes MenuBarExtra from the label's
-    // unbounded ideal width, so the preview shows only actionable meetings
-    // (in progress, or starting within previewLeadTime) and carries no title:
-    // event names are too long to ever fit, so the label states the time only.
+    // macOS 26 sizes MenuBarExtra from the label's unbounded ideal width, so the preview shows the time only.
     static let previewLeadTime: TimeInterval = 60 * 60
 
-    /// The recording dot dims and brightens every two seconds: slow enough to read as a breath
-    /// rather than a blink, and stepped by the clock's own 1 Hz tick, so a closed menu redraws no
-    /// faster than it already does to show elapsed time.
+    /// Stepped by the clock's 1 Hz tick, so a closed menu redraws no faster than the elapsed time needs.
     static func recordingBreath(elapsed: TimeInterval, reduceMotion: Bool) -> Double {
         guard !reduceMotion else { return 1 }
         return Int(elapsed / 2) % 2 == 0 ? 1 : 0.45
@@ -189,8 +178,6 @@ struct MenuBarStatusLabel: View {
         }
     }
 
-    // Picks the first actionable meeting: in progress, or starting within
-    // previewLeadTime. Tomorrow's meetings surface only in that final hour.
     static func actionablePreviewEvent(from events: [CalendarEvent], at now: Date) -> CalendarEvent? {
         events.first { event in
             if event.scheduledStart <= now { return event.scheduledEnd > now }
@@ -209,8 +196,6 @@ struct MenuBarStatusLabel: View {
     }
 }
 
-/// The menu's row hover feedback: a faint rounded fill while the pointer is over the row,
-/// slightly stronger while `pressed`.
 private struct HoverHighlight: ViewModifier {
     let cornerRadius: CGFloat
     let pressed: Bool
@@ -236,12 +221,10 @@ extension View {
         font(.caption).foregroundStyle(.secondary).padding(.leading, 18)
     }
 
-    /// Secondary caption text that wraps instead of truncating.
     func wrappingCaption() -> some View {
         font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
-    /// A checkbox setting: the toggle with its tooltip, and an optional caption under its title.
     /// Apply `.disabled` before this so it dims only the toggle; the caption explains the setting either way.
     func setting(help: LocalizedStringKey? = nil, caption: LocalizedStringKey? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -250,7 +233,6 @@ extension View {
         }
     }
 
-    /// A picker beside its row title in a Grid; the picker keeps the label for VoiceOver.
     func gridPicker(_ label: LocalizedStringKey, disabled: Bool) -> some View {
         labelsHidden().frame(maxWidth: .infinity).disabled(disabled).accessibilityLabel(label)
     }
@@ -259,10 +241,9 @@ extension View {
 extension Color {
     /// WCAG AA (≥4.5:1) with white button labels and on light backgrounds.
     static let signalCoral = Color(red: 0.85, green: 0.16, blue: 0.13)
-    /// A slightly deeper shade for native recording-button hover feedback.
     static let signalCoralHover = Color(red: 0.78, green: 0.13, blue: 0.10)
-    /// The original bright coral; AA on the dark menu bar (5.66:1) but not on light chrome.
+    /// AA on the dark menu bar (5.66:1) but not on light chrome.
     static let signalCoralBright = Color(red: 0.96, green: 0.25, blue: 0.22)
-    /// Attention icons: ≥3:1 non-text contrast on light backgrounds; system orange on dark (7.6:1).
+    /// ≥3:1 non-text contrast on light backgrounds; system orange on dark (7.6:1).
     static let attentionOrange = Color(red: 0.85, green: 0.45, blue: 0.0)
 }

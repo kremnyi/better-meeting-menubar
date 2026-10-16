@@ -15,7 +15,6 @@ enum LocalTranscriptionProgress: Sendable {
 }
 
 extension Double {
-    /// A progress fraction within 0...1, or nil when a reporter sends NaN or infinity.
     var unitClamped: Double? { isFinite ? Swift.min(Swift.max(self, 0), 1) : nil }
 }
 
@@ -25,7 +24,6 @@ struct StoredModelInfo: Identifiable, Sendable {
         case parakeet
         case speakerLabels
 
-        /// Whether a transcription with these settings runs from this model.
         func isUsed(by settings: SpeechSettings) -> Bool {
             switch self {
             case .whisper(let model): settings.selectedEngine == .whisper && settings.model == model
@@ -57,7 +55,6 @@ actor LocalTranscriber {
     static let defaultDownloadBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("BetterMeeting", isDirectory: true)
 
-    // Models used to live in Documents; moved here for one-time migration.
     static let legacyDownloadBase = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("huggingface", isDirectory: true)
 
@@ -67,7 +64,7 @@ actor LocalTranscriber {
     static func prepareModelStorage(legacy: URL = legacyDownloadBase, destination: URL = defaultDownloadBase) {
         let fm = FileManager.default
         try? fm.createDirectory(at: destination, withIntermediateDirectories: true)
-        // Parakeet lives under models/ too; earlier builds kept it beside models/ and the original copy sits at the legacy root.
+        // Earlier builds kept Parakeet beside models/; the original copy sits at the legacy root.
         let parakeet = destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3")
         move(destination.appendingPathComponent("parakeet-tdt-0.6b-v3"), to: parakeet)
 
@@ -82,8 +79,7 @@ actor LocalTranscriber {
         if !isMissing(legacy) {
             for (source, target) in legacyPaths { move(source, to: target) }
         }
-        // Conflicting files left behind keep the check running; a read error such as a denied
-        // Documents permission is not proof that nothing is left.
+        // Leftover conflicts keep the check running; a read error such as denied Documents access is not proof that nothing is left.
         if isMissing(legacy) || legacyPaths.allSatisfy({ isMissing($0.0) }) {
             fm.createFile(atPath: marker.path, contents: nil)
         }
@@ -105,8 +101,7 @@ actor LocalTranscriber {
             try? fm.moveItem(at: source, to: target)
         } else if (try? source.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true,
                   (try? target.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
-            // Merge missing models/files into partial destinations. Conflicting files remain
-            // at the old location until there is a verified replacement for them.
+            // Merge into partial destinations; conflicting files stay at the old location until a verified replacement exists.
             guard let children = try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) else { return }
             for child in children { move(child, to: target.appendingPathComponent(child.lastPathComponent)) }
             if (try? fm.contentsOfDirectory(atPath: source.path))?.isEmpty == true {
@@ -131,7 +126,6 @@ actor LocalTranscriber {
             && vocabularyIsValid(at: parakeetVocabulary(in: downloadBase))
     }
 
-    // The menu asks on every open; parse the vocabulary again only after the file changes.
     private static let vocabularyCheck =
         OSAllocatedUnfairLock<(path: String, size: Int, modified: Date, valid: Bool)?>(initialState: nil)
 
@@ -158,8 +152,7 @@ actor LocalTranscriber {
         return tokens.keys.allSatisfy { Int($0).map { $0 >= 0 } == true }
     }
 
-    /// Remove only a malformed vocabulary; FluidAudio fetches that file again on download.
-    /// Read failures and cancellation preserve the cache rather than treating it as corrupt.
+    /// Only a malformed vocabulary is removed (FluidAudio fetches it again); read failures and cancellation keep the cache.
     func repairParakeetVocabulary() throws {
         try Task.checkCancellation()
         let vocabulary = Self.parakeetVocabulary(in: downloadBase)
@@ -191,7 +184,7 @@ actor LocalTranscriber {
         downloadBase.appendingPathComponent("models/argmaxinc/speakerkit-coreml", isDirectory: true)
     }
 
-    /// The compiled bundles SpeakerKit's default pyannote setup loads, at the paths it reads them from.
+    /// Paths must match where SpeakerKit's default pyannote setup loads its compiled bundles.
     static func hasSpeakerModels(in folder: URL) -> Bool {
         [
             (ModelInfo.segmenter(), "SpeakerSegmenter"),
@@ -206,7 +199,6 @@ actor LocalTranscriber {
         }
     }
 
-    /// The models the app can store. `sizes: false` skips walking each folder, which keeps the call fast enough for the menu.
     static func storedModels(in downloadBase: URL = defaultDownloadBase, sizes: Bool = true) -> [StoredModelInfo] {
         var models = SpeechModel.allCases.map { model in
             let url = downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
@@ -289,7 +281,6 @@ actor LocalTranscriber {
         return loaded
     }
 
-    /// Releases loaded engines unless a transcription is still using them.
     func unloadIfIdle() async {
         guard activeTranscriptions == 0 else { return }
         await unloadLoadedModels()
@@ -301,8 +292,7 @@ actor LocalTranscriber {
         await unloadSpeakerKit()
     }
 
-    // Each unload forgets its engine before awaiting cleanup, so a transcription that starts
-    // meanwhile loads a fresh engine instead of using one that is being unloaded.
+    // Forget the engine before awaiting cleanup, so a transcription that starts meanwhile loads a fresh one.
     private func unloadWhisper() async {
         let loaded = whisper
         whisper = nil
@@ -322,7 +312,6 @@ actor LocalTranscriber {
         if let loaded { await loaded.unloadModels() }
     }
 
-    /// Deletes one model folder, unloading only the engine that runs from it.
     func deleteStoredModel(at url: URL) async throws {
         let path = url.standardizedFileURL.path
         func holds(_ folder: URL) -> Bool { folder.standardizedFileURL.path == path }
@@ -366,8 +355,7 @@ actor LocalTranscriber {
     private func prepareSpeakerKit() async throws -> SpeakerKit {
         if let speakerKit { return speakerKit }
         try Task.checkCancellation()
-        // Fewer concurrent CoreML workers than SpeakerKit's 4 and 8: on a 17-minute two-voice sample the peak
-        // memory fell from 607 MB to 403 MB above baseline for 1.6 s more, with the same speaker turns.
+        // Fewer CoreML workers than SpeakerKit's 4 and 8: on a 17-minute sample peak memory fell from 607 MB to 403 MB.
         let kit = try await SpeakerKit(PyannoteConfig(
             downloadBase: downloadBase.path, verbose: false, concurrentSegmenterWorkers: 2, concurrentEmbedderWorkers: 4
         ))
@@ -381,7 +369,6 @@ actor LocalTranscriber {
         return kit
     }
 
-    /// Speaker turns from SpeakerKit, which stays loaded between meetings like the speech engines.
     func detectSpeakers(
         audio: MeetingAudio, progress: @escaping @Sendable (Double) -> Void
     ) async throws -> [SpeakerLabels.Turn] {
@@ -477,11 +464,9 @@ actor LocalTranscriber {
             let hints = hints.trimmingCharacters(in: .whitespacesAndNewlines)
             if !hints.isEmpty {
                 guard let tokenizer = whisper.tokenizer else { throw WhisperError.tokenizerUnavailable() }
-                // Cache the text alongside decoding options; tokenize only on a cache miss.
                 options.promptTokens = tokenizer.encode(text: " " + hints)
             }
             report(0)
-            // Decoded samples let WhisperKit split the audio at silences and decode several chunks at once.
             let samples = try await audio.load()
             try Task.checkCancellation()
             let duration = Double(samples.count) / Double(WhisperKit.sampleRate)
@@ -525,8 +510,7 @@ actor LocalTranscriber {
         }
         defer { progressTask.cancel() }
         var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
-        // Parakeet detects the language itself. The language list is Whisper's setting, and pinning
-        // one language garbled English product names in a Russian call.
+        // Parakeet detects the language itself; pinning one garbled English product names in a Russian call.
         let result = try await manager.transcribe(samples, decoderState: &decoderState, language: nil)
         try Task.checkCancellation()
         // ponytail: Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.

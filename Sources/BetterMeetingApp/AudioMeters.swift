@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Microphone and system-audio levels while recording. They change several times a
-/// second, so only the meters observe them instead of the whole menu and menu bar item.
+/// Levels change several times a second, so only the meters observe them, not the whole menu and menu bar item.
 @MainActor
 final class AudioMeters: ObservableObject {
     struct Levels: Equatable {
@@ -9,7 +8,6 @@ final class AudioMeters: ObservableObject {
         var system = 0.0
     }
 
-    /// One published value, so a tick that moves both meters redraws them once.
     @Published private(set) var levels = Levels()
     var microphone: Double { levels.microphone }
     var system: Double { levels.system }

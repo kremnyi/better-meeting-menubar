@@ -6,8 +6,7 @@ import Foundation
 
 private let failedTranscriptionFoldersKey = "failedTranscriptionFolders"
 
-/// Recording elapsed time, isolated so 1 Hz ticks redraw only the views that show it
-/// (the same pattern as AudioMeters and MenuBarSpinner).
+/// A separate object so the 1 Hz tick redraws only the views that show the time.
 @MainActor
 final class RecordingClock: ObservableObject {
     @Published var elapsed: TimeInterval = 0
@@ -18,7 +17,6 @@ final class AppModel: ObservableObject {
     @Published var meetingTitle = ""
     private(set) lazy var recording = RecordingSession(model: self)
     private(set) lazy var processing = ProcessingQueue(model: self)
-    /// The sub-objects publish their own state; the menu observes this model.
     private var forwardedChanges: [AnyCancellable] = []
     var state: AppState { recording.state }
     let recordingClock = RecordingClock()
@@ -35,12 +33,9 @@ final class AppModel: ObservableObject {
     weak var menuWindow: NSWindow?
     var statusText: String { recording.statusText }
     @Published private(set) var lastError: Error?
-    /// A transcription that failed while nothing was recording. It shows inline in the idle menu,
-    /// so a failed transcript never takes the place of Start recording.
     @Published private(set) var transcriptionError: Error?
     @Published var completedFolder: URL? {
         didSet {
-            // Checked once when the folder is set; the menu reads the flag on every redraw.
             hasCompletedTranscript = completedFolder.map {
                 FileManager.default.fileExists(atPath: $0.appendingPathComponent("transcript.md").path)
             } ?? false
@@ -56,7 +51,6 @@ final class AppModel: ObservableObject {
     var processingTitle: String { processing.title }
     @Published private(set) var transcriptionHistory: [MeetingHistoryItem] = []
     @Published private(set) var historyError: String?
-    /// Every meeting, whatever the search shows.
     private(set) var allMeetingCount = 0
     @Published private(set) var failedTranscriptionFolders: Set<URL> = []
     @Published var historyQuery = "" {
@@ -83,11 +77,8 @@ final class AppModel: ObservableObject {
     private(set) var modelPreparationTask: Task<Void, Error>?
     private var modelPreparationToken = 0
     private(set) var modelDownloadTask: Task<Void, Never>?
-    /// A model is downloading or being prepared.
     var modelTransferInProgress: Bool { modelPreparationTask != nil || modelDownloadTask != nil }
-    /// Model files must not be downloaded or deleted while a capture, a job or another download uses them.
     var modelWorkInProgress: Bool { isProcessing || isCapturing || modelTransferInProgress }
-    /// The model the Options download fetches, so a transcription that uses it waits instead of fetching it too.
     private(set) var modelDownloadKind: StoredModelInfo.Kind?
     @Published private(set) var displays: [(id: CGDirectDisplayID, name: String)] = []
     @Published private(set) var microphones: [(id: String, name: String)] = []
@@ -130,7 +121,7 @@ final class AppModel: ObservableObject {
             meetingDetector.setEnabled(detectsMeetings)
         }
     }
-    /// Built on first use, so a model without meeting detection never touches Core Audio.
+    /// Lazy so the app never touches Core Audio while meeting detection is off.
     lazy var meetingDetector = MeetingDetector(isBusy: { [weak self] in
         guard let self else { return true }
         return state != .idle || isProcessing
@@ -173,13 +164,9 @@ final class AppModel: ObservableObject {
     private var completedMeetings: [MeetingHistoryItem] = [] {
         didSet { updateRetryableMeeting() }
     }
-    /// Every meeting, newest first, sorted once per refresh for the list and each search.
     private var meetingsByRecency: [MeetingHistoryItem] = []
-    /// The speech settings the running model preparation downloads for.
     private(set) var modelPreparationSettings: SpeechSettings?
 
-    /// The completed or failed meeting, resolved when the folder or history changes:
-    /// the menu-bar label reads it on every redraw.
     private(set) var retryableMeeting: MeetingHistoryItem?
 
     private func updateRetryableMeeting() {
@@ -221,18 +208,15 @@ final class AppModel: ObservableObject {
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
         if (try? speechSettings.validate()) == nil { speechSettings = SpeechSettings() }
-        // Speaker labels are on unless turned off. Only preferences change: a meeting saved
-        // without the field was transcribed without labels and keeps that when retried.
+        // Default on for preferences only; a saved meeting without the field keeps no labels on retry.
         if speechSettings.speakerLabels == nil {
             speechSettings.speakerLabels = true
             defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings")
         }
-        // Parakeet is the default; keep Whisper when the saved languages include one Parakeet lacks.
         if speechSettings.engine == nil, !transcriptionLanguages.allSatisfy(SpeechSettings.parakeetLanguages.contains) {
             speechSettings.engine = .whisper
             defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings")
         }
-        // Listed without sizes so the model rows are there in the first frame; refreshStoredModels fills the sizes in.
         storedModels = LocalTranscriber.storedModels(sizes: false)
         modelReady = Self.modelIsCached(speechSettings)
         grantedAccess = captureAccess()
@@ -241,7 +225,6 @@ final class AppModel: ObservableObject {
         refreshHistory()
     }
 
-    /// Screen Recording and microphone access. Previews replace it to show the granted state.
     var captureAccess: () -> (screen: Bool, microphone: AVAuthorizationStatus) = {
         (CGPreflightScreenCaptureAccess(), AVCaptureDevice.authorizationStatus(for: .audio))
     } {
@@ -255,18 +238,13 @@ final class AppModel: ObservableObject {
         ])
     }
 
-    /// The last read of `captureAccess`, so a menu redraw never asks the system again. Granting access
-    /// happens in System Settings or during a recording, and both reopen the menu or change `state`.
     @Published private(set) var grantedAccess: (screen: Bool, microphone: AVAuthorizationStatus) = (false, .notDetermined)
 
     func refreshCaptureAccess() {
         let access = captureAccess()
-        // `state` changes call this; publish only a real change so the menu doesn't redraw for nothing.
         if access != grantedAccess { grantedAccess = access }
     }
 
-    /// Lists displays and microphones once, then again only when one connects or disconnects,
-    /// so opening Options never waits for device discovery.
     func watchInputs() {
         guard inputWatches.isEmpty else { return }
         let center = NotificationCenter.default
@@ -294,7 +272,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Discovery can take seconds when it looks for Continuity or virtual microphones, so it runs off the main thread.
+    /// Off the main thread: discovery can take seconds while it looks for Continuity or virtual microphones.
     private func refreshMicrophones() {
         microphoneDiscovery?.cancel()
         microphoneDiscovery = Task {
@@ -450,7 +428,6 @@ final class AppModel: ObservableObject {
             lastError = MeetingActionError.transcriptRecovery(backup)
             return
         }
-        // The retry replaces a capture failure on screen; a batch step leaves one alone.
         if recording.state == .failed { recording.state = .idle }
         prepareSavedTranscription(item)
         processing.enqueue(run(
@@ -460,8 +437,7 @@ final class AppModel: ObservableObject {
         ))
     }
 
-    /// Retries the failed meeting with the options its last attempt used. A capture failure's meeting
-    /// never ran a transcription, so it uses its saved and current options, not another job's.
+    /// Uses the last job's options only for an inline transcription failure; a capture failure never ran a job.
     func retryFailedTranscription() {
         guard let item = retryableMeeting else { return }
         let options = transcriptionError != nil ? processing.lastOptions : nil
@@ -522,7 +498,6 @@ final class AppModel: ObservableObject {
         completionMessage = nil
         transcriptionError = nil
         if !isCapturing { elapsed = item.duration }
-        // A capture that failed during a batch keeps its error and Retry target until the user acts on them.
         if state != .failed {
             completedFolder = nil
             lastError = nil
@@ -562,7 +537,7 @@ final class AppModel: ObservableObject {
         meetingsByRecency = []
         allMeetingCount = 0
         transcriptionHistory = []
-        // A pending search over the old folder must not publish; the refresh searches the new one.
+        // Cancel now: a pending search over the old folder must not publish before the new scan.
         historySearchTask?.cancel()
         refreshHistory()
     }
@@ -571,8 +546,7 @@ final class AppModel: ObservableObject {
         historyRefreshTask?.cancel()
         let root = outputRoot
         let scan = scan ?? { [library] in try library.meetings(in: $0) }
-        // The first refresh scans at once; later ones within the window join a single trailing scan,
-        // so a batch, its completion, and a menu open don't each list every meeting folder.
+        // The first refresh scans at once; later ones within 300 ms join one trailing scan.
         let now = ContinuousClock.now
         let start = historyRefreshStart > now ? historyRefreshStart : max(now, historyRefreshStart + .milliseconds(300))
         historyRefreshStart = start
@@ -600,7 +574,6 @@ final class AppModel: ObservableObject {
         if historyError != nil { historyError = nil }
         let completed = meetings.filter { !$0.needsTranscription }
         let unfinished = meetings.filter(\.needsTranscription)
-        // A refresh usually finds nothing new; reassigning would still redraw the menu.
         if completed != completedMeetings { completedMeetings = completed }
         if unfinished != unfinishedRecordings { unfinishedRecordings = unfinished }
         meetingsByRecency = (completed + unfinished).sorted { $0.recordedAt > $1.recordedAt }
@@ -628,7 +601,6 @@ final class AppModel: ObservableObject {
         let meetings = meetingsByRecency
         searchingHistory = true
         historySearchTask = Task.detached(priority: .userInitiated) { [weak self, library] in
-            // Coalesce keystrokes and refreshes; the task is cancelled and re-armed on each call.
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
             let matches = library.search(meetings, query: query)
@@ -642,7 +614,6 @@ final class AppModel: ObservableObject {
         searchingHistory = false
     }
 
-    /// Moves a meeting folder to the Trash, where Finder can put it back.
     func moveMeetingToTrash(
         _ meeting: MeetingHistoryItem,
         trash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
@@ -695,7 +666,6 @@ final class AppModel: ObservableObject {
 
     func cancelRecording() { recording.cancel() }
 
-    /// Clears the queue's display after its last job; a capture in progress keeps its own title and clock.
     func processingDidFinish() {
         guard !isCapturing else { return }
         elapsed = 0
@@ -707,13 +677,10 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// A finished job's meeting becomes the menu's result. A capture failure on screen keeps its own
-    /// recording for its title, Retry, and saved files.
     func showJobResult(in folder: URL) {
         if state != .failed { completedFolder = folder }
     }
 
-    /// Closes an earlier job's inline failure; that meeting stays Failed, with Retry, on its row.
     func transcriptSaved(in folder: URL) {
         transcriptionError = nil
         showJobResult(in: folder)
@@ -733,7 +700,6 @@ final class AppModel: ObservableObject {
         showJobResult(in: folder)
         updateFailedTranscriptionFolders { $0.insert(folder) }
         if state == .idle {
-            // Shown inline: the next recording must still start with one click.
             transcriptionError = error
             refreshHistory()
         }
@@ -744,23 +710,19 @@ final class AppModel: ObservableObject {
         modelUnloadTask = nil
     }
 
-    /// Frees the speech model after a quiet period. A recording in progress keeps it for its own transcription.
     func scheduleModelUnload() {
         modelUnloadTask?.cancel()
         modelUnloadTask = Task { [weak self, transcriber] in
-            // A loaded speech model stays in memory for five quiet minutes; loading it again takes a few seconds.
             try? await Task.sleep(for: .seconds(300))
             guard !Task.isCancelled, let self, !self.isProcessing, !self.isCapturing else { return }
             await transcriber.unloadIfIdle()
         }
     }
 
-    /// Progress sources fire far more often than the integer-percent UI shows.
     static func shownPercent(_ fraction: Double?) -> Int? {
         fraction.map { Int(($0 * 100).rounded()) }
     }
 
-    /// `folder` is the meeting the failure belongs to; a job transcribing meanwhile keeps its own state.
     func fail(_ error: Error, folder: URL? = nil) {
         recording.stopTimer()
         recording.state = .failed
@@ -790,8 +752,7 @@ final class AppModel: ObservableObject {
 }
 
 extension NSAlert {
-    /// A menu-bar app is not active when its menu opens a dialog; without activation the
-    /// alert never becomes key, so its text field ignores mouse selection.
+    /// A menu-bar app must activate first, or the alert never becomes key and its text field ignores mouse selection.
     @MainActor
     @discardableResult
     func runActive() -> NSApplication.ModalResponse {

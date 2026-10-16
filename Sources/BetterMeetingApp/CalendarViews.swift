@@ -2,7 +2,6 @@ import AppKit
 import EventKit
 import SwiftUI
 
-/// Options → Meetings: where meetings come from, and when the app offers to record one.
 struct MeetingOptionsView: View {
     @ObservedObject var calendar: CalendarIntegration
     @Binding var detectsMeetings: Bool
@@ -91,7 +90,6 @@ struct MeetingOptionsView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // A short list takes the height of its rows; a long one scrolls, and the cut-off row shows there is more.
             if calendar.calendars.count <= 5 {
                 rows
             } else {
@@ -123,7 +121,6 @@ private struct CalendarReminderOptionsView: View {
     @ObservedObject var calendar: CalendarIntegration
     @ObservedObject var reminders: CalendarReminders
 
-    /// Why the reminder can't fire right now; it stays visible so both ways to suggest a recording read together.
     private var unavailableReason: String? {
         if !calendar.enabled { return "Turn on Use calendar first." }
         if calendar.authorization != .fullAccess { return "Allow calendar access first." }
@@ -140,7 +137,6 @@ private struct CalendarReminderOptionsView: View {
                 .disabled(reminders.requestingAccess || unavailableReason != nil)
                 .setting(help: "Sends a notification with Start recording when a meeting from your selected calendars begins.",
                          caption: unavailableReason.map { LocalizedStringKey($0) })
-                // Schedule status belongs under its own toggle, not between the two checkboxes.
                 if calendar.notifyAtStart, unavailableReason == nil {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         let scheduled = reminders.scheduledEvents.filter { $0.scheduledStart > context.date }
@@ -170,7 +166,6 @@ private struct CalendarReminderOptionsView: View {
                     Button("Retry") { Task { await calendar.setNotifyAtStart(true) } }
                         .disabled(reminders.requestingAccess)
                 }
-                // Under the message it answers, not back at the checkbox's edge.
                 .padding(.leading, 18)
             }
         }
@@ -182,8 +177,6 @@ struct UpcomingMeetingView: View {
     let configure: () -> Void
     let record: (CalendarEvent) -> Void
 
-    /// Once a meeting is under way or this close to starting, recording it is the likely next step,
-    /// so the menu's Start button records it.
     static let prominentRecordLeadTime: TimeInterval = 5 * 60
 
     var body: some View {
@@ -315,7 +308,6 @@ struct UpcomingMeetingView: View {
         NSWorkspace.shared.open(URL(string: "ical://")!)
     }
 
-    /// A meeting with a video-call link joins the call in the browser; others open Calendar.
     private func open(_ event: CalendarEvent) {
         if let url = event.joinURL { NSWorkspace.shared.open(url) } else { openCalendar() }
     }
@@ -337,8 +329,7 @@ struct UpcomingMeetingView: View {
     }
 }
 
-/// A plain row button with the same inset hover highlight as recorded meeting rows, so calendar
-/// rows read as clickable. The highlight bleeds past the text without moving it.
+/// The negative padding lets the hover highlight bleed past the text without moving it.
 struct MeetingRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { Row(configuration: configuration) }
 
@@ -356,11 +347,7 @@ struct MeetingRowButtonStyle: ButtonStyle {
     }
 }
 
-/// Splits the 24-hour event window for the menu's upcoming section. The window
-/// itself stays 24 hours because reminders and the menu-bar preview depend on
-/// it; the menu shows only today — the first meeting in full, then at most two
-/// one-line rows and a count of the rest — and falls back to the first meeting
-/// of tomorrow once today is done.
+/// The event window stays 24 hours because reminders and the menu-bar preview depend on it.
 struct UpcomingMeetingLayout {
     let primary: CalendarEvent?
     let compact: [CalendarEvent]
@@ -393,10 +380,8 @@ extension CalendarEvent {
         }
     }
 
-    /// `compact` abbreviates the countdown for the menu bar: "in 26m" or "in 1h20m".
     func relativeStart(at now: Date, calendar: Calendar = .current, compact: Bool = false) -> String {
         if scheduledEnd <= now { return "Ended" }
-        // The menu bar has no time range beside it, so it names the end; the menu's caption already shows it.
         if scheduledStart <= now { return compact ? "until " + scheduledEnd.formatted(date: .omitted, time: .shortened) : "Now" }
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
                                            to: calendar.startOfDay(for: scheduledStart)).day

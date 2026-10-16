@@ -32,7 +32,6 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         var detected = false
     }
 
-    /// Times are monotonic, so a wall-clock change cannot make a live source look stale.
     private struct Level: Sendable {
         let value: Double
         let time: ContinuousClock.Instant
@@ -49,15 +48,11 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private var startContinuation: CheckedContinuation<Void, Error>?
     private var stopContinuation: CheckedContinuation<Void, Error>?
     private var startCaptureTask: Task<Void, Never>?
-    /// Set while `start` awaits shareable content, before `stream` is assigned.
     private var starting = false
-    /// Whether this stream's capture was already stopped, so clean-up does not stop it again.
     private var captureStopped = false
-    /// Capture needs screen-recording permission, so tests replace these.
     var startCapture: (SCStream) async throws -> Void = { try await $0.startCapture() }
     var stopCapture: (SCStream) async throws -> Void = { try await $0.stopCapture() }
-    // Audio buffers arrive on their own queue so the main thread isn't woken for each one;
-    // the recording timer reads the latest levels from here.
+    // Audio buffers stay on audioQueue so the main thread is not woken for each one.
     private nonisolated let meter = OSAllocatedUnfairLock(initialState: MeterState())
     nonisolated let audioQueue = DispatchQueue(label: "com.kremnyi.bettermeeting.audio-levels", qos: .userInitiated)
 
@@ -156,7 +151,6 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                         to: outputURL, microphone: microphone, mode: mode)
     }
 
-    /// Records `stream` to `outputURL` and starts its capture.
     func begin(_ stream: SCStream, to outputURL: URL, microphone: AVCaptureDevice?, mode: CaptureMode) async throws {
         let streamID = ObjectIdentifier(stream)
         meter.withLock { $0.stream = streamID }
@@ -166,7 +160,6 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             let outputConfiguration = SCRecordingOutputConfiguration()
             outputConfiguration.outputURL = outputURL
             outputConfiguration.outputFileType = .mp4
-            // HEVC is about half the size of H.264 at the same quality; H.264 stays the fallback.
             outputConfiguration.videoCodecType = outputConfiguration.availableVideoCodecTypes.contains(.hevc)
                 ? .hevc : .h264
             let output = SCRecordingOutput(configuration: outputConfiguration, delegate: self)
@@ -205,7 +198,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     ) -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
         let scale = min(1, CGFloat(resolution.rawValue) / max(sourceSize.width, sourceSize.height))
-        // HEVC and H.264 need even dimensions; keep the aspect ratio without upscaling.
+        // HEVC and H.264 need even dimensions.
         configuration.width = max(2, Int(sourceSize.width * scale) / 2 * 2)
         configuration.height = max(2, Int(sourceSize.height * scale) / 2 * 2)
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: Int32(quality.rawValue))
@@ -246,7 +239,6 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     }
 
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        // Both audio outputs are delivered on audioQueue; each level is measured at most every 0.1 s.
         guard type == .audio || type == .microphone else { return }
         let streamID = ObjectIdentifier(stream)
         let now = ContinuousClock.now
@@ -268,7 +260,6 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         }
     }
 
-    /// Measures the samples in place; nothing is copied just for the meter.
     nonisolated static func meterLevel(_ sampleBuffer: CMSampleBuffer) -> Double? {
         let frames = sampleBuffer.numSamples
         guard frames > 0, let description = sampleBuffer.formatDescription,
@@ -278,8 +269,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         })
     }
 
-    /// The loudest channel's RMS on a -60…0 dB scale. Interleaved channels share one buffer
-    /// with a stride of the channel count; non-interleaved channels each have their own.
+    /// Interleaved channels share one buffer with a channel-count stride; non-interleaved channels each have their own.
     nonisolated static func meterLevel(
         _ buffers: UnsafeMutableAudioBufferListPointer, format: AudioStreamBasicDescription, frames: Int
     ) -> Double {
@@ -352,9 +342,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             let code = SCStreamError.Code(rawValue: nsError.code)
             let wasStoppedIntentionally = nsError.domain == SCStreamErrorDomain
                 && (code == .userStopped || code == .systemStoppedStream)
-            // Our own stop waits for the recording-output callback. A stop from the macOS
-            // screen-sharing menu may never deliver it, so hand the recording off now;
-            // processing waits until the MP4 is readable.
+            // A stop from the macOS screen-sharing menu may never deliver the recording-output callback, so hand the recording off now.
             if wasStoppedIntentionally, startContinuation == nil {
                 if stopContinuation == nil {
                     if audioRecording.withLock({ $0 != nil }) {
@@ -369,7 +357,6 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         }
     }
 
-    /// Fails whichever of start or stop is waiting, or reports the capture ending on its own.
     private func finish(failing error: Error) {
         if startContinuation != nil {
             finishStart(with: .failure(error))
@@ -427,7 +414,6 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     }
 
     private func cleanUp() {
-        // Our own stop, or the stream reporting its end, already stopped this capture.
         let previousStream = captureStopped ? nil : stream
         captureStopped = false
         stream = nil

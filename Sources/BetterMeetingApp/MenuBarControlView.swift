@@ -30,8 +30,7 @@ struct MenuBarControlView: View {
                 .keyboardShortcut(",")
                 .help("Recording and app options (⌘,)")
                 .accessibilityLabel("Options")
-                // Attached to the menu's side: below the footer a tall page runs out of
-                // screen, and AppKit flips the popover to the top like a second window.
+                // Trailing edge: below the footer a tall page runs off screen and AppKit flips the popover to the top.
                 .popover(isPresented: $captureOptionsPresented, arrowEdge: .trailing) {
                     CaptureOptionsView(page: optionsPage)
                 }
@@ -141,8 +140,7 @@ struct MenuBarControlView: View {
         }
     }
 
-    /// One stack for both idle states, so the history list keeps its scroll position and search focus
-    /// when processing starts or ends; only the part between the start controls and the list changes.
+    /// One stack for both idle states, so the history list keeps its scroll position and search focus.
     private var idleContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             captureSummary
@@ -161,8 +159,6 @@ struct MenuBarControlView: View {
 
     @ViewBuilder
     private var idleStatus: some View {
-        // Both panels arrive rather than pop: the list below has to make room for them, and
-        // that shift is what the travel explains. Reduce Motion keeps the arrival, drops it.
         Group { transcriptionFailureStatus }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: model.errorMessage)
 
@@ -193,8 +189,6 @@ struct MenuBarControlView: View {
         }
     }
 
-    /// Records the meeting on the calendar when one is under way or about to start and no other
-    /// name was typed, so the one Start button also carries the event's details.
     private func startFromMenu(mode: CaptureMode = .screen) {
         if let event = StartRecordingButton.imminentEvent(in: model.calendar, title: model.meetingTitle, at: Date()) {
             model.startRecording(calendarEvent: event, mode: mode)
@@ -203,8 +197,6 @@ struct MenuBarControlView: View {
         }
     }
 
-    /// A transcription that failed while idle. It sits below Start recording rather than
-    /// replacing it, so the next meeting still starts with one click.
     @ViewBuilder
     private var transcriptionFailureStatus: some View {
         if let meeting = model.failedTranscriptionMeeting, let message = model.errorMessage {
@@ -260,7 +252,6 @@ struct MenuBarControlView: View {
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { copiedTranscript = true }
                 }
             } label: {
-                // The words swap like a state change, in step with the button losing its width.
                 Text(copiedTranscript ? "Copied" : "Copy Transcript")
                     .contentTransition(reduceMotion ? .identity : .opacity)
             }
@@ -390,7 +381,6 @@ struct MenuBarControlView: View {
                 .font(.title2)
                 .foregroundStyle(.tint)
                 .contentTransition(.symbolEffect(.replace))
-                // The waveform sweeps while audio is being turned into text.
                 .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating,
                               isActive: !reduceMotion && !model.isExportingBundle)
                 .accessibilityHidden(true)
@@ -533,8 +523,6 @@ struct MenuBarControlView: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .tint(.signalCoral)
-        // The recovery action can change under the same button, "Try again" becoming "Retry
-        // transcription". Its glyph and title hand off in place instead of cutting.
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: model.primaryButtonTitle)
     }
 
@@ -560,10 +548,6 @@ struct MenuBarControlView: View {
     }
 }
 
-/// The menu's split Start button. Its primary action always captures screen and audio;
-/// the native arrow menu starts audio-only without changing the next recording's default.
-/// When a calendar meeting is under way or about to start and no other
-/// name was typed, it records that meeting, so the menu never offers two competing record buttons.
 private struct StartRecordingButton: View {
     @ObservedObject var calendar: CalendarIntegration
     let meetingTitle: String
@@ -572,8 +556,7 @@ private struct StartRecordingButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
 
-    // Native menus otherwise retint SF Symbols to black in light appearance.
-    // Render a non-template white image for the coral button in either appearance.
+    // Native menus retint template SF Symbols black in light appearance; use a non-template white image.
     private static let menuChevron: NSImage = {
         let configuration = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
@@ -657,12 +640,10 @@ private struct RecordingElapsed: View {
             Image(systemName: "circle.fill")
                 .font(.body)
                 .foregroundStyle(colorScheme == .dark ? Color.signalCoralBright : Color.signalCoral)
-                // The on-air light: a slow breath says the capture is live without competing with the clock.
                 .symbolEffect(.pulse, options: .repeating.speed(0.5), isActive: !reduceMotion)
                 .accessibilityHidden(true)
             Text(Timecode.compact(clock.elapsed))
                 .font(.system(.largeTitle, design: .rounded).weight(.medium).monospacedDigit())
-                // The only live measurement on the panel: each tick rolls its digits instead of swapping them.
                 .contentTransition(reduceMotion ? .identity : .numericText(value: clock.elapsed))
                 .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: clock.elapsed)
         }

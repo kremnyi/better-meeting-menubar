@@ -42,7 +42,7 @@ final class EventKitCalendarReader: CalendarReading {
                 CalendarChoice(id: $0.calendarIdentifier, title: $0.title, account: $0.source.title)
             }.sorted { ($0.account, $0.title, $0.id) < ($1.account, $1.title, $1.id) }
             let selected = calendars.filter { selectedIDs.contains($0.calendarIdentifier) }
-            // Passing nil calendars would read every calendar. An empty selection reads no events.
+            // EventKit reads every calendar when calendars is nil, so an empty selection must return no events.
             guard !selected.isEmpty else { return CalendarSnapshot(calendars: choices, events: []) }
             let predicate = store.predicateForEvents(withStart: now, end: now.addingTimeInterval(86_400), calendars: selected)
             let events = store.events(matching: predicate)
@@ -174,8 +174,7 @@ final class CalendarIntegration: ObservableObject {
     func refresh(now: Date = Date()) async {
         revision += 1
         let currentRevision = revision
-        // Coalesce bursts from timers and notifications: wait for the load already
-        // running, then load again only if no later call superseded this one.
+        // Coalesce bursts: wait for the running load, then load again only if no later call superseded this one.
         let previousTask = loadTask
         let task = Task { @MainActor [weak self] in
             if let previousTask { await previousTask.value }
@@ -188,7 +187,6 @@ final class CalendarIntegration: ObservableObject {
     }
 
     private func performRefresh(now: Date, revision currentRevision: Int) async {
-        // Still the latest refresh, and still allowed to show events; clears them when not allowed.
         func stillCurrent() -> Bool {
             guard revision == currentRevision else { return false }
             authorization = reader.authorizationStatus

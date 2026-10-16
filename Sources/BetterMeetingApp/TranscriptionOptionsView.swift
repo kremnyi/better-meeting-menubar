@@ -6,13 +6,9 @@ struct CaptureOptionsView: View {
         case options, meetings, advanced, appSettings, about
     }
 
-    /// The login item status as last read. SwiftUI rebuilds this view on every menu redraw and each read
-    /// is a round trip to the login items service, so it is read when the menu opens and after changes.
-    /// `nil` until the first background read lands, so no view ever performs that read on the main thread.
+    /// Cached and read off the main thread: each read is a slow login-items round trip and the view redraws often.
     private(set) static var knownLaunchAtLoginStatus: SMAppService.Status?
 
-    /// The menu calls this on every open; the status read can block for seconds, so it lands after.
-    /// Pass the toggle's binding where the caller also shows the value.
     static func refreshLaunchAtLoginStatusInBackground(updating state: Binding<SMAppService.Status?>? = nil) {
         Task.detached(priority: .utility) {
             let status = SMAppService.mainApp.status
@@ -86,8 +82,7 @@ struct CaptureOptionsView: View {
     }
 
     private var appSettings: some View {
-        // Sections sit further apart than their rows, so each heading reads with the rows below it
-        // in the same height as the even spacing it replaces; the layout tests cap this page.
+        // Section spacing is sized to the page height that the layout tests cap.
         VStack(alignment: .leading, spacing: 13) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("General").font(.headline)
@@ -95,7 +90,6 @@ struct CaptureOptionsView: View {
                     get: { launchAtLoginStatus == .enabled },
                     set: setLaunchAtLogin
                 ))
-                // Unknown only until the background status read lands, moments after the menu opens.
                 .disabled(launchAtLoginStatus == nil)
                 if launchAtLoginStatus == .requiresApproval || launchAtLoginError != nil {
                     VStack(alignment: .leading, spacing: 4) {
@@ -424,7 +418,6 @@ struct RetranscriptionView: View {
         .frame(width: 360)
     }
 
-    /// What will run, since the choices themselves sit behind Advanced.
     private var summary: String {
         let engine = settings.usesWhisperOptions
             ? "Whisper (" + languages.compactMap { TranscriptionLanguage(rawValue: $0)?.label }.joined(separator: ", ") + ")"
@@ -557,7 +550,6 @@ struct AdvancedTranscriptionView: View {
     }
 }
 
-/// Whisper's spoken languages: one transcription pass each. Parakeet detects them itself.
 private struct LanguagesRow: View {
     @Binding var languages: [String]
     @State private var pickerPresented = false
@@ -621,7 +613,6 @@ private struct HelpPopover: View {
     }
 }
 
-/// The title row of an Options page, with the back arrow beside the title.
 private struct OptionsPageHeader: View {
     let title: String
     var backTo = "Options"
@@ -647,7 +638,6 @@ private struct OptionsPageHeader: View {
     }
 }
 
-/// A row that opens an Options page; its arrow mirrors the back arrow in each page header.
 private struct OptionsNavigationRow: View {
     let title: String
     let systemImage: String

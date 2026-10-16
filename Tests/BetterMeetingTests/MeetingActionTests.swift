@@ -37,12 +37,10 @@ final class MeetingActionTests: XCTestCase {
                 try Data().write(to: staging.appendingPathComponent("committed"))
             } else {
                 try "Partial replacement".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
-                // A blocked restore must keep backups and must not be reported as complete.
                 let blockedFile = folder.appendingPathComponent("transcript.md")
                 try fm.setAttributes([.immutable: true], ofItemAtPath: blockedFile.path)
                 defer { try? fm.setAttributes([.immutable: false], ofItemAtPath: blockedFile.path) }
-                // Settled stamps let the library cache the blocked result; fixing permissions
-                // changes neither stamp, so recovery must be retried rather than using that cache.
+                // Settled dates let the library cache this result, and unblocking changes no date, so the retry must not use that cache.
                 let settled = Date().addingTimeInterval(-10)
                 try fm.setAttributes([.modificationDate: settled], ofItemAtPath: folder.appendingPathComponent("metadata.json").path)
                 try fm.setAttributes([.modificationDate: settled], ofItemAtPath: folder.path)
@@ -62,7 +60,6 @@ final class MeetingActionTests: XCTestCase {
                 model.transcribeAllRecordings()
                 XCTAssertNil(model.processing.task, "Bulk transcription must exclude recovery-blocked meetings")
                 let unchanged = try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }
-                // A job enqueued with stale history must also stop before reading media or writing files.
                 model.processing.enqueue(ProcessingRun(folder: folder, recordedAt: date, title: stale.title,
                                             titleWasProvided: true, replacing: stale, languages: ["en"], hints: "",
                                             settings: SpeechSettings(engine: .whisper)))
@@ -113,7 +110,6 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertFalse(model.canCancelTranscription)
         XCTAssertEqual(model.completionMessage, "Re-transcription cancelled. Your existing transcript is unchanged.")
         XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, original)
-        // Missing source media must fail without marking the saved transcript unfinished.
         model.retryTranscription(item)
         XCTAssertNil(model.completionMessage, "A new attempt must clear the cancellation notice")
         await model.processing.task?.value
@@ -416,7 +412,6 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path), "Other meetings must stay")
         XCTAssertFalse(model.isProcessing, "A canceled recording must not be transcribed")
 
-        // A failed stop keeps the original files and reports the failure instead of trashing them.
         model.recording.activeFolder = kept
         model.recording.didStart(at: date)
         model.recording.stopCapture = { throw URLError(.cannotWriteToFile) }

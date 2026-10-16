@@ -23,15 +23,13 @@ enum MicrophoneMeeting {
     }
 }
 
-/// Reports whether any app is using the default input device.
 @MainActor
 protocol MicrophoneUse: AnyObject {
     func start(_ onChange: @escaping (Bool) -> Void)
     func stop()
 }
 
-/// Core Audio says whether a device is recording somewhere, never what is recorded, so this
-/// needs no microphone access of its own and reads nothing from the other app.
+/// Core Audio says only whether a device is recording somewhere, so this needs no microphone access.
 @MainActor
 final class SystemMicrophoneUse: MicrophoneUse {
     private var device = AudioObjectID(kAudioObjectUnknown)
@@ -64,7 +62,6 @@ final class SystemMicrophoneUse: MicrophoneUse {
         report = nil
     }
 
-    /// Switching to a headset replaces the input device, so the listener moves with it.
     private func followDefaultDevice() {
         guard report != nil else { return }
         leaveDevice()
@@ -116,15 +113,10 @@ final class SystemMicrophoneUse: MicrophoneUse {
     }
 }
 
-/// Offers to record an unscheduled call: when another app has held the microphone long enough to
-/// be a meeting rather than a beep or a dictation, this posts a notification with Start recording.
-/// Scheduled meetings are already offered by the calendar, and nothing is ever recorded on its own.
 @MainActor
 final class MeetingDetector {
-    /// How long another app holds the microphone before this counts as a call.
     var delay: TimeInterval = 30
-    /// Core Audio reports only changes, so a call that starts while the app is busy is re-checked
-    /// at this interval until the app is free, instead of waiting for the microphone to cycle.
+    /// Core Audio reports only changes, so a call that starts while the app is busy is re-checked at this interval.
     var busyRecheckInterval: TimeInterval = 5
     private(set) var enabled = false
     private let source: MicrophoneUse
@@ -154,15 +146,13 @@ final class MeetingDetector {
         source.start { [weak self] inUse in self?.microphoneUse(inUse) }
     }
 
-    /// The microphone going idle ends the call: the suggestion is withdrawn and the next call may suggest again.
     func microphoneUse(_ inUse: Bool) {
         guard enabled else { return }
         guard inUse else { return withdraw(stopping: false) }
         guard waiting == nil, !suggested else { return }
         waiting = Task { [delay, busyRecheckInterval] in
             try? await Task.sleep(for: .seconds(delay))
-            // Our own recording holds the microphone too; so does a transcription the user is waiting for.
-            // The microphone going idle cancels this wait, so it only outlasts the busy state for one call.
+            // Our own recording and a pending transcription also hold the microphone; wait them out.
             while !Task.isCancelled, isBusy() {
                 try? await Task.sleep(for: .seconds(busyRecheckInterval))
             }
@@ -172,8 +162,7 @@ final class MeetingDetector {
         }
     }
 
-    /// The user is recording this call themselves, so it is not suggested again when the recording
-    /// and its transcription finish while the call continues. The microphone going idle arms the next call.
+    /// Marked as suggested so the call is not offered again when the user's own recording ends mid-call.
     func ownRecordingStarted() {
         guard enabled else { return }
         waiting?.cancel()

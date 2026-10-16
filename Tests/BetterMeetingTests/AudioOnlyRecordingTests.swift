@@ -12,14 +12,12 @@ final class AudioOnlyRecordingTests: XCTestCase {
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Audio meeting", recordedAt: date)
         let recording = folder.appendingPathComponent("recording.mov")
-        // Delay readiness, not the resulting audio: the real writer must preserve
-        // both signals and timestamps after the encoder becomes available again.
+        // Delay readiness only; the writer must keep both signals and their timestamps once the encoder is ready again.
         let readyAt = ContinuousClock.now.advanced(by: .seconds(1))
         let capture = DispatchQueue(label: "capture")
         let writer = try AudioOnlyRecording(to: recording, queue: capture,
             isReady: { ContinuousClock.now >= readyAt && $0.isReadyForMoreMediaData }) { _ in }
-        // Burst delivery exercises encoder pressure at startup and stop;
-        // the middle runs at capture cadence, with system sound before the mic.
+        // Bursts at start and stop stress the encoder; the middle runs at capture cadence, system sound before the mic.
         for index in 0..<75 {
             let time = Double(index) * 0.02
             if index < 60 { let buffer = try sample(at: time, frequency: 440, channels: 2); capture.sync { writer.append(buffer, type: .audio) } }
@@ -36,8 +34,7 @@ final class AudioOnlyRecordingTests: XCTestCase {
                       "The original audio must remain recoverable before extraction")
         let audioURL = folder.appendingPathComponent("audio.m4a")
         try await AudioExtractor.extract(from: recording, to: audioURL) { _ in }
-        // Transcription reads the recording while its m4a exports, so both must yield the same samples,
-        // including for a recording whose microphone track is disabled.
+        // Transcription may read the recording or its m4a, so both must give the same samples, also with a disabled mic track.
         let movie = AVMutableMovie(url: recording)
         try XCTUnwrap(movie.tracks(withMediaType: .audio).last).isEnabled = false
         let disabled = root.appendingPathComponent("disabled.mov")

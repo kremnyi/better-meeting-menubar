@@ -3,7 +3,6 @@ import Foundation
 import os
 import WhisperKit
 
-/// The extracted m4a's size and modification date, which the pass and speaker caches key on.
 /// Read from the file system because URL resource values can be stale when the file is replaced.
 struct AudioStamp: Sendable {
     let size: Int?
@@ -16,23 +15,17 @@ struct AudioStamp: Sendable {
     }
 }
 
-/// The caller of `MeetingAudio.blocking`, shared with its cancellation handler.
 private struct Waiting<T> {
     var cancelled = false
     var continuation: CheckedContinuation<T, Error>?
 }
 
-/// A meeting's audio as 16 kHz mono samples, decoded on first use and shared by every
-/// Whisper language pass and speaker labeling instead of decoding the file for each.
 final class MeetingAudio: Sendable {
-    /// The extracted m4a, or the recording itself.
     let url: URL
     private let decoder: @Sendable (URL) async throws -> [Float]
-    // One shared decode; a second caller awaits it instead of repeating it.
     private let decode = OSAllocatedUnfairLock<Task<[Float], Error>?>(initialState: nil)
 
-    /// A recording decodes with AudioExtractor's track mix, so transcription need not wait for the
-    /// m4a export. The samples differ from the m4a's only by the export's AAC encoding.
+    /// Decodes with AudioExtractor's track mix, so transcription need not wait for the m4a export.
     convenience init(url: URL) {
         self.init(url: url, decoder: Self.decode)
     }
@@ -42,8 +35,7 @@ final class MeetingAudio: Sendable {
         self.decoder = decoder
     }
 
-    /// The decoded samples. The decode runs on a dispatch queue rather than the cooperative pool.
-    /// Cancelling a caller cancels the shared decode, which every caller of one job shares, and returns at once.
+    /// Cancelling any caller cancels the shared decode for every caller of the job.
     func load() async throws -> [Float] {
         try Task.checkCancellation()
         let url = url
@@ -63,7 +55,6 @@ final class MeetingAudio: Sendable {
         return samples
     }
 
-    /// Frees the samples once transcription and speaker labels are done, stopping a decode still running.
     func discard() {
         decode.withLock { task in
             task?.cancel()
@@ -71,8 +62,7 @@ final class MeetingAudio: Sendable {
         }
     }
 
-    /// Runs blocking work on a dispatch queue. Cancelling the caller resumes it with CancellationError at once;
-    /// the work stops when it polls `isCancelled`, and otherwise finishes unobserved.
+    /// Cancelling resumes the caller at once; the work runs on unobserved unless it polls `isCancelled`.
     static func blocking<T: Sendable>(_ work: @escaping @Sendable (_ isCancelled: @Sendable () -> Bool) throws -> T) async throws -> T {
         let state = OSAllocatedUnfairLock(initialState: Waiting<T>())
         return try await withTaskCancellationHandler {
@@ -95,7 +85,6 @@ final class MeetingAudio: Sendable {
         }
     }
 
-    /// Decodes in steps that stop on cancel, into memory reserved for the whole file.
     @Sendable private static func decode(_ url: URL) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         let allTracks = try await asset.loadTracks(withMediaType: .audio)
@@ -152,8 +141,7 @@ final class MeetingAudio: Sendable {
         var samples: [Float] = []
         // Grown by appends, the array would briefly hold two copies of a long meeting while reallocating.
         samples.reserveCapacity(Int(seconds * sampleRate) + WhisperKit.sampleRate)
-        // WhisperKit decodes the m4a in 10-minute windows read 1,323,000 frames at a time, mixing each
-        // read to mono and resampling it alone; flush at the same frames so the samples match it.
+        // WhisperKit resamples each 10-minute window of its m4a decode alone; flush at the same frames so the samples match.
         let window = AVAudioFramePosition(600 * rate)
         var position: AVAudioFramePosition = 0
         func flush() throws {

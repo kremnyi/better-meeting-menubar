@@ -40,8 +40,7 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
     let organizer: Participant?
     let eventId: String
     let occurrenceId: String
-    /// Video-call link found on the event. Menu-only: it is left out of `calendar.json`
-    /// because invite links can carry meeting passwords.
+    /// Menu-only: left out of `calendar.json` because invite links can carry meeting passwords.
     var joinURL: URL?
 
     private enum CodingKeys: String, CodingKey {
@@ -79,7 +78,6 @@ struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
         joinURL = Self.joinURL(url: event.url, location: event.location, notes: event.notes)
     }
 
-    /// The first Google Meet, Zoom, or Teams join link in the event's URL, location, then notes.
     /// Invites also carry help, dial-in, and download links on the same hosts, so only join paths count.
     static func joinURL(url: URL?, location: String?, notes: String?) -> URL? {
         if let url, joinService(for: url) != nil { return url }

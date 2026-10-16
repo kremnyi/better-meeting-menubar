@@ -43,7 +43,6 @@ enum SpeechModel: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    /// Approximate download size, shown before the model is on disk.
     var downloadBytes: Int64 {
         switch self {
         case .small: 490_000_000
@@ -65,18 +64,15 @@ struct SpeechSettings: Codable, Equatable, Sendable {
     // Optional so preferences and meeting metadata saved before the field existed still decode.
     var speakerLabels: Bool? = nil
 
-    /// Parakeet unless another engine was chosen. Meetings saved without an engine were
-    /// transcribed by Whisper; `MeetingArtifacts.speechSettings(in:)` restores that.
+    /// Meetings saved without an engine were transcribed by Whisper; `MeetingArtifacts.speechSettings(in:)` restores that.
     var selectedEngine: TranscriptionEngine { engine ?? .parakeet }
 
-    /// These settings with the engine spelled out, so a saved meeting records which one ran.
     var withResolvedEngine: SpeechSettings {
         var settings = self
         settings.engine = selectedEngine
         return settings
     }
 
-    /// Languages Parakeet v3 transcribes; the others need Whisper.
     static let parakeetLanguages: Set<String> = [
         "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hr", "hu", "it",
         "lt", "lv", "mt", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "uk",
@@ -84,9 +80,7 @@ struct SpeechSettings: Codable, Equatable, Sendable {
 
     var usesWhisperOptions: Bool { selectedEngine == .whisper }
 
-    /// Silence-separated chunks Whisper decodes at once; each worker holds one chunk's decoder state.
-    /// One per performance core, from 4 to 8: on an M1 Pro, with eight performance cores, eight workers
-    /// were fastest and four about 7% slower; more workers than performance cores oversubscribe them.
+    /// One per performance core, 4 to 8: eight were fastest on an 8-core M1 Pro; more than the performance cores oversubscribe them.
     static let whisperWorkers: Int = {
         var cores: Int32 = 0
         var size = MemoryLayout<Int32>.size

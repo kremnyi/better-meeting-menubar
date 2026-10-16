@@ -69,7 +69,6 @@ final class MeetingBundleTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: markdownURL, encoding: .utf8), markdown)
         XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: folder.path).contains { $0.hasPrefix(".artifacts-") })
 
-        // Deleting media for space must not make a completed transcript unexportable.
         try FileManager.default.removeItem(at: video)
         let transcriptOnly = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertFalse(transcriptOnly.needsTranscription)

@@ -33,7 +33,6 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(CalendarReminder.category.actions.first?.identifier, CalendarReminder.startActionID)
         XCTAssertTrue(CalendarReminder.category.actions[0].options.contains(.foreground))
         XCTAssertTrue(CalendarReminder.category.actions[0].options.contains(.authenticationRequired))
-        // The same meeting on a second selected calendar has its own occurrence id but is one meeting.
         let otherCalendarCopy = try calendarEventFixture(id: "other-calendar-occurrence", date: event.scheduledStart)
         reminders.update(events: [event, otherCalendarCopy], enabled: true)
         await reminders.task?.value
@@ -48,7 +47,7 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertTrue(center.delivered.isEmpty)
         XCTAssertTrue(CalendarReminder.matches(try XCTUnwrap(center.pending[request.identifier]), event: moved))
         XCTAssertEqual(reminders.scheduledEvents, [moved])
-        reminders.update(events: [], enabled: true) // Deleted event, deselected calendar, or revoked calendar access.
+        reminders.update(events: [], enabled: true)
         await reminders.task?.value
         XCTAssertEqual(Array(center.pending.keys), [unrelated.identifier])
         XCTAssertTrue(reminders.scheduledEvents.isEmpty)
@@ -94,11 +93,10 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(event.relativeStart(at: now, calendar: calendar), "Starts in 18 min")
         XCTAssertEqual(event.relativeStart(at: event.scheduledStart.addingTimeInterval(-30), calendar: calendar), "Starts in 1 min")
         XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar), "Starts in 1 hr 18 min")
-        // The menu bar uses compact units and omits zero minutes.
         XCTAssertEqual(event.relativeStart(at: now, calendar: calendar, compact: true), "in 18m")
         XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar, compact: true), "in 1h18m")
         XCTAssertEqual(event.relativeStart(at: event.scheduledStart.addingTimeInterval(-3600), calendar: calendar, compact: true), "in 1h")
-        // The menu caption already shows the time range; only the menu bar needs the end time spelled out.
+        // The caption already shows the time range, so only the compact menu-bar text names the end time.
         XCTAssertEqual(event.relativeStart(at: event.scheduledStart, calendar: calendar), "Now")
         XCTAssertTrue(event.relativeStart(at: event.scheduledStart, calendar: calendar, compact: true).hasPrefix("until "))
         XCTAssertEqual(event.relativeStart(at: event.scheduledEnd, calendar: calendar), "Ended")
@@ -177,7 +175,7 @@ final class MeetingCalendarTests: XCTestCase {
         let model = AppModel(defaults: defaults)
         model.calendar = calendar
         let delegate = AppDelegate()
-        delegate.model = model // No menu appearance is required for notification handling.
+        delegate.model = model
         let request = CalendarReminder.request(for: event)
         let presented = await delegate.shouldPresentCalendarReminder(request)
         XCTAssertTrue(presented)
@@ -537,7 +535,7 @@ final class MeetingCalendarTests: XCTestCase {
                 for (name, content) in panels {
                     let view = hostingView(content, model: model, scheme: scheme)
                     XCTAssertEqual(view.fittingSize.width, name == "menu" ? 304 : 360)
-                    // Guards against runaway growth: the tallest stress state (2-line title plus a second today meeting) sits at 727, so 740 keeps a real budget while still catching an unbounded list.
+                    // The tallest state measures 727, so 740 leaves room but still catches an unbounded list.
                     XCTAssertLessThan(view.fittingSize.height, 740)
                     try writePanelPreview(view, name: "calendar-\(name)-\(state)-\(scheme)")
                 }
@@ -553,7 +551,6 @@ final class MeetingCalendarTests: XCTestCase {
         let third = try calendarEventFixture(id: "third", date: now.addingTimeInterval(10_800))
         let fourth = try calendarEventFixture(id: "fourth", date: now.addingTimeInterval(14_400))
         let tomorrow = try calendarEventFixture(id: "tomorrow", date: now.addingTimeInterval(86_400))
-        // The same meeting on a second selected calendar has its own occurrence ID.
         let secondCopy = try calendarEventFixture(id: "second-copy", date: now.addingTimeInterval(7_200))
         let layout = UpcomingMeetingLayout.make(events: [first, second, secondCopy, third, fourth, tomorrow], now: now)
         XCTAssertEqual(layout.primary?.id, "first")

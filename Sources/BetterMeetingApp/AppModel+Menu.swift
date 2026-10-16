@@ -1,22 +1,15 @@
 import AppKit
 
-/// What the menu shows for the current state, and the app-level actions behind its buttons:
-/// the primary button, quitting while busy, and opening meeting files.
 extension AppModel {
-    /// The failure text shown in the menu: the error's own description when it has a friendly one.
     var errorMessage: String? {
         (lastError ?? transcriptionError).map { ($0 as? LocalizedError)?.errorDescription ?? $0.localizedDescription }
     }
-    /// The failed error's domain and code, shown behind Details in the failure panel.
     var errorDetails: String? {
         (lastError ?? transcriptionError).map { error in let ns = error as NSError; return "\(ns.domain) \(ns.code)" }
     }
-    /// The meeting whose transcription failed while idle, for the inline failure and its Retry.
     var failedTranscriptionMeeting: MeetingHistoryItem? {
         transcriptionError == nil ? nil : retryableMeeting
     }
-    /// Access to grant in System Settings, or a failed transcription: what the menu-bar icon flags.
-    /// Recordings merely waiting to be transcribed are not a problem, so they never raise it.
     var needsAttention: Bool {
         captureAccessNeedsAttention || failedTranscriptionMeeting != nil
     }
@@ -29,7 +22,6 @@ extension AppModel {
         }
     }
 
-    /// The save folder and automatic export stay in use until the last job finishes.
     var fileSettingsLocked: Bool { isCapturing || isProcessing }
     var settingsLockNotice: String? {
         switch (isCapturing, isProcessing) {
@@ -98,7 +90,6 @@ extension AppModel {
         }
     }
 
-    /// Names what failed, so the system's error text has context. Permission failures explain themselves.
     var failureTitle: String? {
         if state == .idle, let meeting = failedTranscriptionMeeting { return "Couldn’t transcribe “\(meeting.title)”" }
         guard state == .failed, privacyPermission == nil else { return nil }
@@ -106,7 +97,6 @@ extension AppModel {
         return completedFolder == nil ? "Couldn’t start recording" : "Couldn’t finish this recording"
     }
 
-    /// Access the user must grant in System Settings, as opposed to a prompt the next recording will show.
     var captureAccessNeedsAttention: Bool {
         if privacyPermission != nil { return true }
         guard state != .recording else { return false }
@@ -160,7 +150,7 @@ extension AppModel {
         alert.addButton(withTitle: state == .recording ? "Finish and quit" : "Wait and quit")
         alert.addButton(withTitle: "Keep open")
         guard confirm(alert) == .alertFirstButtonReturn else { return .terminateCancel }
-        // Processing may finish while the native confirmation is open.
+        // Recheck: processing may finish while the confirmation is open.
         guard state == .recording || state == .stopping || isProcessing else {
             return state == .idle ? .terminateNow : .terminateCancel
         }
@@ -198,7 +188,6 @@ extension AppModel {
         guard pasteboard.setString(text, forType: .string) else { throw MeetingActionError.clipboardUnavailable }
     }
 
-    /// Copies the transcript and reports whether it worked; a failure is shown to the user.
     @discardableResult
     static func copyTranscriptOrAlert(in folder: URL) -> Bool {
         do {
@@ -210,7 +199,6 @@ extension AppModel {
         }
     }
 
-    /// Opens the transcript, or the folder when there is none or no app opens Markdown.
     static func openTranscript(in folder: URL) {
         let transcript = folder.appendingPathComponent("transcript.md")
         if !FileManager.default.fileExists(atPath: transcript.path) || !NSWorkspace.shared.open(transcript) {

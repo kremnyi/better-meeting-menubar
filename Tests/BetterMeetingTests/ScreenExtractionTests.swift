@@ -19,8 +19,6 @@ final class ScreenExtractionTests: XCTestCase {
         XCTAssertGreaterThan(selected.last ?? 0, 90)
     }
 
-    /// Audio routinely outlasts the last video frame, which stretches the movie past the video track; the
-    /// samples there can't decode, and they must not cost the screens that do.
     func testAudioOutlastingVideoStillExtractsScreens() async throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
@@ -51,7 +49,6 @@ final class ScreenExtractionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("cancelled").path))
     }
 
-    /// Four seconds of video; `audioSeconds` adds a silent audio track of that length.
     static func makeVideo(at url: URL, audioSeconds: Int? = nil) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [

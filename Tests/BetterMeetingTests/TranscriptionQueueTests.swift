@@ -230,7 +230,6 @@ final class TranscriptionQueueTests: XCTestCase {
         await model.processing.task?.value
         XCTAssertEqual(model.completedFolder?.standardizedFileURL, renamed.standardizedFileURL, "Retry must use the failed job's actual folder")
 
-        // Once saving is unblocked, the batch must keep the folder's new automatic name too.
         try FileManager.default.removeItem(at: renamed.appendingPathComponent("transcript.json"))
         try MeetingArtifacts.writeMetadata(title: "Renamed meeting", recordedAt: date, duration: 0.1,
                                            titleWasProvided: false, speechSettings: settings, to: renamed)
@@ -246,8 +245,6 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertEqual(model.completedFolder?.standardizedFileURL, finished.folderURL.standardizedFileURL)
     }
 
-    /// A failed job ends only itself: the recording queued behind it still runs with the name typed during it,
-    /// the inline failure never moves to that meeting, and Wait and quit stays open after the failure.
     func testRecordingQueuedBehindAFailedJobStillRuns() async throws {
         let (defaults, suite, root) = try makeTempDefaults("QueueAfterFailure")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
@@ -284,8 +281,6 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertEqual(model.failedTranscriptionFolders, [failing.standardizedFileURL], "The failed meeting stays marked on its row")
     }
 
-    /// A recording stopped during a batch waits behind it; cancelling the batch must not leave the
-    /// recording's own job unable to report progress or be cancelled.
     func testRecordingStoppedDuringACancelledBatchRunsAsItsOwnCancellableJob() async throws {
         try await withMeetings { model in
             let batchFolder = try XCTUnwrap(model.unfinishedRecordings.first).folderURL
@@ -321,7 +316,6 @@ final class TranscriptionQueueTests: XCTestCase {
         }
     }
 
-    /// A capture failure while another meeting transcribes belongs to the recording, not the running job.
     func testCaptureFailureDuringProcessingFlagsTheRecordingNotTheRunningMeeting() async throws {
         try await withMeetings { model in
             let batchFolder = try XCTUnwrap(model.unfinishedRecordings.first).folderURL
@@ -348,7 +342,6 @@ final class TranscriptionQueueTests: XCTestCase {
                            "The meeting still transcribing must not be marked failed")
             XCTAssertEqual(model.processingFolder, batchFolder)
 
-            // The running meeting saves, then the next one starts, while the capture failure is still on screen.
             let firstMeeting = try XCTUnwrap(release)
             release = nil
             firstMeeting.resume(returning: true)
@@ -365,7 +358,6 @@ final class TranscriptionQueueTests: XCTestCase {
         }
     }
 
-    /// A retry keeps the engine its meeting was saved with, so it must not wait on a download for another engine.
     func testTranscriptionDoesNotWaitForAnotherEnginesDownload() async throws {
         let (defaults, suite, root) = try makeTempDefaults("OtherEngineDownload")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
@@ -395,7 +387,6 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertEqual(saved?.needsTranscription, false)
     }
 
-    /// Options and a transcription must not download the same model into the same folder at once.
     func testTranscriptionWaitsForAnOptionsDownloadOfItsModel() async throws {
         let (defaults, suite, root) = try makeTempDefaults("SameModelDownload")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
@@ -425,7 +416,6 @@ final class TranscriptionQueueTests: XCTestCase {
         await fulfillment(of: [waiting], timeout: 10)
         XCTAssertEqual(MeetingArtifacts.meeting(in: folder)?.needsTranscription, true, "The transcript must wait for the download")
 
-        // Cancelling the job ends only its wait; the download started in Options keeps going.
         let cancelled = expectation(description: "the cancelled job ends before the download")
         Task { await waitingJob.value; cancelled.fulfill() }
         model.cancelTranscription()
@@ -442,7 +432,6 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertEqual(MeetingArtifacts.meeting(in: folder)?.needsTranscription, false)
     }
 
-    /// "Retry setup" must not start a second download of the model while Options › Storage downloads one.
     func testRetrySetupDoesNotStartASecondDownloadWhileOptionsDownloads() async throws {
         let (defaults, suite, root) = try makeTempDefaults("RetryDuringDownload")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
@@ -468,7 +457,6 @@ final class TranscriptionQueueTests: XCTestCase {
         await download.value
     }
 
-    /// Cancelling an export ends that job only; a recording queued behind it still gets transcribed.
     func testCancellingAnExportDoesNotCancelTheNextQueuedRecording() async throws {
         let (defaults, suite, root) = try makeTempDefaults("CancelExportQueue")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
@@ -485,7 +473,7 @@ final class TranscriptionQueueTests: XCTestCase {
         await model.historyRefreshTask?.value
         model.exportAfterRecording = true
         model.quitWhenFinished = true
-        // Cancel once, during the first export; the cancel runs after the export has started.
+        // Cancel once, from a new task, so the cancel lands after the first export has started.
         var cancelled = false
         var quitPendingForNextJob: Bool?
         let observation = model.processing.$phase.sink { phase in

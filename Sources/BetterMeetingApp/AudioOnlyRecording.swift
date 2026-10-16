@@ -1,10 +1,7 @@
 import AVFoundation
 import ScreenCaptureKit
 
-/// The two capture sources share the host clock. Keep separate audio tracks in a
-/// fragmented movie, then mix them into audio.m4a through the usual processing path.
-/// No video input is created. All writer access is serialized on the capture queue,
-/// so samples are appended inline as they arrive.
+/// All writer access is serialized on the capture queue, so samples are appended inline as they arrive.
 final class AudioOnlyRecording: @unchecked Sendable {
     private struct QueuedSample {
         let buffer: CMSampleBuffer
@@ -62,8 +59,7 @@ final class AudioOnlyRecording: @unchecked Sendable {
         drain()
     }
 
-    /// Temporary encoder pressure is not a write failure. Keep original timestamps
-    /// and retry without blocking the capture queue or silently dropping samples.
+    /// Encoder back-pressure is not a write failure: keep original timestamps and retry without blocking the queue or dropping samples.
     private func drain() {
         guard !finished else { return }
         guard failure == nil else { if finishing { finalize() }; return }
@@ -72,7 +68,6 @@ final class AudioOnlyRecording: @unchecked Sendable {
             return
         }
         for (type, input) in inputs where !finishedInputs.contains(type) {
-            // Drop the appended prefix once; removing each sample would shift the queue every time.
             let queued = pending[type]?.count ?? 0
             var appended = 0
             var error: Error?
@@ -128,8 +123,7 @@ final class AudioOnlyRecording: @unchecked Sendable {
         guard !finished else { return }
         finished = true
         guard started, writer.status == .writing else {
-            // Stopping before the first buffer is not a drive problem; finishing the inputs
-            // of a writer with no session fails it, so its own error would mislead here.
+            // Finishing the inputs of a writer with no session fails it, so its own error would mislead here.
             let error = failure ?? (started ? writer.error ?? WriteError() : NoAudioError())
             writer.cancelWriting()
             completeFinish(.failure(error))

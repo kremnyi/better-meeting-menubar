@@ -2,8 +2,7 @@ import AVFoundation
 import Foundation
 
 enum AudioExtractor {
-    /// ScreenCaptureKit can report a recording as finished before the MP4 index is written,
-    /// notably when the capture was stopped from the macOS screen-sharing menu.
+    /// ScreenCaptureKit can report a recording finished before the MP4 index is written, notably after a stop from the screen-sharing menu.
     static func waitUntilReadable(
         _ recordingURL: URL, timeout: Duration = .seconds(300), interval: Duration = .seconds(1)
     ) async throws {
@@ -20,7 +19,7 @@ enum AudioExtractor {
         }
     }
 
-    /// Levels for a recording's system and microphone tracks; MeetingAudio decodes with the same mix.
+    /// MeetingAudio decodes with the same mix.
     static func mix(for recordingURL: URL, tracks: [AVAssetTrack]) -> AVAudioMix? {
         guard recordingURL.pathExtension == "mov", tracks.count > 1 else { return nil }
         let mix = AVMutableAudioMix()

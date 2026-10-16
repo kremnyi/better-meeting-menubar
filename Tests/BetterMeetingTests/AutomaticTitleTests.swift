@@ -16,33 +16,27 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertNil(MeetingTitle.suggest(from: "We discussed the pricing review. We finished the pricing review."))
         XCTAssertNil(MeetingTitle.suggest(from: "Anna will call tomorrow. Anna will call tomorrow."))
 
-        // Untagged languages used to get no title at all. Catches losing the fallback (nil), and losing the stem
-        // that joins "система", "систему" and "системою" (the topic would shrink to the single word "Оплати").
+        // The stem must join "система", "систему" and "системою"; without it the topic is only "Оплати".
         XCTAssertEqual(MeetingTitle.suggest(from: payments), "Тарас — Система Оплати")
-        // A name with only fillers and time words repeated. Catches a missing Ukrainian ignore list
-        // ("Тарас — Будь Ласка") and a fallback that titles a name without a repeated topic.
+        // Only fillers and time words repeat; without the Ukrainian ignore list this becomes "Тарас — Будь Ласка".
         XCTAssertNil(MeetingTitle.suggest(from: "Тарас, будь ласка, надішли звіт зараз. Будь ласка, Тарас, зроби це зараз, бо завтра вже пізно."))
-        // A repeated topic whose only capitals start sentences. Catches treating a sentence-initial word as a name
-        // ("Система — Система Оплати").
+        // The only capitals start sentences; this must not become the name in "Система — Система Оплати".
         XCTAssertNil(MeetingTitle.suggest(from: "Система оплати ще не готова. Система оплати запрацює після тестів."))
     }
 
     func testCancellationStopsTitleSuggestion() async {
-        // Tagging a long transcript must not hold up a cancelled transcription.
         let cancelled = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return MeetingTitle.suggest(from: pricing)
         }
         let cancelledTitle = await cancelled.value
         XCTAssertNil(cancelledTitle)
-        // The untagged fallback for Ukrainian must stop on cancellation too.
         let cancelledUntagged = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return MeetingTitle.suggest(from: payments)
         }
         let cancelledUntaggedTitle = await cancelledUntagged.value
         XCTAssertNil(cancelledUntaggedTitle)
-        // The background variant must pass the caller's cancellation to its detached tagging task.
         let background = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return await MeetingTitle.suggestInBackground(from: pricing)
@@ -76,7 +70,6 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertEqual(renamed.lastPathComponent, "\(folder.lastPathComponent) — Anna — Pricing Review")
         XCTAssertEqual(try Data(contentsOf: renamed.appendingPathComponent("recording.mp4")), recording)
 
-        // If writing was interrupted after the move, retry the same folder without adding another suffix.
         let interrupted = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertTrue(interrupted.needsTranscription)
         XCTAssertFalse(interrupted.titleWasProvided)

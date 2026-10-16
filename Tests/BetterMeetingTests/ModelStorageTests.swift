@@ -76,8 +76,7 @@ final class ModelStorageTests: XCTestCase {
         ))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("parakeet-tdt-0.6b-v3").path))
 
-        // With no legacy folder left, later launches must not look in Documents again,
-        // while the stray-folder repair inside Application Support keeps running.
+        // Once the legacy folder is gone, a new file there is ignored, but the stray-folder repair still runs.
         let legacyModel = root.appendingPathComponent("legacy/models/openai/tokenizer.json")
         try write("late", to: legacyModel)
         try write("stray", to: destination.appendingPathComponent("parakeet-tdt-0.6b-v3/other.bin"))

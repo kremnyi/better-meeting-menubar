@@ -1,9 +1,6 @@
 import Foundation
 import os
 
-/// Reads meeting folders for the menu and remembers what it parsed between scans.
-/// Entries are keyed by modification dates and sizes, so edits made in Finder or a text editor
-/// are read again on the next scan.
 final class MeetingLibrary: Sendable {
     private struct Stamp: Equatable, Sendable {
         let modified: Date?
@@ -71,8 +68,7 @@ final class MeetingLibrary: Sendable {
         return Stamp(modified: values?.contentModificationDate, size: values?.fileSize)
     }
 
-    /// Some file systems store whole seconds, so a file changed within the last two seconds
-    /// could change again without a new date. Read those fresh until they settle.
+    /// Some file systems store whole seconds, so files changed in the last two seconds are read fresh until they settle.
     private static func isSettled(_ stamps: [Stamp]) -> Bool {
         let settled = Date().addingTimeInterval(-2)
         return stamps.allSatisfy { ($0.modified ?? .distantPast) < settled }

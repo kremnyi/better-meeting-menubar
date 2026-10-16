@@ -8,7 +8,6 @@ final class ParakeetEngineTests: XCTestCase {
         defer { removeTempRoot(root) }
         let folder = root.appendingPathComponent("models/parakeet-tdt-0.6b-v3")
         let fm = FileManager.default
-        // FluidAudio's cache check accepts these paths; the app must also validate the vocabulary.
         for name in ["Preprocessor.mlmodelc", "Encoder.mlmodelc", "Decoder.mlmodelc", "JointDecisionv3.mlmodelc"] {
             try fm.createDirectory(at: folder.appendingPathComponent(name), withIntermediateDirectories: true)
         }

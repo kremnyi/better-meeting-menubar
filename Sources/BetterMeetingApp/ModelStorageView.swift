@@ -72,7 +72,6 @@ struct ModelStorageView: View {
         }
     }
 
-    /// A downloaded model reads "Downloaded" until the first refresh measures it.
     private func size(_ item: StoredModelInfo) -> String {
         guard item.installed else {
             if item.existsOnDisk {

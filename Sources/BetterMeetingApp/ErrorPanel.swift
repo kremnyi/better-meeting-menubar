@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// The one failure panel: a cause-aware title, the error's own message, and the
-/// error domain behind a Details disclosure. Recording failures, update errors,
-/// calendar errors, and model download errors all render through here so a
-/// failure looks the same wherever it happens.
 struct ErrorPanel: View {
     let message: String
     var title: String?

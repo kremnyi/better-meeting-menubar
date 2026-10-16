@@ -6,7 +6,6 @@ import SwiftUI
 import XCTest
 @testable import BetterMeetingApp
 
-/// A menu bar or options view with the app environment applied, sized and laid out for assertions.
 @MainActor
 func hostingView(
     _ content: some View, model: AppModel, updates: AppUpdater? = nil, scheme: ColorScheme = .light
@@ -29,7 +28,6 @@ func writePanelPreview(_ view: @autoclosure () -> NSView, name: String) throws {
     try writePreview(view(), to: URL(fileURLWithPath: path).appendingPathComponent("\(name).png"))
 }
 
-/// Resizes a view to its current content and writes it as a PNG.
 @MainActor
 func writePreview(_ view: NSView, to output: URL) throws {
     if view.appearance == nil { view.appearance = NSAppearance(named: .aqua) }
@@ -45,7 +43,6 @@ func writePNG(_ bitmap: NSBitmapImageRep, to output: URL) throws {
     try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: output)
 }
 
-/// A unique temporary directory for one test, created up front so writers can nest into it.
 func makeTempRoot(_ label: String = "BetterMeeting") -> URL {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("\(label)-\(UUID().uuidString)", isDirectory: true)
@@ -53,7 +50,6 @@ func makeTempRoot(_ label: String = "BetterMeeting") -> URL {
     return root
 }
 
-/// A temporary UserDefaults suite whose outputFolder points at a fresh temp root.
 func makeTempDefaults(_ label: String) throws -> (defaults: UserDefaults, suite: String, root: URL) {
     let suite = "\(label).\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -72,7 +68,6 @@ func removeTempDefaults(_ defaults: UserDefaults, suite: String, root: URL) {
     removeTempRoot(root)
 }
 
-/// A mono Float32 buffer of silence.
 func silentBuffer(rate: Double, frames: AVAudioFrameCount) throws -> AVAudioPCMBuffer {
     let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1))
     let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
@@ -81,7 +76,6 @@ func silentBuffer(rate: Double, frames: AVAudioFrameCount) throws -> AVAudioPCMB
     return buffer
 }
 
-/// The buffer's samples as the CMSampleBuffer ScreenCaptureKit delivers, stamped at `time` seconds.
 func audioSampleBuffer(_ buffer: AVAudioPCMBuffer, at time: Double = 0) throws -> CMSampleBuffer {
     var sample: CMSampleBuffer?
     XCTAssertEqual(CMAudioSampleBufferCreateWithPacketDescriptions(
@@ -97,8 +91,7 @@ func audioSampleBuffer(_ buffer: AVAudioPCMBuffer, at time: Double = 0) throws -
     return result
 }
 
-/// Writes a short silent audio.m4a into a meeting folder and caches one English Whisper pass for it,
-/// so the production queue transcribes the meeting without a model.
+/// The cached pass lets the production queue transcribe the meeting without a model.
 func cacheEnglishTranscript(in folder: URL, settings: SpeechSettings, text: String) async throws {
     let scratch = makeTempRoot("Sample")
     defer { removeTempRoot(scratch) }

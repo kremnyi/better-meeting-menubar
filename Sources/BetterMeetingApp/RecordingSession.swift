@@ -1,8 +1,6 @@
 import AppKit
 import Combine
 
-/// The live capture: its state, recorder calls, timer, and disk-space and audio warnings, until it is
-/// queued for processing. Its tasks capture the model, so a capture starting or stopping keeps it alive.
 @MainActor
 final class RecordingSession: ObservableObject {
     @Published var state: AppState = .idle { didSet { model.refreshCaptureAccess() } }
@@ -28,7 +26,6 @@ final class RecordingSession: ObservableObject {
     private var lastDiskCheck = Date.distantPast
     private var startTask: Task<Void, Never>?
     private let recorder = MeetingRecorder()
-    /// Production waits for ScreenCaptureKit's completion; tests can hold that completion pending.
     lazy var stopCapture: () async throws -> Void = { [recorder] in try await recorder.stop() }
     unowned let model: AppModel
 
@@ -93,14 +90,11 @@ final class RecordingSession: ObservableObject {
         }
     }
 
-    /// Quitting during setup: stops it and removes a folder that never received media.
     func cancelStart() {
         startTask?.cancel()
         discardUnstartedFolder()
     }
 
-    /// Stops capture and moves the recording to the Trash without transcribing it,
-    /// for meetings nobody joined.
     func cancel(
         confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runActive() },
         trash: @escaping (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
@@ -156,7 +150,6 @@ final class RecordingSession: ObservableObject {
         finish(stoppingCapture: false)
     }
 
-    /// Ends the capture and queues its transcription.
     func finish(stoppingCapture stopCapture: Bool) {
         if let recordedAt {
             model.elapsed = Date().timeIntervalSince(recordedAt)
@@ -189,7 +182,6 @@ final class RecordingSession: ObservableObject {
         guard let folder = activeFolder, let recordedAt else { return nil }
         activeFolder = nil
         self.recordedAt = nil
-        // A name typed or changed while recording wins; clearing the field keeps the folder's name.
         let meetingTitle = model.meetingTitle
         let editedTitle = meetingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         return ProcessingRun(
@@ -226,7 +218,6 @@ final class RecordingSession: ObservableObject {
                 guard let self, self.state == .recording, self.id == recordingID else { return }
                 let model = self.model
                 let elapsed = Date().timeIntervalSince(startDate)
-                // The clocks show whole seconds; publishing every tick would redraw the menu four times a second.
                 if Int(elapsed) != Int(model.elapsed) { model.elapsed = elapsed }
                 if model.menuWindow?.isVisible == true {
                     model.meters.update(
@@ -264,7 +255,6 @@ final class RecordingSession: ObservableObject {
         }
     }
 
-    /// Reads free space off the main actor; a result that arrives after this recording ended is dropped.
     private func refreshDiskSpace() {
         guard let recordingID = id else { return }
         lastDiskCheck = Date()
@@ -284,7 +274,7 @@ final class RecordingSession: ObservableObject {
             let message = "Recording stopped with \(space.available) left on the recording drive. Free space before the next recording."
             finish(stoppingCapture: true)
             model.accessibilityAnnouncement(message)
-            // The menu has no place for the reason once the recording is processing, so always notify.
+            // Always notify: the menu cannot show this reason once the recording is processing.
             if let recordingID {
                 Task { await MeetingNotifications.post(MeetingNotifications.diskWarning(recordingID: recordingID, message: message)) }
             }

@@ -29,11 +29,9 @@ struct MeetingHistoryItem: Identifiable, Equatable, Sendable {
     let folderURL: URL
     let needsTranscription: Bool
     let titleWasProvided: Bool
-    /// Allocated bytes in the folder, read on scan for the menu's storage readout.
     var totalBytes: Int64 = 0
     /// A blocked restore retains its backup and must not be treated as a new transcription.
     var recoveryFolder: URL? = nil
-    /// Whether `transcript.md` existed on scan, so menus can enable Copy without touching the disk.
     var hasTranscript = false
 
     var recoveryError: String? {
@@ -48,7 +46,6 @@ enum MeetingArtifacts {
     private static let transcriptFiles = ["transcript.md", "transcript.json", "metadata.json"]
     static let mediaFilenames = ["recording.mp4", "recording.mov", "audio.m4a"]
 
-    /// The Markdown line that points at the saved recording.
     static func recordingLink(_ filename: String) -> String { "- Recording: [\(filename)](\(filename))" }
 
     static func createDirectory(in root: URL, title: String, recordedAt: Date) throws -> URL {
@@ -254,8 +251,7 @@ enum MeetingArtifacts {
         try? fm.removeItem(at: staging)
     }
 
-    /// Restore a complete backup set before reading or replacing a transcript left by
-    /// an interrupted process. Serialize with live replacements so history cannot undo one.
+    /// Serialize with live replacements so a history scan cannot undo one.
     static func recoverTranscript(in folder: URL) throws {
         transcriptLock.lock()
         defer { transcriptLock.unlock() }
@@ -274,8 +270,7 @@ enum MeetingArtifacts {
         guard pending.count <= 1 else { throw MeetingActionError.transcriptRecovery(pending[0]) }
         for staging in stages {
             let backups = transcriptFiles.map { staging.appendingPathComponent("previous-" + $0) }
-            // No destination is changed until every backup has been written, so a stage without
-            // all of them holds nothing to restore.
+            // Destinations change only after every backup is written, so a stage missing any backup holds nothing to restore.
             if !fm.fileExists(atPath: staging.appendingPathComponent("committed").path),
                backups.allSatisfy({ fm.fileExists(atPath: $0.path) }) {
                 do {
@@ -314,7 +309,6 @@ enum MeetingArtifacts {
         return folder.appendingPathComponent(filename)
     }
 
-    // A folder without media holds nothing recoverable; drop it after a failed start.
     static func removeFolderWithoutMedia(_ folder: URL) -> Bool {
         guard !hasMedia(in: folder) else { return false }
         return (try? FileManager.default.removeItem(at: folder)) != nil
@@ -435,13 +429,11 @@ enum MeetingActionError: LocalizedError {
 }
 
 enum Timecode {
-    /// "4:05" under an hour and "1:02:33" after, for clocks that tick.
     static func compact(_ interval: TimeInterval) -> String {
         let seconds = max(0, Int(interval))
         return Duration.seconds(seconds).formatted(.time(pattern: seconds < 3_600 ? .minuteSecond : .hourMinuteSecond))
     }
 
-    /// "34 sec", "12 min", or "1 hr, 5 min", for meeting lengths in lists.
     static func readable(_ interval: TimeInterval, locale: Locale = .autoupdatingCurrent) -> String {
         let seconds = max(0, Int(interval.rounded(.down)))
         let duration = Duration.seconds(seconds)

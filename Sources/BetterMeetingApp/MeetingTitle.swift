@@ -2,7 +2,6 @@ import Foundation
 import NaturalLanguage
 
 enum MeetingTitle {
-    /// Suggests a title off the caller's executor. Cancelling the caller stops tagging early.
     static func suggestInBackground(from text: String) async -> String? {
         let tagging = Task.detached(priority: .utility) { suggest(from: text) }
         return await withTaskCancellationHandler {
@@ -12,7 +11,6 @@ enum MeetingTitle {
         }
     }
 
-    /// Returns nil once the current task is cancelled, without tagging the rest of the text.
     static func suggest(from text: String) -> String? {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let tagger = NLTagger(tagSchemes: [.nameTypeOrLexicalClass, .lemma])
@@ -77,9 +75,7 @@ enum MeetingTitle {
         return title(names: Array(names.values), topics: Array(topics.values))
     }
 
-    /// For languages NaturalLanguage cannot tag, such as Ukrainian. The subject is a capitalized word mentioned at
-    /// least twice, once inside a sentence so that sentence-initial capitals do not count; the topic is a repeated
-    /// word or adjacent pair of words of four or more letters that is neither a name nor in `untaggedIgnored`.
+    /// NaturalLanguage cannot tag Ukrainian. A name must also appear once inside a sentence, so sentence-initial capitals do not count.
     private static func suggestUntagged(from text: String) -> String? {
         let tagger = NLTagger(tagSchemes: [.tokenType])
         tagger.string = text
@@ -126,7 +122,6 @@ enum MeetingTitle {
         )
     }
 
-    /// Joins the most mentioned name, earliest on ties, with the repeated topic scoring highest on count × words.
     private static func title(
         names: [(text: String, count: Int, index: Int)],
         topics: [(text: String, count: Int, length: Int, index: Int)]
@@ -145,9 +140,6 @@ enum MeetingTitle {
         return MeetingArtifacts.sanitizedTitle("\(name.text) — \(topic.text.capitalized)")
     }
 
-    /// A crude stem so case forms meet ("система", "систему", "системою" → "систем"): lowercase, one apostrophe,
-    /// and up to two trailing vowels, soft signs or "й" dropped from words of six letters or more. A heuristic, not
-    /// morphology: consonant endings ("системам") stay apart, and two unrelated words can occasionally meet.
     private static func stem(_ word: String) -> String {
         var stem = word.lowercased().replacingOccurrences(of: "[’ʼ]", with: "'", options: .regularExpression)
         guard stem.count >= 6 else { return stem }
@@ -162,8 +154,7 @@ enum MeetingTitle {
         "august", "september", "october", "november", "december",
     ]
 
-    /// Untagged text has no word classes to skip, so `ignored` plus Ukrainian, then Russian, meeting and time words,
-    /// fillers and function words. Compared by stem; forms the stem does not join are listed separately.
+    /// Compared by stem; forms the stem does not join are listed separately.
     private static let untaggedIgnored = Set((Array(ignored) + """
         зустріч дзвінок дзвінка мітинг тема теми тему темі часу сьогодні завтра вчора учора день днів
         тиждень тижня тижні тижнів місяць місяців року роки років наступного наступний наступному минулого

@@ -1,8 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Options → App & updates → About: who made the app, where to find them, and the attribution
-/// the Apache License asks derivative works to keep wherever they show credits.
+/// Keep the upstream credit: the Apache License asks derivative works to keep its attribution where they show credits.
 struct AboutView: View {
     var version: String?
 

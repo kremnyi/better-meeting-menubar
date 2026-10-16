@@ -19,8 +19,7 @@ final class MeetingWhisperKit: WhisperKit {
 }
 
 extension WhisperKit {
-    /// Language probabilities in up to `limit` 30-second windows spread evenly over the samples.
-    /// Whisper names a language even for silence, so windows that are mostly silent are skipped unless all are.
+    /// Whisper names a language even for silence, so mostly silent windows are skipped unless all are.
     func languageProbabilities(in samples: [Float], limit: Int = 12) async throws -> [[String: Float]] {
         let length = Constants.defaultWindowSamples
         let count = min(limit, (samples.count + length - 1) / length)
@@ -44,9 +43,7 @@ extension WhisperKit {
     }
 }
 
-// WhisperKit 1.1.0 hardcodes noSpeechProb to zero. Read the unfiltered SOT logits,
-// as OpenAI Whisper does, so the original repo's silence filter has real input.
-// Remove this adapter when WhisperKit supplies the probability itself.
+// WhisperKit 1.1.0 hardcodes noSpeechProb to zero, so read the SOT logits as OpenAI Whisper does. Remove when WhisperKit supplies it.
 final class SpeechProbabilityDecoder: TextDecoding {
     private var base: any TextDecoding
     init(base: any TextDecoding) { self.base = base }
@@ -123,10 +120,9 @@ final class SpeechProbabilityDecoder: TextDecoding {
         return result
     }
 
-    /// Softmax of one logit, in the same order of operations as reading each value as a Double.
+    /// Same order of operations as the Double path, so both paths give the same value.
     static func probability(of token: Int, in logits: MLMultiArray) -> Float {
-        // Reading the buffer directly avoids boxing every vocabulary entry in an NSNumber,
-        // but it is only valid for half precision, which the shipped models produce.
+        // Reading the buffer directly is valid only for half precision, which the shipped models produce.
         guard logits.dataType == .float16 else {
             return probability(of: token, in: (0..<logits.count).map { logits[$0].doubleValue })
         }

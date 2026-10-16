@@ -3,9 +3,7 @@ import Foundation
 import XCTest
 @testable import BetterMeetingApp
 
-/// Opt-in benchmark: set BETTER_MEETING_ENGINE_CHECK to a disposable recording,
-/// plus independently annotated phrases/silence in <recording>.expected.json.
-/// Compare recognition quality, elapsed time, and peak memory for both engines.
+/// Opt-in benchmark; annotate <recording>.expected.json independently of either engine's output.
 final class EngineComparisonTests: XCTestCase {
     func testCompareEnginesOnRealAudio() async throws {
         guard let path = ProcessInfo.processInfo.environment["BETTER_MEETING_ENGINE_CHECK"] else {
@@ -34,7 +32,6 @@ final class EngineComparisonTests: XCTestCase {
             }
         }
         let transcriber = LocalTranscriber(downloadBase: root)
-        // Optional comma-separated filters, for example ENGINES=parakeet-v3 and LANGUAGES=ru.
         let environment = ProcessInfo.processInfo.environment
         let engines = environment["BETTER_MEETING_ENGINE_CHECK_ENGINES"]?.split(separator: ",").map(String.init)
         let languages = environment["BETTER_MEETING_ENGINE_CHECK_LANGUAGES"]?.split(separator: ",").map(String.init)
@@ -88,7 +85,6 @@ final class EngineComparisonTests: XCTestCase {
 private struct ExpectedAudioWindow: Decodable {
     let start: Double
     let end: Double
-    /// Independently chosen phrases; an empty array marks a silent interval.
     let phrases: [String]
 
     static func normalize(_ text: String) -> String {

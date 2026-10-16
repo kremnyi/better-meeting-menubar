@@ -18,7 +18,6 @@ enum MeetingCalendar {
         let name: String?
     }
 
-    /// The event title and participant names and emails; empty when the sidecar is missing or unreadable.
     static func searchFields(in folder: URL) -> [String] {
         guard let data = try? Data(contentsOf: folder.appendingPathComponent("calendar.json")),
               let attachment = try? JSONDecoder().decode(Attachment.self, from: data),

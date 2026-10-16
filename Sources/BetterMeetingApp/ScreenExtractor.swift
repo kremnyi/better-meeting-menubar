@@ -35,7 +35,6 @@ enum ScreenExtractor {
         var keyframes: [ScreenEvent] = []
         var decoded = 0
         let times = stride(from: 0.0, to: duration, by: 2.0).map { CMTime(seconds: $0, preferredTimescale: 600) }
-        // One batch request reads the video forward instead of starting a separate request per sample.
         for await sample in thumbnails.images(for: times) {
             try Task.checkCancellation()
             let timestamp = sample.requestedTime
@@ -109,7 +108,6 @@ enum ScreenExtractor {
         return gap >= 90 || changes.filter { $0 > 14 }.count >= 3 || (changes.max() ?? 0) > 60
     }
 
-    /// The meeting languages Vision can read, looked up once per export rather than per screenshot.
     static func recognitionLanguages(for languages: [String]) throws -> [String] {
         let request = textRequest()
         let supported = try request.supportedRecognitionLanguages()

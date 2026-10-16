@@ -1,17 +1,14 @@
 import AppKit
 import SwiftUI
 
-/// The searchable list of recorded meetings below the menu's controls.
 struct MeetingHistorySection: View {
     @EnvironmentObject private var model: AppModel
     @Binding var retranscribingMeeting: MeetingHistoryItem?
     @State private var searchFocusRequest = 0
 
-    /// Every row is this tall, divider included, so the list always shows whole rows and
-    /// snapping to a row never leaves a gap or a cut-off line at the bottom.
+    /// Every row is this tall, divider included, so view-aligned snapping never leaves a gap or a cut-off row.
     static let rowHeight: CGFloat = 43
     static let visibleRows = 5
-    /// Space between a row's hover highlight and its text, matching the Options page rows.
     static let hoverInset: CGFloat = 6
 
     var body: some View {
@@ -75,7 +72,6 @@ struct MeetingHistorySection: View {
             }
 
             if model.hasMeetings {
-                // The list shows a handful of rows, so the field states how many meetings it searches.
                 MeetingSearchField(text: $model.historyQuery, focusRequest: searchFocusRequest,
                                    placeholder: model.allMeetingCount > 1 ? "Search \(model.allMeetingCount) meetings" : "Search meetings")
                     .help("Search meetings (⌘F)")
@@ -97,7 +93,6 @@ struct MeetingHistorySection: View {
                          ? "Finished meetings will appear here. Click one to open its transcript."
                          : "No matching meetings.")
                 } else {
-                    // Earlier results stay while a search runs; the header shows its progress.
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(model.transcriptionHistory) { item in
@@ -120,8 +115,7 @@ struct MeetingHistorySection: View {
                     }
                     .scrollTargetBehavior(.viewAligned)
                     .scrollIndicators(.hidden)
-                    // Rows pad their hover highlight past the text; the list gives that back so titles
-                    // stay aligned with the heading and search field above.
+                    // Gives back the rows' hover inset so titles align with the heading and search field above.
                     .padding(.horizontal, -Self.hoverInset)
                 }
             }
@@ -137,7 +131,6 @@ struct MeetingHistorySection: View {
         return CGFloat(min(model.allMeetingCount, Self.visibleRows)) * Self.rowHeight
     }
 
-    /// Leads with the full title, which the row cuts to one line.
     static func rowHelp(_ item: MeetingHistoryItem) -> String {
         let action = item.needsTranscription ? "Open meeting folder" : "Open transcript"
         let size = item.totalBytes > 0 ? " · " + ByteCountFormatter.string(fromByteCount: item.totalBytes, countStyle: .file) : ""
@@ -319,7 +312,6 @@ enum MeetingRowStatus: Equatable {
 
 private struct MeetingSearchField: NSViewRepresentable {
     @Binding var text: String
-    /// Incremented to move keyboard focus into the field.
     var focusRequest = 0
     var placeholder = "Search meetings"
 

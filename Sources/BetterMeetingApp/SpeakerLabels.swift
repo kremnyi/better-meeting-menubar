@@ -69,10 +69,8 @@ enum SpeakerLabels {
 
     // ponytail: one label per transcript segment; use word timings if mid-segment speaker changes need splitting.
     static func assign(_ turns: [Turn], to segments: [TranscriptSegment]) -> [TranscriptSegment] {
-        // Validate once and order by start; the sort is stable, so equal starts keep their input order.
+        // The sort is stable, so equal starts keep their input order.
         let sorted = turns.filter(\.isValid).sorted { $0.start < $1.start }
-        // furthestEnd[i] is the latest end among sorted[0...i]; turns before the first index whose
-        // value passes a segment's start cannot overlap it.
         var furthestEnd: [Double] = []
         furthestEnd.reserveCapacity(sorted.count)
         for turn in sorted { furthestEnd.append(max(furthestEnd.last ?? -.infinity, turn.end)) }
@@ -93,7 +91,7 @@ enum SpeakerLabels {
         }
     }
 
-    /// The first index whose value satisfies `predicate`, for values on which it flips from false to true once.
+    /// `predicate` must flip from false to true once over `values`.
     private static func firstIndex(in values: [Double], where predicate: (Double) -> Bool) -> Int {
         var low = 0
         var high = values.count

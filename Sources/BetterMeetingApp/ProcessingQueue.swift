@@ -13,11 +13,9 @@ struct ProcessingRun {
     let hints: String
     let settings: SpeechSettings
     var stopTask: Task<Void, Error>?
-    /// The title a capture folder was created with; the name can change while recording.
     var folderTitle: String?
 }
 
-/// A stopped or retried recording, or one meeting of Transcribe all.
 private enum QueuedJob {
     case recording(ProcessingRun), batch(MeetingHistoryItem, process: (MeetingHistoryItem) async -> Bool)
     var folder: URL { switch self { case .recording(let run): run.folder; case .batch(let item, _): item.folderURL } }
@@ -25,7 +23,6 @@ private enum QueuedJob {
 }
 
 extension LocalTranscriptionProgress {
-    /// Setup and transcription share one progress enum; only model steps map onto a processing phase.
     var modelStep: (phase: ProcessingPhase, fraction: Double?)? {
         switch self {
         case .preparingModel: (.preparingModel, nil)
@@ -37,8 +34,6 @@ extension LocalTranscriptionProgress {
     }
 }
 
-/// The running transcription, batch meeting, or export and the jobs behind it: their progress, cancellation,
-/// and completion. Results surface through the model; its tasks capture the model, so a running job keeps it alive.
 @MainActor
 final class ProcessingQueue: ObservableObject {
     @Published var phase: ProcessingPhase?
@@ -46,7 +41,6 @@ final class ProcessingQueue: ObservableObject {
     @Published private(set) var statusText = ""
     @Published private(set) var title = ""
     @Published private(set) var folder: URL?
-    /// Meetings waiting behind the current job, in order, so the list can mark them.
     @Published private(set) var queuedFolders: [URL] = []
     @Published private(set) var cancelling = false
     @Published private(set) var batchTotal = 0
@@ -71,14 +65,12 @@ final class ProcessingQueue: ObservableObject {
         task = Task { [model] in await model.processing.runQueue() }
     }
 
-    /// Shows a saved meeting as the job about to run.
     func show(_ item: MeetingHistoryItem) {
         folder = item.folderURL
         title = item.title
         setPhase(.preparingAudio, fraction: 0)
     }
 
-    /// Shows a stopped capture finalizing when no job is running.
     func showFinalizing(_ folder: URL) {
         guard !isProcessing else { return }
         self.folder = folder
@@ -145,7 +137,6 @@ final class ProcessingQueue: ObservableObject {
         jobs: while succeeded, !pendingJobs.isEmpty {
             switch pendingJobs.removeFirst() {
             case .batch(let item, let process):
-                // A batch ends after its last meeting or at the first that fails or is cancelled.
                 let remaining = pendingJobs.filter(\.isBatch).count
                 batchIndex = batchTotal - remaining
                 if batchIndex > 1, !Task.isCancelled { model.prepareSavedTranscription(item) }
@@ -169,8 +160,7 @@ final class ProcessingQueue: ObservableObject {
                 if succeeded {
                     title = run.title
                     succeeded = await finishRecording(run)
-                    // Cancelling an export still saves the transcript. The next job runs in a new task, so the
-                    // cancellation does not reach it, and a pending "Wait and quit" still quits at the end.
+                    // Break so the next job runs in a new task this cancellation does not reach.
                     if Task.isCancelled { break jobs }
                 }
             }
@@ -179,13 +169,13 @@ final class ProcessingQueue: ObservableObject {
     }
 
     private func queueFinished(succeeded: Bool) {
-        // A failed or cancelled job ends here; a recording queued behind it is a new job that can report and cancel.
+        // Reset before a queued job starts, so that job can report and cancel.
         if cancelling {
             cancelling = false
             if let phase { statusText = phase.statusText }
         }
         guard pendingJobs.isEmpty else {
-            // Wait and quit keeps the app open after a failure, even when a later job succeeds.
+            // A failure cancels Wait and quit, even when a later job succeeds.
             if !succeeded { model.completeTermination(false) }
             task = Task { [model] in await model.processing.runQueue() }
             return
@@ -209,10 +199,8 @@ final class ProcessingQueue: ObservableObject {
     @discardableResult
     func finishRecording(_ run: ProcessingRun, inBatch: Bool = false) async -> Bool {
         lastOptions = (run.languages, run.hints, run.settings)
-        // This job owns its error/retry target, including after an automatic rename.
         var folder = run.folder
         var replacing = run.replacing
-        // A fresh recording's m4a, exported while transcription reads the recording directly.
         var export: Task<Void, Error>?
         do {
             try Task.checkCancellation()
@@ -227,13 +215,12 @@ final class ProcessingQueue: ObservableObject {
             let recordingURL = MeetingArtifacts.recordingURL(in: folder)
             let audioURL = folder.appendingPathComponent("audio.m4a")
             let needsAudio = ((try? AVAudioFile(forReading: audioURL).length) ?? 0) == 0
-            // Only a capture that just ended can still be finishing its MP4.
+            // Only a capture that just ended (folderTitle set) can still be finishing its MP4.
             if needsAudio, run.folderTitle != nil {
                 setPhase(.finalizingRecording)
                 try await AudioExtractor.waitUntilReadable(recordingURL)
             }
             setPhase(.preparingAudio, fraction: 0)
-            // Decoded once, for every language pass and speaker labels.
             var meetingAudio = MeetingAudio(url: audioURL)
             defer { meetingAudio.discard() }
             // Set while the m4a is still exporting; caches are keyed on the finished file.
@@ -243,7 +230,6 @@ final class ProcessingQueue: ObservableObject {
                 let exporting = Task {
                     try await AudioExtractor.extract(from: recordingURL, to: audioURL) { [weak self] fraction in
                         Task { @MainActor [weak self] in
-                            // Transcription overlaps the export; its progress only shows before transcription starts.
                             guard self?.phase == .preparingAudio else { return }
                             self?.setFraction(fraction)
                         }
@@ -262,7 +248,6 @@ final class ProcessingQueue: ObservableObject {
                     duration = Double(try await decoded.load().count) / Double(WhisperKit.sampleRate)
                     meetingAudio = decoded
                     audioReady = { [weak self] in
-                        // Transcription can finish before the m4a export it overlaps.
                         await MainActor.run { [weak self] in
                             if let self, !self.cancelling { self.statusText = "Saving audio.m4a…" }
                         }
@@ -270,7 +255,7 @@ final class ProcessingQueue: ObservableObject {
                     }
                 } catch {
                     try Task.checkCancellation()
-                    // The export reports a recording it cannot read; otherwise transcribe its m4a as before.
+                    // The export reports a recording it cannot read; otherwise transcribe its m4a.
                     try await exported()
                     duration = try Self.audioDuration(audioURL)
                 }
@@ -285,7 +270,6 @@ final class ProcessingQueue: ObservableObject {
                 )
             }
 
-            // Only wait for a download of the model this job uses; a retry keeps its meeting's engine.
             if let preparation = model.modelPreparationTask,
                model.modelPreparationSettings.map({ $0.selectedEngine == run.settings.selectedEngine
                    && ($0.selectedEngine != .whisper || $0.model == run.settings.model) }) ?? true {
@@ -298,8 +282,7 @@ final class ProcessingQueue: ObservableObject {
                 }
                 try Task.checkCancellation()
             }
-            // A download started in Options would race this job's own download into the same folder.
-            // Polled, so cancelling the job ends only the wait and the download keeps going.
+            // Poll, not await: an Options download would race this job into the same folder, and cancel must end only the wait.
             if model.modelDownloadKind?.isUsed(by: run.settings) == true {
                 setPhase(.downloadingModel)
                 while model.modelDownloadKind?.isUsed(by: run.settings) == true {
@@ -353,7 +336,6 @@ final class ProcessingQueue: ObservableObject {
                     self.title = generatedTitle
                 }
             } else if replacing == nil, let folderTitle = run.folderTitle, title != folderTitle {
-                // The name changed while recording; the folder still carries the one it started with.
                 folder = try MeetingArtifacts.renameDirectory(folder, title: title, recordedAt: recordedAt)
             }
             if let replacing {

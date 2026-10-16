@@ -1,6 +1,4 @@
 #!/bin/zsh
-# Publishes a beta or stable release: bump the version, test, package, commit, tag,
-# publish on GitHub, push main, and verify. See "Publish a release" in CONTRIBUTING.md.
 
 set -euo pipefail
 
@@ -64,7 +62,6 @@ if [[ -d /Applications/Xcode.app ]]; then
     export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
 
-# Collect every blocker first, so one run lists everything to fix.
 problems=()
 problem() { problems+=("$1"); }
 
@@ -166,7 +163,6 @@ print "\n==> Checking the archive and feed"
 (cd dist && shasum -a 256 -c "$archive.sha256")
 grep -q "<sparkle:shortVersionString>$version</sparkle:shortVersionString>" appcast.xml || fail "appcast.xml has no $version item."
 grep -q "releases/download/$tag/$archive" appcast.xml || fail "appcast.xml doesn't point at the $tag download."
-# Beta items must be on the beta channel, and stable users must still have a stable item.
 RELEASE_VERSION=$version RELEASE_CHANNEL=$channel python3 - <<'PY' || fail "appcast.xml doesn't match the $channel release."
 import os, sys
 import xml.etree.ElementTree as ET

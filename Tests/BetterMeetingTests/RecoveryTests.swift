@@ -21,7 +21,6 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(pending.title, "Product sync")
         XCTAssertEqual(pending.recordedAt, date)
 
-        // A crash between transcript writes must not turn a pending meeting into a completed one.
         try "partial".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
         try "[]".write(to: folder.appendingPathComponent("transcript.json"), atomically: true, encoding: .utf8)
         XCTAssertTrue(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).needsTranscription)
@@ -38,7 +37,6 @@ final class RecoveryTests: XCTestCase {
         XCTAssertFalse(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).needsTranscription)
         XCTAssertTrue(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).titleWasProvided)
 
-        // Earlier failures wrote no metadata at all. Their raw recording is still discoverable.
         try FileManager.default.removeItem(at: metadataURL)
         let legacy = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         XCTAssertTrue(legacy.needsTranscription)
@@ -92,7 +90,6 @@ final class RecoveryTests: XCTestCase {
             .contains { $0.hasPrefix(".audio-") })
     }
 
-    /// A just-stopped capture can be handed off before ScreenCaptureKit writes the MP4 index.
     func testWaitsForRecordingToFinishWriting() async throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
@@ -320,9 +317,6 @@ final class RecoveryTests: XCTestCase {
                 try writePNG(bitmap, to: URL(fileURLWithPath: path).appendingPathComponent("recording-icon-\(scheme).png"))
             }
         }
-        // With the menu closed the icon is the only sign of a live recording, so it dims on the
-        // clock's tick: it must hold each brightness long enough to read as a breath rather than
-        // a blink, and it must not move at all for a reader who asked for no motion.
         for second in [1, 4, 5, 9] {
             XCTAssertEqual(MenuBarStatusLabel.recordingBreath(elapsed: Double(second), reduceMotion: false),
                            MenuBarStatusLabel.recordingBreath(elapsed: 0, reduceMotion: false),
@@ -720,8 +714,7 @@ final class RecoveryTests: XCTestCase {
         _ = NSApplication.shared
         let model = AppModel(defaults: defaults)
         model.captureAccess = { (true, .authorized) }
-        // Two fictional calendar meetings later today, starting on the half hour so the times look scheduled.
-        // The menu reads the real clock, so render before 22:00 to keep both meetings on today.
+        // Start on the half hour so the times look scheduled; the menu reads the real clock, so run before 22:00.
         let reader = CalendarReaderFixture()
         reader.authorizationStatus = .fullAccess
         let halfHour = 1_800.0
@@ -957,7 +950,6 @@ final class RecoveryTests: XCTestCase {
         XCTAssertNil(model.recordingDiskSpace, "Late callbacks must not warn after capture ends")
     }
 
-    /// ScreenCaptureKit cannot finish an MP4 on a full drive, so the recording must stop while it still can.
     @MainActor
     func testRecordingStopsBeforeTheDriveFills() async throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingDiskStop")
@@ -992,7 +984,6 @@ final class RecoveryTests: XCTestCase {
         (view as? NSSearchField) ?? view.subviews.lazy.compactMap { self.searchField(in: $0) }.first
     }
 
-    /// 100 mono frames of one constant value, as ScreenCaptureKit delivers them.
     private func meterSample(_ value: Float) throws -> CMSampleBuffer {
         let buffer = try silentBuffer(rate: 48_000, frames: 100)
         try XCTUnwrap(buffer.floatChannelData)[0].update(repeating: value, count: 100)
