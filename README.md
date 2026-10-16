@@ -66,7 +66,8 @@ and beside **Options** in the menu footer; one click downloads it, installs it, 
 reopens the app. An update prepared in the background shows **Restart to Update**
 instead, and also installs when you quit. Recording or processing must finish before
 restarting; a clicked update waits and then installs. Failed updates show an inline
-retry action.
+retry action. A background check that fails, for example before the network connects
+at login, shows no error and tries again when the Mac is online.
 
 **Include beta releases** on the same page opts into pre-release builds tagged as beta.
 They install the same way as stable releases, which still arrive either way. Turn

@@ -134,6 +134,25 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertFalse(updates.canPerformAction)
     }
 
+    /// A launch check that fails before the network connects must not leave "Update failed" until a click.
+    @MainActor
+    func testBackgroundCheckFailureStaysQuietButClickedCheckFailureShows() {
+        _ = NSApplication.shared
+        let updates = AppUpdater(isBusy: { false })
+        let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: updates, delegate: updates)
+        updates.updater(updater, didAbortWithError: URLError(.notConnectedToInternet))
+        XCTAssertEqual(updates.status, .unchecked)
+        XCTAssertNil(updates.errorMessage)
+        XCTAssertEqual(updates.actionTitle, "Check for Updates")
+
+        updates.showUserInitiatedUpdateCheck {}
+        updates.showUpdaterError(URLError(.notConnectedToInternet)) {}
+        updates.updater(updater, didAbortWithError: URLError(.notConnectedToInternet))
+        XCTAssertEqual(updates.status, .failed)
+        XCTAssertNotNil(updates.errorMessage)
+        XCTAssertEqual(updates.actionTitle, "Try Again")
+    }
+
     @MainActor
     func testInstallationWaitsForWorkAndResumesOnlyOnce() {
         _ = NSApplication.shared

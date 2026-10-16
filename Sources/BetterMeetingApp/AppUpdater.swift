@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Network
 import Sparkle
 
 @MainActor
@@ -38,6 +39,12 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     private var informationURL: URL?
     /// Set after the one start attempt, successful or not.
     private var started = false
+    /// Set by a click, so a failure it causes stays visible even when Sparkle does not show it.
+    private var userInitiated = false
+    /// Waits before each retry of a failed background check, once the Mac is online.
+    private static let retryDelays: [Duration] = [.seconds(10), .seconds(60), .seconds(300), .seconds(900), .seconds(3600)]
+    private var retries = 0
+    private var retryTask: Task<Void, Never>?
     private lazy var updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: self, delegate: self)
 
     init(isBusy: @escaping () -> Bool) {
@@ -87,6 +94,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
 
     func performAction() {
         guard canPerformAction else { return }
+        userInitiated = true
         if let action = updateAction {
             updateAction = nil
             switch status {
@@ -123,13 +131,32 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         if sparkleError && (error as NSError).code == SUError.noUpdateError.rawValue {
             errorMessage = nil
             status = .current
+            retries = 0
         } else if sparkleError && (error as NSError).code == SUError.installationCanceledError.rawValue {
             status = .unchecked
-        } else {
+        } else if userInitiated {
             errorMessage = error.localizedDescription
             status = .failed
+        } else {
+            // Sparkle hides background failures, such as a launch before the network connects; check again later.
+            retryBackgroundCheck()
         }
+        userInitiated = false
         dismissUpdateInstallation()
+    }
+
+    private func retryBackgroundCheck() {
+        guard started, retries < Self.retryDelays.count else { return }
+        let delay = Self.retryDelays[retries]
+        retries += 1
+        retryTask?.cancel()
+        retryTask = Task { [weak self] in
+            for await path in NWPathMonitor() where path.status == .satisfied { break }
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self, self.canCheckForUpdates,
+                  self.updater.automaticallyChecksForUpdates else { return }
+            self.updater.checkForUpdatesInBackground()
+        }
     }
 
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
@@ -156,6 +183,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     func showUpdateFound(with appcastItem: SUAppcastItem, state: SPUUserUpdateState,
                          reply: @escaping (SPUUserUpdateChoice) -> Void) {
         errorMessage = nil
+        retries = 0
         updateVersion = appcastItem.displayVersionString
         if appcastItem.isInformationOnlyUpdate {
             let url = appcastItem.infoURL
