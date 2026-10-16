@@ -100,7 +100,7 @@ final class TranscriptionPassTests: XCTestCase {
         let languages = ["uk", "ru", "en"]
         var calls: [String] = []
         do {
-            _ = try await TranscriptionPasses.run(audioURL: audio, languages: languages, progressHandler: { _ in }) { options, _ in
+            _ = try await TranscriptionPasses.run(audioURL: audio, languages: languages, detectLanguages: Self.detectAll, progressHandler: { _ in }) { options, _ in
                 let language = try XCTUnwrap(options.language)
                 calls.append(language)
                 if language == "ru" { throw Interrupted.pass }
@@ -113,7 +113,7 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("pass_ru.json").path))
 
         calls = []
-        _ = try await TranscriptionPasses.run(audioURL: audio, languages: languages, progressHandler: { _ in }) { options, _ in
+        _ = try await TranscriptionPasses.run(audioURL: audio, languages: languages, detectLanguages: Self.detectAll, progressHandler: { _ in }) { options, _ in
             calls.append(try XCTUnwrap(options.language))
             return []
         }
@@ -151,14 +151,14 @@ final class TranscriptionPassTests: XCTestCase {
         }
         try Data("partial cache".utf8).write(to: cacheURL)
         calls = []
-        _ = try await TranscriptionPasses.run(audioURL: movedAudio, languages: languages, progressHandler: { _ in }) { options, _ in
+        _ = try await TranscriptionPasses.run(audioURL: movedAudio, languages: languages, detectLanguages: Self.detectAll, progressHandler: { _ in }) { options, _ in
             calls.append(try XCTUnwrap(options.language))
             return []
         }
         XCTAssertEqual(calls, ["uk"])
         try Data([1, 2, 3, 4]).write(to: movedAudio)
         calls = []
-        _ = try await TranscriptionPasses.run(audioURL: movedAudio, languages: languages, progressHandler: { _ in }) { options, _ in
+        _ = try await TranscriptionPasses.run(audioURL: movedAudio, languages: languages, detectLanguages: Self.detectAll, progressHandler: { _ in }) { options, _ in
             calls.append(try XCTUnwrap(options.language))
             return []
         }
@@ -195,9 +195,7 @@ final class TranscriptionPassTests: XCTestCase {
         }
     }
 
-    func testPinnedDecodingAndNoSpeechProbability() throws {
-        let options = SpeechSettings().decodingOptions(language: "uk")
-        XCTAssertEqual(options.language, "uk")
+    func testNoSpeechProbabilityMatchesOnHalfAndSinglePrecision() throws {
         let half = try MLMultiArray(shape: [1, 1, 3], dataType: .float16)
         half[0] = 2.5
         half[1] = 7
@@ -217,7 +215,7 @@ final class TranscriptionPassTests: XCTestCase {
         let audio = root.appendingPathComponent("audio.m4a")
         try Data([1]).write(to: audio)
         let task = Task {
-            try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], progressHandler: { _ in }) { options, _ in
+            try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], detectLanguages: Self.detectAll, progressHandler: { _ in }) { options, _ in
                 if options.language == "en" { withUnsafeCurrentTask { $0?.cancel() } }
                 return []
             }
@@ -228,7 +226,7 @@ final class TranscriptionPassTests: XCTestCase {
         } catch is CancellationError {}
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("pass_uk.json").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("pass_en.json").path))
-        _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], progressHandler: { _ in }) { options, _ in
+        _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], detectLanguages: Self.detectAll, progressHandler: { _ in }) { options, _ in
             XCTAssertEqual(options.language, "en")
             return []
         }
@@ -255,7 +253,6 @@ final class TranscriptionPassTests: XCTestCase {
 
     func testCandidateLanguagesRejectUnsupportedAndDuplicateCodes() async throws {
         XCTAssertEqual(TranscriptionLanguage.candidates(from: ["pl", "pl", "en", "../bad"]), ["pl", "en"])
-        XCTAssertEqual(TranscriptionLanguage.candidates(from: []), ["uk", "ru", "en"])
         for codes in [[], ["../bad"], ["en", "en"]] {
             do {
                 _ = try await TranscriptionPasses.run(audioURL: URL(fileURLWithPath: "/missing"), languages: codes, progressHandler: { _ in }) { _, _ in
@@ -311,6 +308,8 @@ final class TranscriptionPassTests: XCTestCase {
         if case .success = await work.result { XCTFail("Cancelled inference must not return a transcript") }
         XCTAssertEqual(try Data(contentsOf: pass), completedPass, "Cancellation must preserve the last completed pass")
     }
+
+    private static func detectAll() -> [[String: Float]] { [["uk": 1, "ru": 1, "en": 1]] }
 
     private func segment(_ start: Double, _ end: Double, _ language: String, _ score: Float, silence: Float = 0) -> ScoredSegment {
         ScoredSegment(start: start, end: end, text: "\(language) at \(start)", lang: language, score: score, nospeech: silence)

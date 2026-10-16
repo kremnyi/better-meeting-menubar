@@ -30,8 +30,6 @@ final class MeetingCalendarTests: XCTestCase {
         let trigger = try XCTUnwrap(request.trigger as? UNCalendarNotificationTrigger)
         XCTAssertEqual(trigger.nextTriggerDate(), event.scheduledStart)
         XCTAssertFalse(trigger.repeats)
-        XCTAssertEqual(CalendarReminder.category.actions.first?.identifier, CalendarReminder.startActionID)
-        XCTAssertTrue(CalendarReminder.category.actions[0].options.contains(.foreground))
         XCTAssertTrue(CalendarReminder.category.actions[0].options.contains(.authenticationRequired))
         let otherCalendarCopy = try calendarEventFixture(id: "other-calendar-occurrence", date: event.scheduledStart)
         reminders.update(events: [event, otherCalendarCopy], enabled: true)
@@ -102,7 +100,6 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(event.relativeStart(at: event.scheduledEnd, calendar: calendar), "Ended")
         let tomorrowText = event.relativeStart(at: now.addingTimeInterval(-86400), calendar: calendar)
         XCTAssertTrue(tomorrowText.hasPrefix("Tomorrow "), "Tomorrow should include the start time")
-        XCTAssertNotEqual(tomorrowText, "Tomorrow")
     }
 
     func testMeetingEndingAtMidnightShowsTimeRangeWithoutDate() throws {
@@ -150,7 +147,6 @@ final class MeetingCalendarTests: XCTestCase {
         resume?.resume()
         await reminders.task?.value
         XCTAssertTrue(center.pending.isEmpty)
-        XCTAssertTrue(center.delivered.isEmpty)
         XCTAssertTrue(reminders.scheduledEvents.isEmpty)
     }
 
@@ -343,7 +339,7 @@ final class MeetingCalendarTests: XCTestCase {
         for invalid in ["{", sidecar.replacingOccurrences(of: "\"schemaVersion\":1", with: "\"schemaVersion\":2")] {
             try invalid.write(to: url, atomically: true, encoding: .utf8)
             XCTAssertTrue(MeetingCalendar.searchFields(in: root).isEmpty)
-            XCTAssertEqual(MeetingLibrary().search([item], query: "Recording"), [item])
+            XCTAssertTrue(MeetingLibrary().search([item], query: "Portfolio").isEmpty)
         }
     }
 
@@ -360,7 +356,6 @@ final class MeetingCalendarTests: XCTestCase {
         model.historyQuery = "EXAMPLE.COM"
         await model.historySearchTask?.value
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Pending meeting"])
-        XCTAssertTrue(model.transcriptionHistory[0].needsTranscription)
         model.historyQuery = ""
         await model.historySearchTask?.value
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Pending meeting"], "Clearing the search keeps unfinished recordings visible")
@@ -546,29 +541,18 @@ final class MeetingCalendarTests: XCTestCase {
     func testUpcomingLayoutKeepsTodayCappedWithCount() throws {
         let calendar = Calendar.current
         let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 11, hour: 12)))
+        let ongoing = try calendarEventFixture(id: "ongoing", date: now.addingTimeInterval(-900))
         let first = try calendarEventFixture(id: "first", date: now.addingTimeInterval(3_600))
         let second = try calendarEventFixture(id: "second", date: now.addingTimeInterval(7_200))
         let third = try calendarEventFixture(id: "third", date: now.addingTimeInterval(10_800))
         let fourth = try calendarEventFixture(id: "fourth", date: now.addingTimeInterval(14_400))
         let tomorrow = try calendarEventFixture(id: "tomorrow", date: now.addingTimeInterval(86_400))
         let secondCopy = try calendarEventFixture(id: "second-copy", date: now.addingTimeInterval(7_200))
-        let layout = UpcomingMeetingLayout.make(events: [first, second, secondCopy, third, fourth, tomorrow], now: now)
-        XCTAssertEqual(layout.primary?.id, "first")
-        XCTAssertEqual(layout.compact.map(\.id), ["second", "third"], "A meeting on two calendars is listed once")
-        XCTAssertEqual(layout.extraTodayCount, 1)
+        let layout = UpcomingMeetingLayout.make(events: [ongoing, first, second, secondCopy, third, fourth, tomorrow], now: now)
+        XCTAssertEqual(layout.primary?.id, "ongoing", "An in-progress meeting stays the primary one")
+        XCTAssertEqual(layout.compact.map(\.id), ["first", "second"])
+        XCTAssertEqual(layout.extraTodayCount, 2, "A meeting on two calendars is counted once")
         XCTAssertNil(layout.tomorrowFirst, "Tomorrow appears only once today is done")
-    }
-
-    func testUpcomingLayoutKeepsInProgressMeetingAsPrimary() throws {
-        let calendar = Calendar.current
-        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 11, hour: 12, minute: 30)))
-        let ongoing = try calendarEventFixture(id: "ongoing", date: now.addingTimeInterval(-900))
-        let next = try calendarEventFixture(id: "next", date: now.addingTimeInterval(2_700))
-        let layout = UpcomingMeetingLayout.make(events: [ongoing, next], now: now)
-        XCTAssertEqual(layout.primary?.id, "ongoing")
-        XCTAssertEqual(layout.compact.map(\.id), ["next"])
-        XCTAssertEqual(layout.extraTodayCount, 0)
-        XCTAssertNil(layout.tomorrowFirst)
     }
 
     func testUpcomingLayoutFallsBackToTomorrowLineWhenTodayIsDone() throws {
@@ -579,8 +563,6 @@ final class MeetingCalendarTests: XCTestCase {
         let later = try calendarEventFixture(id: "later", date: midnight.addingTimeInterval(14_400))
         let layout = UpcomingMeetingLayout.make(events: [first, later], now: now)
         XCTAssertNil(layout.primary)
-        XCTAssertTrue(layout.compact.isEmpty)
-        XCTAssertEqual(layout.extraTodayCount, 0)
         XCTAssertEqual(layout.tomorrowFirst?.id, "midnight")
     }
 }

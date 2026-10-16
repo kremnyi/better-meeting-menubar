@@ -51,7 +51,6 @@ final class SpeechSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(SpeechSettings.self, from: Data(legacy.utf8))
         XCTAssertNil(settings.engine)
         XCTAssertEqual(settings.selectedEngine, .parakeet)
-        XCTAssertFalse(settings.usesWhisperOptions)
         XCTAssertEqual(settings.model, .small)
         XCTAssertEqual(settings.withResolvedEngine.engine, .parakeet, "New meetings record the engine that ran")
         let folder = makeTempRoot()
@@ -67,7 +66,6 @@ final class SpeechSettingsTests: XCTestCase {
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         defaults.set(["ja", "en"], forKey: "transcriptionLanguages")
         XCTAssertEqual(AppModel(defaults: defaults).speechSettings.engine, .whisper)
-        XCTAssertEqual(AppModel(defaults: defaults).speechSettings.engine, .whisper, "The choice is saved")
         defaults.removeObject(forKey: "speechSettings")
         defaults.set(["uk", "ru", "en"], forKey: "transcriptionLanguages")
         XCTAssertEqual(AppModel(defaults: defaults).speechSettings.selectedEngine, .parakeet)

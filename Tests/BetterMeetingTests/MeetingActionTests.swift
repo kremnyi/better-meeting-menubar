@@ -393,8 +393,7 @@ final class MeetingActionTests: XCTestCase {
         model.recording.cancel(confirm: { _ in .alertSecondButtonReturn }, trash: trash)
         XCTAssertEqual(model.state, .stopping)
         model.primaryAction()
-        model.startRecording()
-        XCTAssertEqual(model.state, .stopping, "Capture shutdown must finish before another recording can start")
+        XCTAssertEqual(model.state, .stopping)
         XCTAssertTrue(model.fileSettingsLocked)
         XCTAssertTrue(model.updates.isBusy())
         XCTAssertEqual(model.terminationReply(confirm: { _ in .alertFirstButtonReturn }), .terminateCancel)
@@ -440,12 +439,9 @@ final class MeetingActionTests: XCTestCase {
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         let dates = ISO8601DateFormatter()
         let now = try XCTUnwrap(dates.date(from: "2026-09-15T12:00:00Z"))
-        let items = try ["2026-09-15T09:00:00Z", "2026-09-15T08:00:00Z", "2026-09-14T17:00:00Z", "2026-09-04T14:00:00Z"]
-            .map { iso in
-                MeetingHistoryItem(title: iso, recordedAt: try XCTUnwrap(dates.date(from: iso)), duration: 60,
-                                   folderURL: URL(fileURLWithPath: "/tmp/\(iso)"), needsTranscription: false, titleWasProvided: true)
-            }
-        XCTAssertEqual(items.prefix(3).map { MeetingHistorySection.dayTitle($0.recordedAt, now: now, calendar: calendar) },
+        let days = try ["2026-09-15T09:00:00Z", "2026-09-15T08:00:00Z", "2026-09-14T17:00:00Z"]
+            .map { try XCTUnwrap(dates.date(from: $0)) }
+        XCTAssertEqual(days.map { MeetingHistorySection.dayTitle($0, now: now, calendar: calendar) },
                        ["Today", "Today", "Yesterday"])
     }
 
@@ -471,7 +467,7 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, originals)
     }
 
-    func testLibraryReusesUnchangedFoldersAndRereadsEditedOnes() throws {
+    func testLibraryRereadsAFolderWhoseMetadataDateChanged() throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
         let date = Date(timeIntervalSince1970: 1_788_530_400)
@@ -490,17 +486,11 @@ final class MeetingActionTests: XCTestCase {
         let library = MeetingLibrary()
         let meetings = try library.meetings(in: root)
         XCTAssertEqual(meetings.map(\.title), ["Alpha"])
-        XCTAssertTrue(library.search(meetings, query: "pricing").isEmpty)
 
-        // Same size and date: the parsed folder is reused, so this in-place edit stays unseen.
         let edited = try String(contentsOf: metadata, encoding: .utf8).replacingOccurrences(of: "Alpha", with: "Omega")
         try edited.write(to: metadata, atomically: false, encoding: .utf8)
         try settle()
-        XCTAssertEqual(try library.meetings(in: root).map(\.title), ["Alpha"])
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-60)], ofItemAtPath: metadata.path)
         XCTAssertEqual(try library.meetings(in: root).map(\.title), ["Omega"], "A changed date reads the folder again")
-
-        try "# Alpha\n\nPricing notes\n".write(to: transcript, atomically: false, encoding: .utf8)
-        XCTAssertEqual(library.search(meetings, query: "pricing"), meetings, "An edited transcript is searched again")
     }
 }

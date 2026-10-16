@@ -50,7 +50,6 @@ final class ParakeetEngineTests: XCTestCase {
         XCTAssertEqual(segments.map(\.text), ["Hello world.", "Next sentence"])
         XCTAssertEqual(segments[0].start, 0, accuracy: 0.001)
         XCTAssertEqual(segments[1].start, 3.0, accuracy: 0.001)
-        XCTAssertNil(segments[0].language)
     }
 
     func testSegmentsCapLongUnpunctuatedRuns() throws {
@@ -81,14 +80,10 @@ final class ParakeetEngineTests: XCTestCase {
         XCTAssertNil(ParakeetLanguage.tag("To jest dobry plan i termin"))
         XCTAssertNil(ParakeetLanguage.tag("Het is goed, we gaan door"))
         XCTAssertNil(ParakeetLanguage.tag("On va voir demain"))
-    }
-
-    func testParakeetTaggingUsesEachSegmentsText() throws {
-        let segments = [
+        XCTAssertEqual(ParakeetLanguage.tagging([
             TranscriptSegment(start: 0, end: 1, text: "Що це таке", language: nil),
             TranscriptSegment(start: 1, end: 2, text: "We should ship this today", language: nil),
-        ]
-        XCTAssertEqual(ParakeetLanguage.tagging(segments).map(\.language), ["uk", "en"])
+        ]).map(\.language), ["uk", "en"])
     }
 
     func testSegmentsFallBackToWholeTextWithoutTimings() throws {

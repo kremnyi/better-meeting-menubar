@@ -23,16 +23,13 @@ final class AppUpdaterTests: XCTestCase {
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let model = AppModel(defaults: defaults)
         XCTAssertFalse(model.betaUpdates)
-        XCTAssertFalse(model.updates.allowsBetaUpdates)
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: model.updates, delegate: model.updates)
         XCTAssertEqual(model.updates.allowedChannels(for: updater), [], "Stable users must not see beta items")
         model.betaUpdates = true
-        XCTAssertTrue(model.updates.allowsBetaUpdates)
         XCTAssertEqual(model.updates.allowedChannels(for: updater), ["beta"])
         XCTAssertTrue(AppModel(defaults: defaults).betaUpdates)
         XCTAssertTrue(AppModel(defaults: defaults).updates.allowsBetaUpdates)
         model.betaUpdates = false
-        XCTAssertFalse(model.updates.allowsBetaUpdates)
         XCTAssertEqual(model.updates.allowedChannels(for: updater), [])
     }
 

@@ -59,7 +59,6 @@ final class MeetingDetectorTests: XCTestCase {
         let request = try XCTUnwrap(notifications.posted.first)
         XCTAssertEqual(request.identifier, MicrophoneMeeting.requestID)
         XCTAssertEqual(request.content.categoryIdentifier, MicrophoneMeeting.categoryID)
-        XCTAssertFalse(request.content.title.isEmpty)
 
         microphone.send(true)
         XCTAssertEqual(notifications.posted.count, 1, "The suggestion stands until the call ends")

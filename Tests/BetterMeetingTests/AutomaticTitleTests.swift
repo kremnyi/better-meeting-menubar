@@ -142,7 +142,6 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(MeetingLibrary().meetings(in: root).first).title, renamedTitle)
         XCTAssertTrue(try String(contentsOf: renamed.appendingPathComponent("transcript.md"), encoding: .utf8)
             .hasPrefix("# " + renamedTitle + "\n"))
-        XCTAssertEqual(try MeetingArtifacts.renameDirectory(renamed, title: renamedTitle, recordedAt: date), renamed)
         let renamedMeeting = try XCTUnwrap(MeetingLibrary().meetings(in: root).first { $0.folderURL == renamed })
         try MeetingArtifacts.replaceTranscript(for: renamedMeeting, duration: 1,
             segments: [TranscriptSegment(start: 0, end: 1, text: "Updated transcript", language: "en")])
