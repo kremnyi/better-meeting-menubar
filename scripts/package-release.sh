@@ -3,6 +3,9 @@
 set -euo pipefail
 
 cd "${0:A:h:h}"
+if [[ -d /Applications/Xcode.app ]]; then
+    export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
 if [[ $(uname -m) != arm64 ]]; then
     echo "Release packaging requires an Apple Silicon Mac." >&2
     exit 1
@@ -69,3 +72,4 @@ for item in feed.findall("channel/item"):
     item.find("enclosure").set("url", f"https://github.com/kremnyi/better-meeting-menubar/releases/download/v{version}/Better-Meeting-{version}-arm64.zip")
 feed.write("appcast.xml", encoding="utf-8", xml_declaration=True)
 PY
+xcrun swift -module-cache-path .build/module-cache scripts/verify-update.swift appcast.xml App/Info.plist "dist/$archive"

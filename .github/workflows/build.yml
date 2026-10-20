@@ -26,7 +26,9 @@ jobs:
       matrix:
         include:
           - name: tests
-            run: swift test
+            run: |
+              swift test
+              xcrun swift scripts/test-update-signature.swift
           - name: bundle
             run: ./scripts/build-app.sh
     steps:

@@ -774,6 +774,55 @@ final class RecoveryTests: XCTestCase {
     }
 
     @MainActor
+    func testScreenCaptureStopCallbacksFinishOnceAndAllowAnotherRecording() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let recorder = MeetingRecorder()
+        recorder.startCapture = { _ in
+            recorder.recordingOutputDidStartRecording(try XCTUnwrap(recorder.recordingOutput))
+        }
+        let captureStopped = expectation(description: "finished output releases capture")
+        recorder.stopCapture = { _ in captureStopped.fulfill() }
+        let first = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+        try await recorder.begin(first, to: root.appendingPathComponent("first.mp4"), microphone: nil, mode: .screen)
+        let oldOutput = try XCTUnwrap(recorder.recordingOutput)
+        var stops = 0
+        let externallyStopped = expectation(description: "macOS stop finishes without an output callback")
+        recorder.onUnexpectedStop = { error in
+            XCTAssertNil(error)
+            stops += 1
+            externallyStopped.fulfill()
+        }
+        recorder.stream(first, didStopWithError: NSError(domain: SCStreamErrorDomain, code: SCStreamError.Code.userStopped.rawValue))
+        await fulfillment(of: [externallyStopped], timeout: 5)
+        XCTAssertNil(recorder.recordingOutput)
+        do {
+            try await recorder.stop()
+            XCTFail("A stream stopped by macOS must no longer be recording")
+        } catch RecorderError.notRecording {}
+
+        let second = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+        try await recorder.begin(second, to: root.appendingPathComponent("second.mp4"), microphone: nil, mode: .screen)
+        let output = try XCTUnwrap(recorder.recordingOutput)
+        let staleStop = expectation(description: "old output must not stop the current recording")
+        staleStop.isInverted = true
+        recorder.onUnexpectedStop = { _ in staleStop.fulfill() }
+        recorder.recordingOutputDidFinishRecording(oldOutput)
+        await fulfillment(of: [staleStop], timeout: 0.1)
+        XCTAssertTrue(recorder.recordingOutput === output)
+        let outputFinished = expectation(description: "next recording finishes once")
+        recorder.onUnexpectedStop = { error in
+            XCTAssertNil(error)
+            stops += 1
+            outputFinished.fulfill()
+        }
+        recorder.recordingOutputDidFinishRecording(output)
+        await fulfillment(of: [outputFinished, captureStopped], timeout: 5)
+        XCTAssertEqual(stops, 2, "A late callback from the old output must not finish the next recording")
+        XCTAssertNil(recorder.recordingOutput)
+    }
+
+    @MainActor
     func testVideoPresetsRespectSourceSizeAndFrameRate() {
         for resolution in CaptureResolution.allCases {
             for quality in CaptureQuality.allCases {

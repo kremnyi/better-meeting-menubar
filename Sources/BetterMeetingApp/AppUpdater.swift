@@ -32,6 +32,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     var allowsBetaUpdates = false
     let isBusy: () -> Bool
     private var updateAction: (() -> Void)?
+    private var retryTermination: (() -> Void)?
     private var installWhenReady = false
     @Published private var pendingInstallation: (() -> Void)?
     private var updateVersion = ""
@@ -82,7 +83,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     var canPerformAction: Bool {
         guard !isBusy() else { return false }
         switch status {
-        case .available, .downloaded, .ready: return updateAction != nil
+        case .available, .downloaded, .ready: return updateAction != nil || retryTermination != nil
         case .unchecked, .current, .failed: return canCheckForUpdates
         default: return false
         }
@@ -91,6 +92,10 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     func performAction() {
         guard canPerformAction else { return }
         userInitiated = true
+        if let retryTermination {
+            retryTermination()
+            return
+        }
         if let action = updateAction {
             updateAction = nil
             switch status {
@@ -117,7 +122,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
 
     func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
                  immediateInstallationBlock installHandler: @escaping () -> Void) -> Bool {
-        status = .ready(item.displayVersionString)
+        updateVersion = item.displayVersionString
+        status = .ready(updateVersion)
         updateAction = installHandler
         return true
     }
@@ -230,11 +236,15 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
     func showDownloadInitiated(cancellation: @escaping () -> Void) { status = .downloading }
     func showDownloadDidStartExtractingUpdate() { status = .preparing }
     func showInstallingUpdate(withApplicationTerminated applicationTerminated: Bool, retryTerminatingApplication: @escaping () -> Void) {
-        status = .installing
+        updateAction = nil
+        // Termination may be canceled more than once; keep the retry available until Sparkle finishes.
+        retryTermination = applicationTerminated ? nil : retryTerminatingApplication
+        status = applicationTerminated ? .installing : .ready(updateVersion)
     }
     func showUpdateInstalledAndRelaunched(_ relaunched: Bool, acknowledgement: @escaping () -> Void) { acknowledgement() }
     func dismissUpdateInstallation() {
         updateAction = nil
+        retryTermination = nil
         installWhenReady = false
         pendingInstallation = nil
         informationURL = nil

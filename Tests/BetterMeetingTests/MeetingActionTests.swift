@@ -435,6 +435,24 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertEqual(Timecode.readable(3_600, locale: english), "1 hr")
         XCTAssertEqual(Timecode.readable(3_934, locale: english), "1 hr, 5 min")
 
+        for invalid: Double in [1e20, Double(Int.max), -1e20, .infinity, -.infinity, .nan] {
+            XCTAssertEqual(Timecode.compact(invalid), "0:00")
+            XCTAssertEqual(Timecode.readable(invalid, locale: english), "0 sec")
+            XCTAssertEqual(Timecode.string(invalid), "00:00:00")
+        }
+
+        let root = makeTempRoot("InvalidDuration")
+        defer { removeTempRoot(root) }
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Keep this meeting", recordedAt: Date())
+        try Data([1]).write(to: folder.appendingPathComponent("recording.mp4"))
+        try MeetingArtifacts.writeMetadata(title: "Keep this meeting", recordedAt: Date(), duration: 1e20, to: folder)
+        let metadata = try Data(contentsOf: folder.appendingPathComponent("metadata.json"))
+        let saved = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
+        XCTAssertEqual(Timecode.readable(saved.duration, locale: english), "0 sec")
+        XCTAssertEqual(saved.title, "Keep this meeting")
+        XCTAssertEqual(try Data(contentsOf: folder.appendingPathComponent("metadata.json")), metadata,
+                       "Displaying an invalid duration must not rewrite the saved meeting")
+
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         let dates = ISO8601DateFormatter()

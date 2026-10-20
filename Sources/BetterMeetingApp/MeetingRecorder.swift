@@ -41,7 +41,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     nonisolated var hasDetectedAudio: Bool { meter.withLock { $0.detected } }
 
     private var stream: SCStream?
-    private var recordingOutput: SCRecordingOutput?
+    private(set) var recordingOutput: SCRecordingOutput?
     private nonisolated let audioRecording = OSAllocatedUnfairLock<AudioOnlyRecording?>(initialState: nil)
     private var finalizingAudio = false
     private var microphone: AVCaptureDevice?

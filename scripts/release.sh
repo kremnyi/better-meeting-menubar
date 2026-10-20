@@ -130,7 +130,7 @@ wait_for_ci() {
     sha=$(git rev-parse HEAD)
     ids=()
     for attempt in {1..30}; do
-        ids=(${(f)"$(gh run list --repo $repo --commit $sha --json databaseId,headBranch --jq ".[] | select(.headBranch == \"$ref\") | .databaseId")"})
+        ids=(${(f)"$(gh run list --repo $repo --workflow build.yml --commit $sha --json databaseId,headBranch --jq ".[] | select(.headBranch == \"$ref\") | .databaseId")"})
         (( ${#ids} )) && break
         sleep 10
     done
@@ -139,9 +139,9 @@ wait_for_ci() {
     for id in $ids; do
         gh run watch $id --repo $repo >/dev/null 2>&1 || true
     done
-    # A push can start duplicate runs and cancel one; any successful run counts.
+    # A push can start duplicate build runs and cancel one; a successful build run counts.
     conclusions=$(for id in $ids; do gh run view $id --repo $repo --json conclusion --jq .conclusion; done)
-    [[ $conclusions == *success* ]] || fail "CI did not pass for $ref: $(gh run list --repo $repo --commit $sha --json url --jq '.[0].url')"
+    [[ $conclusions == *success* ]] || fail "CI did not pass for $ref: $(gh run list --repo $repo --workflow build.yml --commit $sha --json url --jq '.[0].url')"
     print "CI passed for $ref."
 }
 

@@ -64,7 +64,31 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertEqual(installations, 1)
         XCTAssertEqual(updates.status, .installing)
 
+        var terminationRetries = 0
+        updates.showInstallingUpdate(withApplicationTerminated: false) { terminationRetries += 1 }
+        XCTAssertEqual(updates.status, .ready(item.displayVersionString))
+        XCTAssertEqual(updates.actionTitle, "Restart to Update")
+        busy = true
+        updates.performAction()
+        XCTAssertEqual(terminationRetries, 0, "A canceled restart must not interrupt work")
+        busy = false
+        updates.resumePendingInstallation()
+        XCTAssertEqual(terminationRetries, 0, "Keep open must wait for another click")
+        XCTAssertTrue(updates.canPerformAction)
+        updates.performAction()
+        updates.performAction()
+        XCTAssertEqual(terminationRetries, 2, "Canceling termination again must keep the retry available")
+        updates.showInstallingUpdate(withApplicationTerminated: true) {
+            XCTFail("A terminated application must not receive another quit event")
+        }
+        updates.performAction()
+        XCTAssertEqual(terminationRetries, 2)
+        XCTAssertFalse(updates.canPerformAction)
+
         updates.showReady(toInstallAndRelaunch: { _ in XCTFail("An aborted installation must not run") })
+        updates.showInstallingUpdate(withApplicationTerminated: false) {
+            XCTFail("An aborted installation must discard the termination retry")
+        }
         updates.updater(updater, didAbortWithError: URLError(.notConnectedToInternet))
         XCTAssertEqual(updates.status, .failed)
         XCTAssertNotNil(updates.errorMessage)

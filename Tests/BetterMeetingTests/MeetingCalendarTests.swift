@@ -213,7 +213,7 @@ final class MeetingCalendarTests: XCTestCase {
     }
 
     @MainActor
-    func testQuitDuringSetupCancelsStartAndTerminates() throws {
+    func testQuitDuringSetupCancelsStartAndTerminates() async throws {
         _ = NSApplication.shared
         let (defaults, suite, root) = try makeTempDefaults("SetupQuit")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
@@ -222,6 +222,46 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(model.state, .preparing)
         XCTAssertEqual(model.terminationReply(confirm: { _ in .alertFirstButtonReturn }), .terminateCancel)
         XCTAssertEqual(model.terminationReply(confirm: { _ in .alertSecondButtonReturn }), .terminateNow)
+
+        let failed = AppModel(defaults: defaults)
+        failed.recording.state = .preparing
+        XCTAssertEqual(failed.terminationReply(confirm: { _ in
+            failed.recording.state = .failed
+            return .alertSecondButtonReturn
+        }), .terminateNow, "Quit Anyway must quit when setup fails while the alert is open")
+
+        let active = AppModel(defaults: defaults)
+        defer { active.recording.stopTimer() }
+        let date = Date()
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Started during quit", recordedAt: date)
+        let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
+        try await cacheEnglishTranscript(in: folder, settings: settings, text: "Save before quitting.")
+        active.speechSettings = settings
+        active.transcriptionLanguages = ["en"]
+        active.recording.activeFolder = folder
+        active.recording.state = .preparing
+        let stopping = expectation(description: "capture stops before quitting")
+        var finishStop: CheckedContinuation<Void, Never>?
+        active.recording.stopCapture = {
+            await withCheckedContinuation { continuation in
+                finishStop = continuation
+                stopping.fulfill()
+            }
+        }
+        XCTAssertEqual(active.terminationReply(confirm: { _ in
+            active.recording.didStart(at: date)
+            return .alertSecondButtonReturn
+        }), .terminateCancel, "A recording that starts while the setup alert is open must finish saving")
+        XCTAssertEqual(active.state, .stopping)
+        XCTAssertTrue(active.quitWhenFinished)
+        active.quitWhenFinished = false // Keep the test runner open when the queue finishes.
+        let processing = try XCTUnwrap(active.processing.task)
+        await fulfillment(of: [stopping], timeout: 5)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path))
+        try XCTUnwrap(finishStop).resume()
+        await processing.value
+        XCTAssertEqual(active.state, .idle)
+        XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meeting(in: folder)).needsTranscription)
     }
 
     @MainActor

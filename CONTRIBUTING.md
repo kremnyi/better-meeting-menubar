@@ -222,13 +222,13 @@ Then it follows the steps below:
 
 1. Sets the version and the next `CFBundleVersion` in `App/Info.plist`.
 2. Runs `swift test` and `package-release.sh`.
-3. Checks the archive checksum and the feed items. For a stable release, it also updates and checks the cask.
+3. Checks the archive checksum, feed items, and archive signature against `SUPublicEDKey` without reading a private key. For a stable release, it also updates and checks the cask.
 4. Commits, then asks `Publish v<version> to GitHub and push main? [y/N]`. Pass `--yes` to skip the question.
 5. Pushes the tag. For a stable release, it waits for CI on the tag first.
 6. Publishes the GitHub release, marked as a pre-release for betas, and checks the download.
 7. Pushes `main` and checks that the public feed lists the new version.
 8. For a stable release, runs `brew fetch` for the cask.
-9. Waits for CI to pass on `main`, and for a beta, on the tag.
+9. Waits for **Build and check** to pass on `main`, and for a beta, on the tag. Website deployment does not count as an app check.
 
 If a step fails, the script names the step and what state it left:
 

@@ -134,23 +134,26 @@ extension AppModel {
             alert.addButton(withTitle: "Keep open")
             alert.addButton(withTitle: "Quit Anyway")
             guard confirm(alert) == .alertSecondButtonReturn else { return .terminateCancel }
-            recording.cancelStart()
-            return .terminateNow
+            guard state == .recording || state == .stopping else {
+                recording.cancelStart()
+                return .terminateNow
+            }
+        } else {
+            alert.messageText = state == .recording ? "Finish this recording and quit?" : "Quit when transcription finishes?"
+            if state == .recording && isProcessing { alert.messageText = "Finish this recording, then quit when transcription finishes?" }
+            if isTranscribingBatch { alert.messageText = "Quit when all queued transcriptions finish?" }
+            if isExportingBundle { alert.messageText = "Quit when export finishes?" }
+            if state == .stopping { alert.messageText = "Quit when the recording finishes stopping?" }
+            alert.informativeText = isExportingBundle
+                ? "Better Meeting will stay open until the export bundle is saved."
+                : "Better Meeting will stay open until the recording and transcript are saved."
+            if isTranscribingBatch { alert.informativeText = "Better Meeting will stay open until the queue finishes. An error or cancellation will keep the app open." }
+            if state == .stopping { alert.informativeText = "Better Meeting will stay open until capture stops and the recording is saved or moved to the Trash." }
+            alert.addButton(withTitle: state == .recording ? "Finish and quit" : "Wait and quit")
+            alert.addButton(withTitle: "Keep open")
+            guard confirm(alert) == .alertFirstButtonReturn else { return .terminateCancel }
         }
-        alert.messageText = state == .recording ? "Finish this recording and quit?" : "Quit when transcription finishes?"
-        if state == .recording && isProcessing { alert.messageText = "Finish this recording, then quit when transcription finishes?" }
-        if isTranscribingBatch { alert.messageText = "Quit when all queued transcriptions finish?" }
-        if isExportingBundle { alert.messageText = "Quit when export finishes?" }
-        if state == .stopping { alert.messageText = "Quit when the recording finishes stopping?" }
-        alert.informativeText = isExportingBundle
-            ? "Better Meeting will stay open until the export bundle is saved."
-            : "Better Meeting will stay open until the recording and transcript are saved."
-        if isTranscribingBatch { alert.informativeText = "Better Meeting will stay open until the queue finishes. An error or cancellation will keep the app open." }
-        if state == .stopping { alert.informativeText = "Better Meeting will stay open until capture stops and the recording is saved or moved to the Trash." }
-        alert.addButton(withTitle: state == .recording ? "Finish and quit" : "Wait and quit")
-        alert.addButton(withTitle: "Keep open")
-        guard confirm(alert) == .alertFirstButtonReturn else { return .terminateCancel }
-        // Recheck: processing may finish while the confirmation is open.
+        // Capture can start or processing can finish while either confirmation is open.
         guard state == .recording || state == .stopping || isProcessing else {
             return state == .idle ? .terminateNow : .terminateCancel
         }

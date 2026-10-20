@@ -430,12 +430,12 @@ enum MeetingActionError: LocalizedError {
 
 enum Timecode {
     static func compact(_ interval: TimeInterval) -> String {
-        let seconds = max(0, Int(interval))
+        let seconds = max(0, Int(exactly: interval.rounded(.down)) ?? 0)
         return Duration.seconds(seconds).formatted(.time(pattern: seconds < 3_600 ? .minuteSecond : .hourMinuteSecond))
     }
 
     static func readable(_ interval: TimeInterval, locale: Locale = .autoupdatingCurrent) -> String {
-        let seconds = max(0, Int(interval.rounded(.down)))
+        let seconds = max(0, Int(exactly: interval.rounded(.down)) ?? 0)
         let duration = Duration.seconds(seconds)
         return seconds < 60
             ? duration.formatted(.units(allowed: [.seconds], width: .abbreviated).locale(locale))
@@ -443,7 +443,7 @@ enum Timecode {
     }
 
     static func string(_ interval: TimeInterval) -> String {
-        let seconds = max(0, Int(interval.rounded(.down)))
+        let seconds = max(0, Int(exactly: interval.rounded(.down)) ?? 0)
         return Duration.seconds(seconds).formatted(
             .time(pattern: .hourMinuteSecond(padHourToLength: 2)).locale(Locale(identifier: "en_US_POSIX"))
         )
