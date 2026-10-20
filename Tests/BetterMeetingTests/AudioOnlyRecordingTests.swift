@@ -1,5 +1,6 @@
 import Accelerate
 import AVFoundation
+import IOKit.pwr_mgt
 import os
 import ScreenCaptureKit
 import XCTest
@@ -144,6 +145,26 @@ final class AudioOnlyRecordingTests: XCTestCase {
                        "The audio recorded before a failed stop must be kept")
     }
 
+    @MainActor
+    func testRecordingKeepsTheMacAwakeUntilItStops() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let url = root.appendingPathComponent("recording.mov")
+        let recorder = MeetingRecorder()
+        recorder.startCapture = { _ in }
+        recorder.stopCapture = { _ in }
+        let before = idleSleepAssertions()
+        let stream = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+        try await recorder.begin(stream, to: url, microphone: nil, mode: .audioOnly)
+        XCTAssertEqual(idleSleepAssertions(), before + 1, "A recording without user input must not let the Mac idle-sleep")
+        for index in 0..<5 {
+            let buffer = try sample(at: Double(index) * 0.02, frequency: 440, channels: 2)
+            recorder.audioQueue.sync { recorder.stream(stream, didOutputSampleBuffer: buffer, of: .audio) }
+        }
+        try await recorder.stop()
+        XCTAssertEqual(idleSleepAssertions(), before, "Stopping must let the Mac sleep again")
+    }
+
     func testEitherSourceCanRecordWhenTheOtherSendsNoBuffers() async throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
@@ -202,5 +223,13 @@ final class AudioOnlyRecordingTests: XCTestCase {
             imaginary += Double(samples[index]) * sin(phase)
         }
         return 2 * hypot(real, imaginary) / Double(range.count)
+    }
+
+    private func idleSleepAssertions() -> Int {
+        var byProcess: Unmanaged<CFDictionary>?
+        guard IOPMCopyAssertionsByProcess(&byProcess) == kIOReturnSuccess,
+              let all = byProcess?.takeRetainedValue() as? [NSNumber: [[String: Any]]] else { return 0 }
+        let own = all[NSNumber(value: ProcessInfo.processInfo.processIdentifier)] ?? []
+        return own.filter { $0[kIOPMAssertionTypeKey] as? String == kIOPMAssertionTypePreventUserIdleSystemSleep }.count
     }
 }

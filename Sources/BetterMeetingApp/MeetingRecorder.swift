@@ -50,6 +50,8 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private var startCaptureTask: Task<Void, Never>?
     private var starting = false
     private var captureStopped = false
+    // A call with no keyboard or mouse input must not let the Mac idle-sleep mid-recording.
+    private var sleepActivity: NSObjectProtocol?
     var startCapture: (SCStream) async throws -> Void = { try await $0.startCapture() }
     var stopCapture: (SCStream) async throws -> Void = { try await $0.stopCapture() }
     // Audio buffers stay on audioQueue so the main thread is not woken for each one.
@@ -177,6 +179,10 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
 
         self.stream = stream
         self.microphone = microphone
+        if sleepActivity == nil {
+            sleepActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleSystemSleepDisabled], reason: "Recording a meeting")
+        }
         finalizingAudio = false
         captureStopped = false
 
@@ -419,6 +425,10 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         stream = nil
         recordingOutput = nil
         microphone = nil
+        if let sleepActivity {
+            ProcessInfo.processInfo.endActivity(sleepActivity)
+            self.sleepActivity = nil
+        }
         let recording = audioRecording.withLock { recording -> AudioOnlyRecording? in
             defer { recording = nil }
             return recording

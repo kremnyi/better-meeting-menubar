@@ -35,7 +35,7 @@ final class EventKitCalendarReader: CalendarReading {
         // Decided here so the detached load below touches no mutable state.
         let refreshSources = now.timeIntervalSince(lastRefreshSources) >= 60
         if refreshSources { lastRefreshSources = now }
-        return try await Task.detached(priority: .userInitiated) { () -> CalendarSnapshot in
+        return await Task.detached(priority: .userInitiated) { () -> CalendarSnapshot in
             if refreshSources { store.refreshSourcesIfNecessary() }
             let calendars = store.calendars(for: .event)
             let choices = calendars.map {

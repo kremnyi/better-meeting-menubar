@@ -143,6 +143,10 @@ stops the recording, saves it, and starts its transcription, because a screen
 recording that fills the drive cannot be opened. A notification gives the reason.
 Free-space estimates do not guarantee that a long recording will fit.
 
+While a recording runs, the Mac does not go to sleep from inactivity, so a call
+with no keyboard or mouse input keeps recording. The display can still turn off.
+Closing the lid or choosing Sleep still puts the Mac to sleep.
+
 While recording, the menu-bar icon dims and brightens every two seconds; it spins
 during processing. With Reduce Motion enabled it stays still in both states.
 A warning icon appears if recording or transcription fails, or if screen or microphone
