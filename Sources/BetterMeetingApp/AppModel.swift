@@ -286,7 +286,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // ponytail: download-only; each engine loads on first transcription so picking one never compiles in the background.
+    // Download-only; each engine loads on first transcription so picking one never compiles in the background.
     func prepareSpeechModel() {
         guard !modelReady, !isProcessing, modelDownloadTask == nil, state == .idle || state == .recording else { return }
         let settings = speechSettings

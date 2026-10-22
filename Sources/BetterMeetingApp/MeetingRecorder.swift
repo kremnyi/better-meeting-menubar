@@ -438,7 +438,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             state.stream = nil
             state.levels.removeAll()
         }
-        // ponytail: settle the start task first so stopCapture never overlaps a
+        // Settle the start task first so stopCapture never overlaps a
         // still-in-flight startCapture when an early delegate failure triggers cleanUp.
         let startTask = startCaptureTask
         startCaptureTask = nil
@@ -464,7 +464,7 @@ enum CaptureQuality: Int, CaseIterable {
     case standard = 10
     case smooth = 30
 
-    // ponytail: use frame rate presets; custom bitrate needs a different recording pipeline.
+    // Use frame rate presets; custom bitrate needs a different recording pipeline.
     var label: String {
         switch self {
         case .compact: "Compact · 5 fps"

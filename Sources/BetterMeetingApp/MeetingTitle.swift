@@ -34,7 +34,7 @@ enum MeetingTitle {
         let nameKeys = Set(words.filter { $0.tag == .personalName || $0.tag == .organizationName }
             .map { $0.text.lowercased() })
         var productKeys: Set<String> = []
-        // ponytail: infer products from recurring capitalized nouns until NaturalLanguage offers a product tag.
+        // Infer products from recurring capitalized nouns until NaturalLanguage offers a product tag.
         let products = Dictionary(grouping: words.filter {
             $0.tag == .noun && !ignored.contains($0.lemma)
                 && $0.text.contains(where: \.isUppercase) && $0.text != $0.text.uppercased()

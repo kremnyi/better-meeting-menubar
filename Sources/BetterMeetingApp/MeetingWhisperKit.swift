@@ -43,7 +43,7 @@ extension WhisperKit {
     }
 }
 
-// WhisperKit 1.1.0 hardcodes noSpeechProb to zero, so read the SOT logits as OpenAI Whisper does. Remove when WhisperKit supplies it.
+// WhisperKit 1.1.1 still hardcodes noSpeechProb to zero, so read the SOT logits as OpenAI Whisper does. Remove when WhisperKit supplies it.
 final class SpeechProbabilityDecoder: TextDecoding {
     private var base: any TextDecoding
     init(base: any TextDecoding) { self.base = base }

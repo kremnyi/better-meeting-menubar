@@ -513,7 +513,7 @@ actor LocalTranscriber {
         // Parakeet detects the language itself; pinning one garbled English product names in a Russian call.
         let result = try await manager.transcribe(samples, decoderState: &decoderState, language: nil)
         try Task.checkCancellation()
-        // ponytail: Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.
+        // Parakeet returns one fast pass, so cancellation just restarts it; no pass cache until measurements ask for one.
         return ParakeetLanguage.tagging(Self.segments(from: result))
     }
 

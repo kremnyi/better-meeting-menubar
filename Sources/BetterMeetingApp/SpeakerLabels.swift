@@ -67,7 +67,7 @@ enum SpeakerLabels {
         }
     }
 
-    // ponytail: one label per transcript segment; use word timings if mid-segment speaker changes need splitting.
+    // One label per transcript segment; use word timings if mid-segment speaker changes need splitting.
     static func assign(_ turns: [Turn], to segments: [TranscriptSegment]) -> [TranscriptSegment] {
         // The sort is stable, so equal starts keep their input order.
         let sorted = turns.filter(\.isValid).sorted { $0.start < $1.start }
