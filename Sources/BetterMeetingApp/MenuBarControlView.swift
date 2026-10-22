@@ -74,7 +74,7 @@ struct MenuBarControlView: View {
         .onChange(of: model.completionMessage) { copiedTranscript = false }
         .onDisappear {
             // The idle menu showed the message while it was open; don't repeat it next time.
-            if model.state == .idle, !model.isProcessing {
+            if model.state == .idle, !model.processing.isProcessing {
                 model.completionMessage = nil
             }
         }
@@ -114,7 +114,7 @@ struct MenuBarControlView: View {
                     Text("Update failed")
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
+                        .foregroundStyle(Color.attention(colorScheme))
                 }
             }
             .buttonStyle(.plain)
@@ -147,7 +147,7 @@ struct MenuBarControlView: View {
 
             startControls
 
-            if model.isTranscribingBatch || model.isProcessing {
+            if model.isTranscribingBatch || model.processing.isProcessing {
                 processingStatus
             } else {
                 idleStatus
@@ -282,7 +282,7 @@ struct MenuBarControlView: View {
                         Text("You can record while setup finishes.")
                     } else {
                         Button("Download model", action: model.prepareSpeechModel)
-                            .disabled(model.isProcessing)
+                            .disabled(model.processing.isProcessing)
                     }
                 }
             }
@@ -292,11 +292,11 @@ struct MenuBarControlView: View {
 
     private var preparingContent: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text(model.statusText)
+            Text(model.recording.statusText)
                 .font(.callout)
                 .foregroundStyle(.secondary)
             processingIndicator
-                .accessibilityLabel(model.statusText)
+                .accessibilityLabel(model.recording.statusText)
             diskSpaceWarning
         }
         .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
@@ -313,28 +313,28 @@ struct MenuBarControlView: View {
             AudioMetersView(meters: model.meters)
 
             ZStack(alignment: .leading) {
-                Text(model.statusText)
+                Text(model.recording.statusText)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .opacity(model.audioWarning ? 0 : 1)
-                    .accessibilityHidden(model.audioWarning)
+                    .opacity(model.recording.audioWarning ? 0 : 1)
+                    .accessibilityHidden(model.recording.audioWarning)
                 VStack(alignment: .leading, spacing: 2) {
                     Label {
-                        Text(model.audioWarningTitle).fontWeight(.medium)
+                        Text(model.recording.audioWarningTitle).fontWeight(.medium)
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
+                            .foregroundStyle(Color.attention(colorScheme))
                     }
-                    Text(model.audioWarningDetail)
+                    Text(model.recording.audioWarningDetail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .fixedSize(horizontal: false, vertical: true)
-                .opacity(model.audioWarning ? 1 : 0)
-                .accessibilityHidden(!model.audioWarning)
+                .opacity(model.recording.audioWarning ? 1 : 0)
+                .accessibilityHidden(!model.recording.audioWarning)
             }
             .font(.callout)
-            .animation(.easeInOut(duration: 0.2), value: model.audioWarning)
+            .animation(.easeInOut(duration: 0.2), value: model.recording.audioWarning)
 
             diskSpaceWarning
 
@@ -348,8 +348,8 @@ struct MenuBarControlView: View {
 
             modelSetupStatus
 
-            if model.isProcessing {
-                Text("Transcribing \(model.processingTitle.isEmpty ? "the previous meeting" : model.processingTitle) in the background…")
+            if model.processing.isProcessing {
+                Text("Transcribing \(model.processing.title.isEmpty ? "the previous meeting" : model.processing.title) in the background…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -359,11 +359,11 @@ struct MenuBarControlView: View {
 
     @ViewBuilder
     private var diskSpaceWarning: some View {
-        if let space = model.recordingDiskSpace, space.isLow {
+        if let space = model.recording.diskSpace, space.isLow {
             VStack(alignment: .leading, spacing: 2) {
                 Label("Low recording disk space", systemImage: "externaldrive.badge.exclamationmark")
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
+                    .foregroundStyle(Color.attention(colorScheme))
                 Text(space.warning)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -377,12 +377,12 @@ struct MenuBarControlView: View {
         Divider()
 
         HStack(spacing: 8) {
-            Image(systemName: model.isExportingBundle ? "shippingbox" : "waveform")
+            Image(systemName: model.processing.isExportingBundle ? "shippingbox" : "waveform")
                 .font(.title2)
                 .foregroundStyle(.tint)
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.variableColor.iterative.dimInactiveLayers, options: .repeating,
-                              isActive: !reduceMotion && !model.isExportingBundle)
+                              isActive: !reduceMotion && !model.processing.isExportingBundle)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(processingHeadline)
@@ -395,25 +395,25 @@ struct MenuBarControlView: View {
             }
             Spacer(minLength: 0)
             Button("Cancel", action: model.cancelTranscription)
-                .disabled(!model.canCancelTranscription)
+                .disabled(!model.processing.canCancel)
                 .accessibilityLabel(model.isTranscribingBatch ? "Cancel transcription queue"
-                    : model.isExportingBundle ? "Cancel export" : "Cancel transcription")
+                    : model.processing.isExportingBundle ? "Cancel export" : "Cancel transcription")
                 .help(model.isTranscribingBatch ? "Stops the queue and keeps saved transcripts and recordings"
-                    : model.isExportingBundle ? "Keeps the transcript and previous export bundle"
+                    : model.processing.isExportingBundle ? "Keeps the transcript and previous export bundle"
                     : "Keeps the recording and completed language passes so you can resume later")
         }
 
         processingIndicator
-            .accessibilityLabel(model.processingStatusText)
+            .accessibilityLabel(model.processing.statusText)
 
         HStack(alignment: .top) {
-            Text(model.processingStatusText)
+            Text(model.processing.statusText)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if model.isTranscribingBatch {
                 Text("\(model.transcriptionBatchWaiting) waiting")
                     .fixedSize()
-            } else if let phase = model.processingPhase {
+            } else if let phase = model.processing.phase {
                 Text(phase.stepText)
                     .fixedSize()
             }
@@ -426,18 +426,18 @@ struct MenuBarControlView: View {
 
     private var processingHeadline: String {
         if model.isTranscribingBatch {
-            return "Transcribing \(model.transcriptionBatchIndex) of \(model.transcriptionBatchTotal)"
+            return "Transcribing \(model.processing.batchIndex) of \(model.processing.batchTotal)"
         }
-        return model.isExportingBundle ? "Exporting bundle" : "Transcribing"
+        return model.processing.isExportingBundle ? "Exporting bundle" : "Transcribing"
     }
 
     private var processingSubject: String {
-        model.processingTitle.isEmpty ? "Untitled meeting" : model.processingTitle
+        model.processing.title.isEmpty ? "Untitled meeting" : model.processing.title
     }
 
     @ViewBuilder
     private var processingIndicator: some View {
-        if let fraction = model.processingFraction {
+        if let fraction = model.processing.fraction {
             HStack(spacing: 8) {
                 ProgressView(value: fraction)
 
@@ -533,7 +533,7 @@ struct MenuBarControlView: View {
             Text("\(Image(systemName: model.captureAccessSymbol)) \(notice.text)")
                 .font(notice.isSecondary ? .caption : .callout)
                 .foregroundStyle(model.captureAccessNeedsAttention
-                    ? (colorScheme == .dark ? Color.orange : Color.attentionOrange)
+                    ? Color.attention(colorScheme)
                     : notice.isSecondary ? .secondary : .primary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

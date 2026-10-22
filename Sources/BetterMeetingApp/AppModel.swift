@@ -25,13 +25,7 @@ final class AppModel: ObservableObject {
         set { recordingClock.elapsed = newValue }
     }
     let meters = AudioMeters()
-    var audioWarning: Bool { recording.audioWarning }
-    var audioWarningTitle: String { recording.audioWarningTitle }
-    var audioWarningDetail: String { recording.audioWarningDetail }
-    var recordingDiskSpace: RecordingDiskSpace? { recording.diskSpace }
-    var recordingID: UUID? { recording.id }
     weak var menuWindow: NSWindow?
-    var statusText: String { recording.statusText }
     @Published private(set) var lastError: Error?
     @Published private(set) var transcriptionError: Error?
     @Published var completedFolder: URL? {
@@ -45,10 +39,6 @@ final class AppModel: ObservableObject {
     private(set) var hasCompletedTranscript = false
     @Published private(set) var outputRoot: URL
     @Published private(set) var privacyPermission: PrivacyPermission?
-    var processingFraction: Double? { processing.fraction }
-    var processingPhase: ProcessingPhase? { processing.phase }
-    var processingStatusText: String { processing.statusText }
-    var processingTitle: String { processing.title }
     @Published private(set) var transcriptionHistory: [MeetingHistoryItem] = []
     @Published private(set) var historyError: String?
     private(set) var allMeetingCount = 0
@@ -61,11 +51,8 @@ final class AppModel: ObservableObject {
         didSet { updateRetryableMeeting() }
     }
     @Published private(set) var historyTotalBytes: Int64 = 0
-    var transcriptionBatchTotal: Int { processing.batchTotal }
-    var transcriptionBatchIndex: Int { processing.batchIndex }
-    var isTranscribingBatch: Bool { transcriptionBatchTotal > 0 }
-    var transcriptionBatchWaiting: Int { max(0, transcriptionBatchTotal - transcriptionBatchIndex) }
-    var isProcessing: Bool { processing.isProcessing }
+    var isTranscribingBatch: Bool { processing.batchTotal > 0 }
+    var transcriptionBatchWaiting: Int { max(0, processing.batchTotal - processing.batchIndex) }
     var isCapturing: Bool { state == .preparing || state == .recording || state == .stopping }
     @Published private(set) var modelReady = false
     @Published private(set) var modelSetupStatus = "Preparing speech model…"
@@ -78,7 +65,7 @@ final class AppModel: ObservableObject {
     private var modelPreparationToken = 0
     private(set) var modelDownloadTask: Task<Void, Never>?
     var modelTransferInProgress: Bool { modelPreparationTask != nil || modelDownloadTask != nil }
-    var modelWorkInProgress: Bool { isProcessing || isCapturing || modelTransferInProgress }
+    var modelWorkInProgress: Bool { processing.isProcessing || isCapturing || modelTransferInProgress }
     private(set) var modelDownloadKind: StoredModelInfo.Kind?
     @Published private(set) var displays: [(id: CGDirectDisplayID, name: String)] = []
     @Published private(set) var microphones: [(id: String, name: String)] = []
@@ -107,7 +94,7 @@ final class AppModel: ObservableObject {
     lazy var calendar = CalendarIntegration(defaults: defaults)
     lazy var updates = AppUpdater { [weak self] in
         guard let self else { return true }
-        return isCapturing || isProcessing
+        return isCapturing || processing.isProcessing
     }
     @Published var automaticUpdateChecks: Bool {
         didSet { defaults.set(automaticUpdateChecks, forKey: "checkUpdatesOnLaunch") }
@@ -124,7 +111,7 @@ final class AppModel: ObservableObject {
     /// Lazy so the app never touches Core Audio while meeting detection is off.
     lazy var meetingDetector = MeetingDetector(isBusy: { [weak self] in
         guard let self else { return true }
-        return state != .idle || isProcessing
+        return state != .idle || processing.isProcessing
     })
     @Published var betaUpdates: Bool {
         didSet {
@@ -156,8 +143,6 @@ final class AppModel: ObservableObject {
     private let library = MeetingLibrary()
     private(set) var modelUnloadTask: Task<Void, Never>?
     var quitWhenFinished = false
-    var processingFolder: URL? { processing.folder }
-    var queuedFolders: [URL] { processing.queuedFolders }
     private(set) var historySearchTask: Task<Void, Never>?
     private(set) var historyRefreshTask: Task<Void, Never>?
     private var historyRefreshStart = ContinuousClock.now - .seconds(1)
@@ -288,7 +273,7 @@ final class AppModel: ObservableObject {
 
     // Download-only; each engine loads on first transcription so picking one never compiles in the background.
     func prepareSpeechModel() {
-        guard !modelReady, !isProcessing, modelDownloadTask == nil, state == .idle || state == .recording else { return }
+        guard !modelReady, !processing.isProcessing, modelDownloadTask == nil, state == .idle || state == .recording else { return }
         let settings = speechSettings
         prepareSpeechModel { [transcriber] progress in
             let report: @Sendable (Double) -> Void = { progress(.downloadingModel($0)) }
@@ -408,8 +393,8 @@ final class AppModel: ObservableObject {
         guard modelPreparationTask != nil, let step = progress.modelStep else { return }
         if modelSetupStatus != step.phase.statusText { modelSetupStatus = step.phase.statusText }
         if Self.shownPercent(step.fraction) != Self.shownPercent(modelSetupFraction) { modelSetupFraction = step.fraction }
-        if isProcessing,
-           [.preparingModel, .downloadingModel, .loadingModel].contains(processingPhase) {
+        if processing.isProcessing,
+           [.preparingModel, .downloadingModel, .loadingModel].contains(processing.phase) {
             processing.updateTranscriptionProgress(progress)
         }
     }
@@ -423,7 +408,7 @@ final class AppModel: ObservableObject {
     }
 
     func retryTranscription(_ item: MeetingHistoryItem, languages: [String]? = nil, hints: String? = nil, settings: SpeechSettings? = nil) {
-        guard !isProcessing, !isTranscribingBatch, state == .idle || state == .failed else { return }
+        guard !processing.isProcessing, !isTranscribingBatch, state == .idle || state == .failed else { return }
         if let backup = item.recoveryFolder {
             lastError = MeetingActionError.transcriptRecovery(backup)
             return
@@ -433,7 +418,7 @@ final class AppModel: ObservableObject {
         processing.enqueue(run(
             for: item, replacing: item.needsTranscription ? nil : item,
             languages: languages, hints: hints,
-            settings: settings ?? MeetingArtifacts.speechSettings(in: item.folderURL)
+            settings: settings
         ))
     }
 
@@ -458,7 +443,7 @@ final class AppModel: ObservableObject {
 
     func transcribeAllRecordings(_ process: @escaping (MeetingHistoryItem) async -> Bool) {
         let recordings = transcribableRecordings
-        guard state == .idle, !isProcessing, !isTranscribingBatch, !recordings.isEmpty else { return }
+        guard state == .idle, !processing.isProcessing, !isTranscribingBatch, !recordings.isEmpty else { return }
         processing.startBatch(recordings, process: process)
     }
 
@@ -506,12 +491,10 @@ final class AppModel: ObservableObject {
         processing.show(item)
     }
 
-    var canCancelTranscription: Bool { processing.canCancel }
     func cancelTranscription() { processing.cancel() }
-    var isExportingBundle: Bool { processing.isExportingBundle }
 
     func exportBundle(_ meeting: MeetingHistoryItem) {
-        guard state == .idle, !isProcessing else { return }
+        guard state == .idle, !processing.isProcessing else { return }
         completionMessage = nil
         lastError = nil
         transcriptionError = nil
@@ -618,7 +601,7 @@ final class AppModel: ObservableObject {
         _ meeting: MeetingHistoryItem,
         trash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
     ) {
-        guard state == .idle, !isProcessing else { return }
+        guard state == .idle, !processing.isProcessing else { return }
         do {
             try trash(meeting.folderURL)
             updateFailedTranscriptionFolders { $0.remove(meeting.folderURL) }
@@ -631,7 +614,7 @@ final class AppModel: ObservableObject {
     }
 
     func renameMeeting(_ meeting: MeetingHistoryItem) {
-        guard state == .idle, !isProcessing else { return }
+        guard state == .idle, !processing.isProcessing else { return }
         let alert = NSAlert()
         alert.messageText = "Rename meeting"
         alert.addButton(withTitle: "Rename")
@@ -714,7 +697,7 @@ final class AppModel: ObservableObject {
         modelUnloadTask?.cancel()
         modelUnloadTask = Task { [weak self, transcriber] in
             try? await Task.sleep(for: .seconds(300))
-            guard !Task.isCancelled, let self, !self.isProcessing, !self.isCapturing else { return }
+            guard !Task.isCancelled, let self, !self.processing.isProcessing, !self.isCapturing else { return }
             await transcriber.unloadIfIdle()
         }
     }

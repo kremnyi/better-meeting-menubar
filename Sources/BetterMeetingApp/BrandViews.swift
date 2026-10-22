@@ -71,7 +71,7 @@ struct MenuBarStatusIcon: View {
                 Image(systemName: "exclamationmark.triangle.fill")
             } else if attention, state == .idle {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(colorScheme == .dark ? Color.orange : Color.attentionOrange)
+                    .foregroundStyle(Color.attention(colorScheme))
             } else {
                 Image(
                     nsImage: state == .recording
@@ -246,4 +246,8 @@ extension Color {
     static let signalCoralBright = Color(red: 0.96, green: 0.25, blue: 0.22)
     /// ≥3:1 non-text contrast on light backgrounds; system orange on dark (7.6:1).
     static let attentionOrange = Color(red: 0.85, green: 0.45, blue: 0.0)
+
+    static func attention(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? .orange : attentionOrange
+    }
 }

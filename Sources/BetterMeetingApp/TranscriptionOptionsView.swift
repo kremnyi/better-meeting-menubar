@@ -37,7 +37,7 @@ struct CaptureOptionsView: View {
                     settings: $model.speechSettings, languages: $model.transcriptionLanguages, hints: $model.transcriptionHints,
                     modelSelectionDisabled: model.modelTransferInProgress
                 )
-                .disabled(model.isProcessing)
+                .disabled(model.processing.isProcessing)
             case .about:
                 OptionsPageHeader(title: "About", backTo: "App & updates") { page = .appSettings }
                 AboutView(version: version)

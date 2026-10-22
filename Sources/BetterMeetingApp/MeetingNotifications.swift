@@ -46,7 +46,7 @@ enum MeetingNotifications {
         if isRecordingWarning && Task.isCancelled { remove(request.identifier) }
     }
 
-    static func audioWarning(recordingID: UUID, message: String = "No audio detected in this recording yet. Check your microphone and meeting audio.") -> UNNotificationRequest {
+    static func audioWarning(recordingID: UUID, message: String) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = "Check your recording"
         content.body = message
@@ -54,12 +54,14 @@ enum MeetingNotifications {
         return UNNotificationRequest(identifier: recordingID.uuidString, content: content, trigger: nil)
     }
 
+    static func diskWarningID(_ recordingID: UUID) -> String { recordingID.uuidString + "-disk" }
+
     static func diskWarning(recordingID: UUID, message: String) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = "Low recording disk space"
         content.body = message
         content.categoryIdentifier = diskWarningCategory
-        return UNNotificationRequest(identifier: recordingID.uuidString + "-disk", content: content, trigger: nil)
+        return UNNotificationRequest(identifier: diskWarningID(recordingID), content: content, trigger: nil)
     }
 
     static func remove(_ identifier: String) {

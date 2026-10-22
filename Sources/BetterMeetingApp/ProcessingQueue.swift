@@ -211,57 +211,9 @@ final class ProcessingQueue: ObservableObject {
             await MeetingNotifications.requestPermission()
             var title = run.title
             let recordedAt = run.recordedAt
-
-            let recordingURL = MeetingArtifacts.recordingURL(in: folder)
             let audioURL = folder.appendingPathComponent("audio.m4a")
-            let needsAudio = ((try? AVAudioFile(forReading: audioURL).length) ?? 0) == 0
-            // Only a capture that just ended (folderTitle set) can still be finishing its MP4.
-            if needsAudio, run.folderTitle != nil {
-                setPhase(.finalizingRecording)
-                try await AudioExtractor.waitUntilReadable(recordingURL)
-            }
-            setPhase(.preparingAudio, fraction: 0)
-            var meetingAudio = MeetingAudio(url: audioURL)
+            let (meetingAudio, duration, audioReady) = try await prepareAudio(for: run, to: audioURL, export: &export)
             defer { meetingAudio.discard() }
-            // Set while the m4a is still exporting; caches are keyed on the finished file.
-            var audioReady: (@Sendable () async throws -> Void)?
-            let duration: Double
-            if needsAudio {
-                let exporting = Task {
-                    try await AudioExtractor.extract(from: recordingURL, to: audioURL) { [weak self] fraction in
-                        Task { @MainActor [weak self] in
-                            guard self?.phase == .preparingAudio else { return }
-                            self?.setFraction(fraction)
-                        }
-                    }
-                }
-                export = exporting
-                let exported: @Sendable () async throws -> Void = {
-                    try await withTaskCancellationHandler {
-                        try await exporting.value
-                    } onCancel: {
-                        exporting.cancel()
-                    }
-                }
-                let decoded = MeetingAudio(url: recordingURL)
-                do {
-                    duration = Double(try await decoded.load().count) / Double(WhisperKit.sampleRate)
-                    meetingAudio = decoded
-                    audioReady = { [weak self] in
-                        await MainActor.run { [weak self] in
-                            if let self, !self.cancelling { self.statusText = "Saving audio.m4a…" }
-                        }
-                        try await exported()
-                    }
-                } catch {
-                    try Task.checkCancellation()
-                    // The export reports a recording it cannot read; otherwise transcribe its m4a.
-                    try await exported()
-                    duration = try Self.audioDuration(audioURL)
-                }
-            } else {
-                duration = try Self.audioDuration(audioURL)
-            }
             if !model.isCapturing { model.elapsed = duration }
             if replacing == nil {
                 try MeetingArtifacts.writeMetadata(
@@ -270,26 +222,7 @@ final class ProcessingQueue: ObservableObject {
                 )
             }
 
-            if let preparation = model.modelPreparationTask,
-               model.modelPreparationSettings.map({ $0.selectedEngine == run.settings.selectedEngine
-                   && ($0.selectedEngine != .whisper || $0.model == run.settings.model) }) ?? true {
-                setPhase(.preparingModel, fraction: model.modelSetupFraction)
-                statusText = model.modelSetupStatus
-                try await withTaskCancellationHandler {
-                    try await preparation.value
-                } onCancel: {
-                    preparation.cancel()
-                }
-                try Task.checkCancellation()
-            }
-            // Poll, not await: an Options download would race this job into the same folder, and cancel must end only the wait.
-            if model.modelDownloadKind?.isUsed(by: run.settings) == true {
-                setPhase(.downloadingModel)
-                while model.modelDownloadKind?.isUsed(by: run.settings) == true {
-                    setFraction(model.modelDownload?.fraction)
-                    try await Task.sleep(for: .milliseconds(250))
-                }
-            }
+            try await waitForModel(run.settings)
             var segments = try await model.transcriber.transcribe(
                 audioURL: audioURL, audio: meetingAudio,
                 languages: run.languages, hints: run.hints, settings: run.settings, audioReady: audioReady
@@ -394,6 +327,77 @@ final class ProcessingQueue: ObservableObject {
             model.accessibilityAnnouncement("Transcription failed for \(run.title). Open Better Meeting to retry.")
             await MeetingNotifications.post(title: run.title, folder: failedFolder, failed: true)
             return false
+        }
+    }
+
+    /// Starts the m4a export when it is missing; the returned audio can be transcribed before the export ends.
+    private func prepareAudio(
+        for run: ProcessingRun, to audioURL: URL, export: inout Task<Void, Error>?
+    ) async throws -> (audio: MeetingAudio, duration: Double, ready: (@Sendable () async throws -> Void)?) {
+        let recordingURL = MeetingArtifacts.recordingURL(in: run.folder)
+        let needsAudio = ((try? AVAudioFile(forReading: audioURL).length) ?? 0) == 0
+        // Only a capture that just ended (folderTitle set) can still be finishing its MP4.
+        if needsAudio, run.folderTitle != nil {
+            setPhase(.finalizingRecording)
+            try await AudioExtractor.waitUntilReadable(recordingURL)
+        }
+        setPhase(.preparingAudio, fraction: 0)
+        guard needsAudio else { return (MeetingAudio(url: audioURL), try Self.audioDuration(audioURL), nil) }
+        let exporting = Task {
+            try await AudioExtractor.extract(from: recordingURL, to: audioURL) { [weak self] fraction in
+                Task { @MainActor [weak self] in
+                    guard self?.phase == .preparingAudio else { return }
+                    self?.setFraction(fraction)
+                }
+            }
+        }
+        export = exporting
+        let exported: @Sendable () async throws -> Void = {
+            try await withTaskCancellationHandler {
+                try await exporting.value
+            } onCancel: {
+                exporting.cancel()
+            }
+        }
+        let decoded = MeetingAudio(url: recordingURL)
+        do {
+            let duration = Double(try await decoded.load().count) / Double(WhisperKit.sampleRate)
+            // Awaited while the m4a is still exporting; caches are keyed on the finished file.
+            return (decoded, duration, { [weak self] in
+                await MainActor.run { [weak self] in
+                    if let self, !self.cancelling { self.statusText = "Saving audio.m4a…" }
+                }
+                try await exported()
+            })
+        } catch {
+            try Task.checkCancellation()
+            // The export reports a recording it cannot read; otherwise transcribe its m4a.
+            try await exported()
+            return (MeetingAudio(url: audioURL), try Self.audioDuration(audioURL), nil)
+        }
+    }
+
+    /// Waits for a model preparation or Options download this job needs.
+    private func waitForModel(_ settings: SpeechSettings) async throws {
+        if let preparation = model.modelPreparationTask,
+           model.modelPreparationSettings.map({ $0.selectedEngine == settings.selectedEngine
+               && ($0.selectedEngine != .whisper || $0.model == settings.model) }) ?? true {
+            setPhase(.preparingModel, fraction: model.modelSetupFraction)
+            statusText = model.modelSetupStatus
+            try await withTaskCancellationHandler {
+                try await preparation.value
+            } onCancel: {
+                preparation.cancel()
+            }
+            try Task.checkCancellation()
+        }
+        // Poll, not await: an Options download would race this job into the same folder, and cancel must end only the wait.
+        if model.modelDownloadKind?.isUsed(by: settings) == true {
+            setPhase(.downloadingModel)
+            while model.modelDownloadKind?.isUsed(by: settings) == true {
+                setFraction(model.modelDownload?.fraction)
+                try await Task.sleep(for: .milliseconds(250))
+            }
         }
     }
 

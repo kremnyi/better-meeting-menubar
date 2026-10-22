@@ -117,7 +117,7 @@ actor LocalTranscriber {
     }
 
     static func cachedModelFolder(in downloadBase: URL = defaultDownloadBase, model: SpeechModel = .turbo) -> URL? {
-        let folder = downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
+        let folder = whisperDirectory(model, in: downloadBase)
         return hasModelFiles(in: folder) ? folder : nil
     }
 
@@ -163,6 +163,10 @@ actor LocalTranscriber {
         try FileManager.default.removeItem(at: vocabulary)
     }
 
+    private static func whisperDirectory(_ model: SpeechModel, in downloadBase: URL) -> URL {
+        downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
+    }
+
     private static func parakeetDirectory(in downloadBase: URL) -> URL {
         downloadBase.appendingPathComponent("models/parakeet-tdt-0.6b-v3", isDirectory: true)
     }
@@ -201,7 +205,7 @@ actor LocalTranscriber {
 
     static func storedModels(in downloadBase: URL = defaultDownloadBase, sizes: Bool = true) -> [StoredModelInfo] {
         var models = SpeechModel.allCases.map { model in
-            let url = downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(model.rawValue)")
+            let url = whisperDirectory(model, in: downloadBase)
             return info(
                 title: "Whisper \(model.label)", kind: .whisper(model), url: url,
                 installed: hasModelFiles(in: url), downloadBytes: model.downloadBytes, sizes: sizes
@@ -315,7 +319,7 @@ actor LocalTranscriber {
     func deleteStoredModel(at url: URL) async throws {
         let path = url.standardizedFileURL.path
         func holds(_ folder: URL) -> Bool { folder.standardizedFileURL.path == path }
-        if let loadedModel, holds(downloadBase.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(loadedModel.rawValue)")) {
+        if let loadedModel, holds(Self.whisperDirectory(loadedModel, in: downloadBase)) {
             await unloadWhisper()
         }
         if parakeet != nil, holds(Self.parakeetDirectory(in: downloadBase)) { await unloadParakeet() }

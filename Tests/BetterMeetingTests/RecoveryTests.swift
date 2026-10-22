@@ -227,7 +227,7 @@ final class RecoveryTests: XCTestCase {
         await model.historyRefreshTask?.value
         model.retryTranscription(try XCTUnwrap(model.unfinishedRecordings.first))
         let processing = try XCTUnwrap(model.processing.task)
-        XCTAssertTrue(model.isProcessing)
+        XCTAssertTrue(model.processing.isProcessing)
 
         var exits = 0
         let finish: (NSAlert) -> NSApplication.ModalResponse = { _ in .alertFirstButtonReturn }
@@ -333,7 +333,7 @@ final class RecoveryTests: XCTestCase {
         let item = try XCTUnwrap(model.unfinishedRecordings.first)
         model.retryTranscription(item)
         let processing = try XCTUnwrap(model.processing.task)
-        XCTAssertTrue(model.isProcessing)
+        XCTAssertTrue(model.processing.isProcessing)
         let view = hostingView(MenuBarControlView(), model: model)
         let field = try XCTUnwrap(searchField(in: view), "Processing must keep the history search visible")
         XCTAssertTrue(field.isEnabled)
@@ -380,7 +380,7 @@ final class RecoveryTests: XCTestCase {
         await task.value
 
         XCTAssertEqual(model.state, .recording)
-        XCTAssertFalse(model.isProcessing)
+        XCTAssertFalse(model.processing.isProcessing)
         XCTAssertTrue(model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL))
         XCTAssertTrue(announcements.contains { $0.hasPrefix("Transcription failed for Background failure") })
         model.fail(AppError.missingRecording)
@@ -864,12 +864,12 @@ final class RecoveryTests: XCTestCase {
         let view = hostingView(MenuBarControlView(), model: model)
         let initialSize = view.fittingSize
         model.recording.checkAudio(elapsed: 29.99, audioDetected: false)
-        XCTAssertFalse(model.audioWarning)
+        XCTAssertFalse(model.recording.audioWarning)
         let panels = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"].map { URL(fileURLWithPath: $0) }
         if let panels { try writePreview(view, to: panels.appendingPathComponent("recording-normal.png")) }
         let redrawsBefore = redraws
         model.recording.checkAudio(elapsed: 30, audioDetected: false)
-        XCTAssertTrue(model.audioWarning)
+        XCTAssertTrue(model.recording.audioWarning)
         XCTAssertGreaterThan(redraws, redrawsBefore, "The menu observes the model, so the recording's warning must reach it")
         XCTAssertEqual(announcements, ["Recording started.", "No audio detected yet. Check your microphone and meeting audio."])
         model.recording.checkAudio(elapsed: 120, audioDetected: false)
@@ -891,11 +891,11 @@ final class RecoveryTests: XCTestCase {
             try recordLevel(of: tone, on: recorder, type: source)
             XCTAssertTrue(recorder.hasDetectedAudio, "Either source must count as detected audio")
             model.recording.checkAudio(elapsed: 120, audioDetected: recorder.hasDetectedAudio)
-            XCTAssertFalse(model.audioWarning)
+            XCTAssertFalse(model.recording.audioWarning)
             try recordLevel(of: silence, on: recorder, type: source)
             XCTAssertTrue(recorder.hasDetectedAudio, "Later silence must not erase the earlier signal")
             model.recording.checkAudio(elapsed: 600, audioDetected: recorder.hasDetectedAudio)
-            XCTAssertFalse(model.audioWarning)
+            XCTAssertFalse(model.recording.audioWarning)
         }
         XCTAssertEqual(warnings, 1)
         XCTAssertEqual(hostingView(view.rootView, model: model).fittingSize, initialSize)
@@ -903,10 +903,10 @@ final class RecoveryTests: XCTestCase {
         model.recording.checkAudio(elapsed: 30, audioDetected: false)
         XCTAssertEqual(warnings, 2, "A new recording must get its own warning")
         model.fail(AppError.missingRecording)
-        XCTAssertFalse(model.audioWarning)
-        XCTAssertNil(model.recordingID)
+        XCTAssertFalse(model.recording.audioWarning)
+        XCTAssertNil(model.recording.id)
         model.recording.checkAudio(elapsed: 60, audioDetected: false)
-        XCTAssertFalse(model.audioWarning, "A late timer callback must not warn after recording stops")
+        XCTAssertFalse(model.recording.audioWarning, "A late timer callback must not warn after recording stops")
     }
 
     @MainActor
@@ -929,20 +929,20 @@ final class RecoveryTests: XCTestCase {
         try recordLevel(of: silence, on: recorder, type: .audio, at: start.advanced(by: .seconds(30)))
         model.recording.checkAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(30))))
-        XCTAssertTrue(model.audioWarning, "Audio heard earlier must not hide a disconnected microphone")
-        XCTAssertEqual(model.audioWarningTitle, "Microphone stopped sending audio")
+        XCTAssertTrue(model.recording.audioWarning, "Audio heard earlier must not hide a disconnected microphone")
+        XCTAssertEqual(model.recording.audioWarningTitle, "Microphone stopped sending audio")
         XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
         try recordLevel(of: silence, on: recorder, type: .microphone, at: start.advanced(by: .seconds(30)))
         model.recording.checkAudio(elapsed: 30, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(30))))
-        XCTAssertFalse(model.audioWarning, "Silent buffers prove the sources recovered")
+        XCTAssertFalse(model.recording.audioWarning, "Silent buffers prove the sources recovered")
         try recordLevel(of: silence, on: recorder, type: .microphone, at: start.advanced(by: .seconds(41)))
         model.recording.checkAudio(elapsed: 41, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(41))))
-        XCTAssertEqual(model.audioWarningTitle, "System audio stopped sending data")
+        XCTAssertEqual(model.recording.audioWarningTitle, "System audio stopped sending data")
         model.recording.checkAudio(elapsed: 60, audioDetected: recorder.hasDetectedAudio,
                                   health: recorder.audioHealth(at: start.advanced(by: .seconds(60))))
-        XCTAssertEqual(model.audioWarningTitle, "Audio sources stopped sending data")
+        XCTAssertEqual(model.recording.audioWarningTitle, "Audio sources stopped sending data")
         XCTAssertEqual(hostingView(MenuBarControlView(), model: model).fittingSize, initialSize)
         XCTAssertEqual(model.state, .recording)
     }
@@ -962,18 +962,18 @@ final class RecoveryTests: XCTestCase {
         var announcements: [String] = []
         model.accessibilityAnnouncement = { announcements.append($0) }
         model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 1_900_000_000))
-        XCTAssertTrue(try XCTUnwrap(model.recordingDiskSpace).isLow)
+        XCTAssertTrue(try XCTUnwrap(model.recording.diskSpace).isLow)
         model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 1_800_000_000))
         XCTAssertEqual(announcements.count, 1, "Changing capacity must not repeat the same warning")
         model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 2_000_000_000))
-        XCTAssertFalse(try XCTUnwrap(model.recordingDiskSpace).isLow)
+        XCTAssertFalse(try XCTUnwrap(model.recording.diskSpace).isLow)
         model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 1_900_000_000))
         XCTAssertEqual(announcements.count, 2, "A new low-space episode must warn again")
         XCTAssertEqual(model.state, .recording)
         model.fail(AppError.missingRecording)
-        XCTAssertNil(model.recordingDiskSpace)
+        XCTAssertNil(model.recording.diskSpace)
         model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 0))
-        XCTAssertNil(model.recordingDiskSpace, "Late callbacks must not warn after capture ends")
+        XCTAssertNil(model.recording.diskSpace, "Late callbacks must not warn after capture ends")
     }
 
     @MainActor

@@ -38,14 +38,14 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertEqual(model.state, .stopping)
         let processing = try XCTUnwrap(model.processing.task)
         await fulfillment(of: [stopping], timeout: 5)
-        XCTAssertEqual(model.processingPhase, .finalizingRecording)
+        XCTAssertEqual(model.processing.phase, .finalizingRecording)
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path),
                        "Transcription must wait until capture finishes")
-        XCTAssertFalse(model.canCancelTranscription, "Saving capture must finish before processing can be cancelled")
+        XCTAssertFalse(model.processing.canCancel, "Saving capture must finish before processing can be cancelled")
         try XCTUnwrap(finishStop).resume()
         await processing.value
         XCTAssertEqual(model.state, .idle)
-        XCTAssertFalse(model.isProcessing)
+        XCTAssertFalse(model.processing.isProcessing)
         XCTAssertEqual(try Data(contentsOf: recording), bytes)
         XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meeting(in: folder)).needsTranscription)
     }
@@ -80,14 +80,14 @@ final class TranscriptionQueueTests: XCTestCase {
             model.transcribeAllRecordings { item in
                 active += 1
                 XCTAssertEqual(active, 1)
-                XCTAssertEqual(model.transcriptionBatchIndex, visited.count + 1)
+                XCTAssertEqual(model.processing.batchIndex, visited.count + 1)
                 XCTAssertEqual(model.transcriptionBatchWaiting, 2 - visited.count)
-                XCTAssertEqual(model.processingTitle, item.title)
-                XCTAssertEqual(model.processingFolder, item.folderURL)
-                XCTAssertEqual(model.queuedFolders, expected.dropFirst(visited.count + 1).map(\.folderURL),
+                XCTAssertEqual(model.processing.title, item.title)
+                XCTAssertEqual(model.processing.folder, item.folderURL)
+                XCTAssertEqual(model.processing.queuedFolders, expected.dropFirst(visited.count + 1).map(\.folderURL),
                                "The list marks the meetings still waiting")
                 XCTAssertNil(model.modelUnloadTask, "A running queue keeps the speech model loaded")
-                XCTAssertTrue(model.isProcessing)
+                XCTAssertTrue(model.processing.isProcessing)
                 XCTAssertTrue(model.updates.isBusy())
                 model.transcribeAllRecordings { _ in XCTFail("No overlapping batch"); return false }
                 await Task.yield()
@@ -100,7 +100,7 @@ final class TranscriptionQueueTests: XCTestCase {
             XCTAssertEqual(visited, expected)
             XCTAssertEqual(model.completionMessage, "Transcribed 3 of 3 recordings.")
             XCTAssertTrue(announcements.contains("Transcribed 3 of 3 recordings."))
-            XCTAssertTrue(model.queuedFolders.isEmpty)
+            XCTAssertTrue(model.processing.queuedFolders.isEmpty)
             XCTAssertNotNil(model.modelUnloadTask, "A finished queue schedules releasing the speech model")
             XCTAssertEqual(model.state, .idle)
             model.refreshHistory()
@@ -127,7 +127,7 @@ final class TranscriptionQueueTests: XCTestCase {
                 await Task.yield()
             }
             XCTAssertNotNil(release)
-            XCTAssertTrue(model.isProcessing)
+            XCTAssertTrue(model.processing.isProcessing)
             XCTAssertEqual(model.state, .idle, "A recording can start while processing runs")
 
             model.meetingTitle = "Back-to-back meeting"
@@ -137,7 +137,7 @@ final class TranscriptionQueueTests: XCTestCase {
             await model.processing.task?.value
             XCTAssertEqual(model.state, .recording, "Processing must not end a live recording")
             XCTAssertEqual(model.meetingTitle, "Back-to-back meeting", "Processing must not clear the capture fields")
-            XCTAssertFalse(model.isProcessing)
+            XCTAssertFalse(model.processing.isProcessing)
             model.fail(AppError.missingRecording) // Stop the synthetic recording timer; no capture was started.
         }
     }
@@ -268,8 +268,8 @@ final class TranscriptionQueueTests: XCTestCase {
                                     replacing: nil, languages: ["en"], hints: "", settings: settings,
                                     stopTask: Task<Void, Error> { for await _ in stopped {} }, folderTitle: "Untitled"))
         await model.processing.task?.value
-        for _ in 0..<100 where model.processingFolder != queued { await Task.yield() }
-        XCTAssertEqual(model.processingFolder, queued, "The recording behind the failed job must still run")
+        for _ in 0..<100 where model.processing.folder != queued { await Task.yield() }
+        XCTAssertEqual(model.processing.folder, queued, "The recording behind the failed job must still run")
         XCTAssertEqual(model.failedTranscriptionMeeting?.folderURL.standardizedFileURL, failing.standardizedFileURL)
         XCTAssertFalse(model.quitWhenFinished, "Wait and quit must not quit once a job has failed")
         model.quitWhenFinished = false // A regression must not quit the test runner.
@@ -297,23 +297,23 @@ final class TranscriptionQueueTests: XCTestCase {
             var finishStop: CheckedContinuation<Void, Never>?
             model.recording.stopCapture = { await withCheckedContinuation { finishStop = $0 } }
             model.primaryAction()
-            XCTAssertEqual(model.processingFolder, batchFolder, "Stopping a recording must not take the running meeting's marker")
-            XCTAssertEqual(model.queuedFolders.last, recording, "The stopped recording waits behind the batch")
+            XCTAssertEqual(model.processing.folder, batchFolder, "Stopping a recording must not take the running meeting's marker")
+            XCTAssertEqual(model.processing.queuedFolders.last, recording, "The stopped recording waits behind the batch")
 
             model.cancelTranscription()
             try XCTUnwrap(release).resume(returning: true)
             await batch.value
             let queue = try XCTUnwrap(model.processing.task, "The stopped recording still runs after the batch is cancelled")
             XCTAssertFalse(model.processing.cancelling, "The batch's cancellation must not carry over to the next job")
-            XCTAssertTrue(model.canCancelTranscription)
-            XCTAssertNotEqual(model.processingStatusText, "Cancelling transcription…")
+            XCTAssertTrue(model.processing.canCancel)
+            XCTAssertNotEqual(model.processing.statusText, "Cancelling transcription…")
 
             model.cancelTranscription()
             for _ in 0..<100 where finishStop == nil { await Task.yield() }
             try XCTUnwrap(finishStop).resume()
             await queue.value
             XCTAssertEqual(model.state, .idle)
-            XCTAssertFalse(model.isProcessing)
+            XCTAssertFalse(model.processing.isProcessing)
             XCTAssertEqual(model.completedFolder, recording, "Only the second cancellation stops the recording's job")
             XCTAssertTrue(FileManager.default.fileExists(atPath: recording.path))
         }
@@ -343,20 +343,20 @@ final class TranscriptionQueueTests: XCTestCase {
             XCTAssertEqual(model.completedFolder, recording)
             XCTAssertEqual(model.failedTranscriptionFolders, [recording.standardizedFileURL],
                            "The meeting still transcribing must not be marked failed")
-            XCTAssertEqual(model.processingFolder, batchFolder)
+            XCTAssertEqual(model.processing.folder, batchFolder)
 
             let firstMeeting = try XCTUnwrap(release)
             release = nil
             firstMeeting.resume(returning: true)
             for _ in 0..<100 where release == nil { await Task.yield() }
-            XCTAssertEqual(model.transcriptionBatchIndex, 2)
+            XCTAssertEqual(model.processing.batchIndex, 2)
             XCTAssertEqual(model.state, .failed, "A batch step must not clear a capture failure")
             XCTAssertNotNil(model.lastError)
             XCTAssertEqual(model.completedFolder, recording, "Retry must still target the failed recording, not the saved meeting")
 
             try XCTUnwrap(release).resume(returning: false)
             await model.processing.task?.value
-            XCTAssertFalse(model.isProcessing)
+            XCTAssertFalse(model.processing.isProcessing)
             XCTAssertEqual(model.failedTranscriptionFolders, [recording.standardizedFileURL])
         }
     }

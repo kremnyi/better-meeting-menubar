@@ -31,7 +31,7 @@ struct BetterMeetingApp: App {
         } label: {
             MenuBarStatusLabel(
                 calendar: model.calendar, spinner: spinner, clock: model.recordingClock,
-                state: model.state, processing: model.isProcessing,
+                state: model.state, processing: model.processing.isProcessing,
                 attention: model.needsAttention,
                 showRecordingTime: model.menuBarRecordingTime
             )
@@ -43,10 +43,10 @@ struct BetterMeetingApp: App {
         .onChange(of: model.state) {
             model.updates.resumePendingInstallation()
         }
-        .onChange(of: model.isProcessing) {
+        .onChange(of: model.processing.isProcessing) {
             model.updates.resumePendingInstallation()
         }
-        .onChange(of: model.isProcessing && model.state == .idle && !reduceMotion, initial: true) { _, animate in
+        .onChange(of: model.processing.isProcessing && model.state == .idle && !reduceMotion, initial: true) { _, animate in
             spinner.setAnimating(animate)
         }
     }
@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     /// The call may have ended, or a recording may have started, between posting and presenting.
     func shouldPresentMicrophoneMeeting() -> Bool {
-        model?.detectsMeetings == true && model?.state == .idle && model?.isProcessing == false
+        model?.detectsMeetings == true && model?.state == .idle && model?.processing.isProcessing == false
     }
 
     func startMicrophoneRecording(action: String, start: (() -> Void)? = nil) {
@@ -96,13 +96,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func shouldPresentAudioWarning(_ request: UNNotificationRequest) -> Bool {
-        model?.audioWarning == true && model?.recordingID?.uuidString == request.identifier
+        model?.recording.audioWarning == true && model?.recording.id?.uuidString == request.identifier
             && model?.menuWindow?.isVisible != true
     }
 
     func shouldPresentDiskWarning(_ request: UNNotificationRequest) -> Bool {
-        guard let model, model.state == .recording, let id = model.recordingID else { return false }
-        return model.recordingDiskSpace?.isLow == true && request.identifier == id.uuidString + "-disk"
+        guard let model, model.state == .recording, let id = model.recording.id else { return false }
+        return model.recording.diskSpace?.isLow == true && request.identifier == MeetingNotifications.diskWarningID(id)
             && model.menuWindow?.isVisible != true
     }
 
@@ -171,8 +171,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func openNotification(_ request: UNNotificationRequest, action: String = UNNotificationDefaultActionIdentifier) {
         if [MeetingNotifications.audioWarningCategory, MeetingNotifications.diskWarningCategory].contains(request.content.categoryIdentifier) {
             guard action == UNNotificationDefaultActionIdentifier else { return }
-            guard model?.state == .recording, let id = model?.recordingID else { return }
-            let identifier = id.uuidString + (request.content.categoryIdentifier == MeetingNotifications.diskWarningCategory ? "-disk" : "")
+            guard model?.state == .recording, let id = model?.recording.id else { return }
+            let identifier = request.content.categoryIdentifier == MeetingNotifications.diskWarningCategory
+                ? MeetingNotifications.diskWarningID(id) : id.uuidString
             guard identifier == request.identifier else { return }
             showMenu()
             return

@@ -124,7 +124,7 @@ final class RecordingSession: ObservableObject {
                 state = .idle
                 model.accessibilityAnnouncement("Recording cancelled.")
                 model.refreshHistory()
-                if !model.isProcessing { model.completeTermination(true) }
+                if !model.processing.isProcessing { model.completeTermination(true) }
             } catch {
                 model.fail(error, folder: activeFolder)
             }
@@ -298,7 +298,7 @@ final class RecordingSession: ObservableObject {
     private func clearDiskWarning() {
         diskWarningTask?.cancel()
         diskWarningTask = nil
-        if let id { MeetingNotifications.remove(id.uuidString + "-disk") }
+        if let id { MeetingNotifications.remove(MeetingNotifications.diskWarningID(id)) }
     }
 
     private func clearAudioWarning() {

@@ -24,7 +24,7 @@ struct MeetingHistorySection: View {
                 }
                 .buttonStyle(.bordered)
             }
-            if !model.transcribableRecordings.isEmpty, model.state == .idle, !model.isProcessing {
+            if !model.transcribableRecordings.isEmpty, model.state == .idle, !model.processing.isProcessing {
                 let count = model.transcribableRecordings.count
                 HStack(spacing: 8) {
                     Text("\(count) not transcribed")
@@ -100,7 +100,7 @@ struct MeetingHistorySection: View {
                                     item,
                                     isNew: item.folderURL == model.completedFolder
                                         && !model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL),
-                                    canEdit: model.state == .idle && !model.isProcessing && model.historyError == nil,
+                                    canEdit: model.state == .idle && !model.processing.isProcessing && model.historyError == nil,
                                     status: rowStatus(item)
                                 )
                                 .frame(height: Self.rowHeight)
@@ -150,13 +150,13 @@ struct MeetingHistorySection: View {
 
     private func rowStatus(_ item: MeetingHistoryItem) -> MeetingRowStatus? {
         let path = item.folderURL.standardizedFileURL.path
-        if model.isProcessing, model.processingFolder?.standardizedFileURL.path == path {
-            let verb = model.processingPhase == .finalizingRecording ? "Saving"
-                : model.isExportingBundle ? "Exporting" : "Transcribing"
-            guard let fraction = model.processingFraction else { return .working(verb) }
+        if model.processing.isProcessing, model.processing.folder?.standardizedFileURL.path == path {
+            let verb = model.processing.phase == .finalizingRecording ? "Saving"
+                : model.processing.isExportingBundle ? "Exporting" : "Transcribing"
+            guard let fraction = model.processing.fraction else { return .working(verb) }
             return .working("\(verb) · \(fraction.formatted(.percent.precision(.fractionLength(0))))")
         }
-        if model.queuedFolders.contains(where: { $0.standardizedFileURL.path == path }) { return .queued }
+        if model.processing.queuedFolders.contains(where: { $0.standardizedFileURL.path == path }) { return .queued }
         if model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL) { return .failed }
         return item.needsTranscription ? .notTranscribed : nil
     }

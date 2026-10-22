@@ -39,12 +39,12 @@ final class AudioOnlyRecording: @unchecked Sendable {
                 AVEncoderBitRateKey: 128_000
             ])
             input.expectsMediaDataInRealTime = true
-            guard writer.canAdd(input) else { throw AudioExtractionError.cannotCreateExporter }
+            guard writer.canAdd(input) else { throw WriteError() }
             writer.add(input)
             inputs[type] = input
         }
         self.inputs = inputs
-        guard writer.startWriting() else { throw writer.error ?? AudioExtractionError.cannotCreateExporter }
+        guard writer.startWriting() else { throw writer.error ?? WriteError() }
     }
 
     func append(_ sample: CMSampleBuffer, type: SCStreamOutputType) {

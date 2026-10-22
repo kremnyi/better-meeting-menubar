@@ -2,7 +2,7 @@ import AppKit
 
 extension AppModel {
     var errorMessage: String? {
-        (lastError ?? transcriptionError).map { ($0 as? LocalizedError)?.errorDescription ?? $0.localizedDescription }
+        (lastError ?? transcriptionError).map { $0.localizedDescription }
     }
     var errorDetails: String? {
         (lastError ?? transcriptionError).map { error in let ns = error as NSError; return "\(ns.domain) \(ns.code)" }
@@ -22,9 +22,9 @@ extension AppModel {
         }
     }
 
-    var fileSettingsLocked: Bool { isCapturing || isProcessing }
+    var fileSettingsLocked: Bool { isCapturing || processing.isProcessing }
     var settingsLockNotice: String? {
-        switch (isCapturing, isProcessing) {
+        switch (isCapturing, processing.isProcessing) {
         case (true, true): "Recording, transcription, and file settings unlock when recording and processing finish."
         case (true, false): "Recording and file settings unlock when recording stops. Transcription changes apply to this meeting."
         case (false, true): "Transcription and file settings unlock when processing finishes."
@@ -79,7 +79,7 @@ extension AppModel {
     }
 
     var captureAccessSettingsURL: URL? {
-        guard state == .idle, !isProcessing else { return nil }
+        guard state == .idle, !processing.isProcessing else { return nil }
         let access = grantedAccess
         if !access.screen {
             return PrivacyPermission.screenRecording.settingsURL
@@ -123,7 +123,7 @@ extension AppModel {
     func terminationReply(
         confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runActive() }
     ) -> NSApplication.TerminateReply {
-        guard isCapturing || isProcessing else {
+        guard isCapturing || processing.isProcessing else {
             return .terminateNow
         }
         quitWhenFinished = false
@@ -140,11 +140,11 @@ extension AppModel {
             }
         } else {
             alert.messageText = state == .recording ? "Finish this recording and quit?" : "Quit when transcription finishes?"
-            if state == .recording && isProcessing { alert.messageText = "Finish this recording, then quit when transcription finishes?" }
+            if state == .recording && processing.isProcessing { alert.messageText = "Finish this recording, then quit when transcription finishes?" }
             if isTranscribingBatch { alert.messageText = "Quit when all queued transcriptions finish?" }
-            if isExportingBundle { alert.messageText = "Quit when export finishes?" }
+            if processing.isExportingBundle { alert.messageText = "Quit when export finishes?" }
             if state == .stopping { alert.messageText = "Quit when the recording finishes stopping?" }
-            alert.informativeText = isExportingBundle
+            alert.informativeText = processing.isExportingBundle
                 ? "Better Meeting will stay open until the export bundle is saved."
                 : "Better Meeting will stay open until the recording and transcript are saved."
             if isTranscribingBatch { alert.informativeText = "Better Meeting will stay open until the queue finishes. An error or cancellation will keep the app open." }
@@ -154,7 +154,7 @@ extension AppModel {
             guard confirm(alert) == .alertFirstButtonReturn else { return .terminateCancel }
         }
         // Capture can start or processing can finish while either confirmation is open.
-        guard state == .recording || state == .stopping || isProcessing else {
+        guard state == .recording || state == .stopping || processing.isProcessing else {
             return state == .idle ? .terminateNow : .terminateCancel
         }
         quitWhenFinished = true

@@ -41,7 +41,6 @@ if [[ "$channel" == beta ]]; then
         "$PWD"/dist/Better-Meeting-*-arm64.zip(N)
     )
     stable_archives=(${stable_archives:#*Better-Meeting-*b[0-9]*-arm64.zip})
-    stable_archives=(${stable_archives:#*Better-Meeting-*beta*-arm64.zip})
     if (( ${#stable_archives} == 0 )); then
         echo "No published stable archive found to keep in the beta feed." >&2
         echo "Put the current stable ZIP back in dist/ and retry." >&2
