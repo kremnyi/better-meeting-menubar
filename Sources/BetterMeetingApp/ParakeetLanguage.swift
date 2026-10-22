@@ -1,7 +1,7 @@
 import NaturalLanguage
 
 /// Parakeet v3 returns no per-segment language, so tags come from script and function-word evidence.
-/// Hint, not model output; extend the word lists if other languages need labels.
+/// shortcut: hint, not model output; extend the word lists if other languages need labels.
 enum ParakeetLanguage {
     static func tag(_ text: String) -> String? {
         let words = text.lowercased().split { !$0.isLetter && $0 != "'" && $0 != "’" }
