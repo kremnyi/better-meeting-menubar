@@ -437,20 +437,22 @@ struct MenuBarControlView: View {
 
     @ViewBuilder
     private var processingIndicator: some View {
-        if let fraction = model.processing.fraction {
-            HStack(spacing: 8) {
+        // Steps without a known fraction keep the same bar and percentage slot, so the layout holds between steps.
+        let fraction = model.processing.fraction
+        HStack(spacing: 8) {
+            if let fraction {
                 ProgressView(value: fraction)
-
-                Text(fraction, format: .percent.precision(.fractionLength(0)))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 34, alignment: .trailing)
+            } else {
+                ProgressView()
             }
-            .progressViewStyle(.linear)
-        } else {
-            ProgressView()
-                .controlSize(.small)
+
+            Text(fraction ?? 0, format: .percent.precision(.fractionLength(0)))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .trailing)
+                .opacity(fraction == nil ? 0 : 1)
         }
+        .progressViewStyle(.linear)
     }
 
     private var failedContent: some View {

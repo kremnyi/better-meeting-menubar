@@ -198,8 +198,11 @@ struct MeetingHistorySection: View {
 
                     HStack(spacing: 4) {
                         Text(Self.dayTitle(item.recordedAt) + ", " + item.recordedAt.formatted(date: .omitted, time: .shortened))
-                        Text("·")
-                        Text(Timecode.readable(item.duration))
+                        // A recording that is still being saved has no duration yet; "0 sec" would read as empty.
+                        if item.duration >= 1 {
+                            Text("·")
+                            Text(Timecode.readable(item.duration))
+                        }
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
