@@ -9,26 +9,26 @@ final class AppUpdaterTests: XCTestCase {
     func testPreservesUpdateOptIn() throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingUpdates")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        XCTAssertFalse(AppModel(defaults: defaults).automaticUpdateChecks)
+        XCTAssertFalse(makeModel(defaults).automaticUpdateChecks)
         defaults.set(true, forKey: "checkUpdatesOnLaunch")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         XCTAssertTrue(model.automaticUpdateChecks)
         model.automaticUpdateChecks = false
-        XCTAssertFalse(AppModel(defaults: defaults).automaticUpdateChecks)
+        XCTAssertFalse(makeModel(defaults).automaticUpdateChecks)
     }
 
     @MainActor
     func testBetaChannelOptInDefaultsOffAndAppliesToUpdater() throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingUpdates")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         XCTAssertFalse(model.betaUpdates)
         let updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: model.updates, delegate: model.updates)
         XCTAssertEqual(model.updates.allowedChannels(for: updater), [], "Stable users must not see beta items")
         model.betaUpdates = true
         XCTAssertEqual(model.updates.allowedChannels(for: updater), ["beta"])
-        XCTAssertTrue(AppModel(defaults: defaults).betaUpdates)
-        XCTAssertTrue(AppModel(defaults: defaults).updates.allowsBetaUpdates)
+        XCTAssertTrue(makeModel(defaults).betaUpdates)
+        XCTAssertTrue(makeModel(defaults).updates.allowsBetaUpdates)
         model.betaUpdates = false
         XCTAssertEqual(model.updates.allowedChannels(for: updater), [])
     }

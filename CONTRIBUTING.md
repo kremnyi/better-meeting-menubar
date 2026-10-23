@@ -246,7 +246,10 @@ The script performs these steps; use them to finish a release it could not compl
 2. Run `swift test`, then `./scripts/package-release.sh`. This creates a
    self-signed ZIP and `.sha256` file in `dist/`, then signs the archive for
    Sparkle and generates `appcast.xml`. The feed contains the latest full update;
-   no delta archives or separate hosting are needed.
+   no delta archives or separate hosting are needed. After the feed check passes,
+   the script prunes `dist/`: it keeps the new version, the versions listed in
+   `appcast.xml` (for crash symbolication), and all stable ZIPs, and deletes
+   older dSYMs, beta ZIPs and feed leftovers. Release notes are never deleted.
 3. Set the cask's `version` and `sha256` to match that archive. Run
    `ruby -c Casks/better-meeting.rb` and commit the version, cask, and feed together.
 4. Tag that commit as `v<version>` and push the tag. Wait for GitHub Actions

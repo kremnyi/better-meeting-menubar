@@ -19,10 +19,16 @@ final class MeetingWhisperKit: WhisperKit {
 }
 
 extension WhisperKit {
+    /// At most `limit` windows, more for long audio so a language spoken for ten minutes still gets a window (spacing about five minutes).
+    static func languageWindowCount(samples: Int, limit: Int) -> Int {
+        let length = Constants.defaultWindowSamples
+        return min(max(limit, samples / (length * 10)), (samples + length - 1) / length)
+    }
+
     /// Whisper names a language even for silence, so mostly silent windows are skipped unless all are.
     func languageProbabilities(in samples: [Float], limit: Int = 12) async throws -> [[String: Float]] {
         let length = Constants.defaultWindowSamples
-        let count = min(limit, (samples.count + length - 1) / length)
+        let count = Self.languageWindowCount(samples: samples.count, limit: limit)
         let windows = (0..<count).map { index in
             let start = count > 1 ? index * (samples.count - length) / (count - 1) : 0
             return Array(samples[start..<min(start + length, samples.count)])

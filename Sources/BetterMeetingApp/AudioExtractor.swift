@@ -40,6 +40,12 @@ enum AudioExtractor {
         let temporaryURL = audioURL.deletingLastPathComponent()
             .appendingPathComponent(".audio-\(UUID().uuidString).m4a")
         defer { try? FileManager.default.removeItem(at: temporaryURL) }
+        // A crash or force-quit mid-export leaves its temp file behind.
+        let folder = audioURL.deletingLastPathComponent()
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        where name.hasPrefix(".audio-") && name.hasSuffix(".m4a") {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
+        }
 
         let asset = AVURLAsset(url: recordingURL)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)

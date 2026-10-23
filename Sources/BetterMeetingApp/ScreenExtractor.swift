@@ -44,8 +44,15 @@ enum ScreenExtractor {
             decoded += 1
             let signature = try signature(of: thumbnail)
             if shouldKeep(signature, previous: previousSignature, gap: time - previousTime) {
-                let image = try await frames.image(at: timestamp).image
-                let lines = try recognizeText(in: image, recognitionLanguages: recognitionLanguages)
+                let lines: [String]
+                do {
+                    let image = try await frames.image(at: timestamp).image
+                    lines = try recognizeText(in: image, recognitionLanguages: recognitionLanguages)
+                } catch {
+                    // Same rule as the thumbnail: one bad frame must not discard hours of work.
+                    try Task.checkCancellation()
+                    continue
+                }
                 let added = addedLines(lines, previous: previousText)
                 keyframes.append(ScreenEvent(time: time, added: added))
                 previousText = lines

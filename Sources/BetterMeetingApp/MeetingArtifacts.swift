@@ -124,7 +124,8 @@ enum MeetingArtifacts {
         var candidate = root.appendingPathComponent(baseName, isDirectory: true)
         var suffix = 2
 
-        while candidate.standardizedFileURL.path != current?.standardizedFileURL.path
+        // The default volume ignores case, so a case-only rename finds its own folder.
+        while candidate.standardizedFileURL.path.caseInsensitiveCompare(current?.standardizedFileURL.path ?? "") != .orderedSame
                 && FileManager.default.fileExists(atPath: candidate.path) {
             candidate = root.appendingPathComponent("\(baseName) \(suffix)", isDirectory: true)
             suffix += 1

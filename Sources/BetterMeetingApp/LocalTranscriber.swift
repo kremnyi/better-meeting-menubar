@@ -262,9 +262,8 @@ actor LocalTranscriber {
         }
 
         progressHandler(.loadingModel)
-        let loaded: MeetingWhisperKit
-        do {
-            loaded = try await MeetingWhisperKit(
+        let loaded = try await Self.removingDamagedModel(at: modelFolder) {
+            try await MeetingWhisperKit(
                 modelFolder: modelFolder.path,
                 tokenizerFolder: downloadBase,
                 verbose: false,
@@ -272,12 +271,6 @@ actor LocalTranscriber {
                 load: true,
                 download: false
             )
-        } catch {
-            try Task.checkCancellation()
-            guard (error as NSError).domain == MLModelErrorDomain else { throw error }
-            // The downloader reuses existing files, even when their contents are damaged.
-            try FileManager.default.removeItem(at: modelFolder)
-            throw WhisperError.modelsUnavailable("Speech model files could not be loaded. Retry to download them again.")
         }
         whisper = loaded
         loadedModel = model
@@ -285,9 +278,26 @@ actor LocalTranscriber {
         return loaded
     }
 
+    /// Each step re-checks, so a job that starts during an unload keeps the engine it just loaded.
     func unloadIfIdle() async {
         guard activeTranscriptions == 0 else { return }
-        await unloadLoadedModels()
+        await unloadWhisper()
+        guard activeTranscriptions == 0 else { return }
+        await unloadParakeet()
+        guard activeTranscriptions == 0 else { return }
+        await unloadSpeakerKit()
+    }
+
+    /// The downloader reuses existing files, even when their contents are damaged, so a CoreML load failure removes the folder.
+    static func removingDamagedModel<T>(at folder: URL, _ load: () async throws -> T) async throws -> T {
+        do {
+            return try await load()
+        } catch {
+            try Task.checkCancellation()
+            guard (error as NSError).domain == MLModelErrorDomain else { throw error }
+            try FileManager.default.removeItem(at: folder)
+            throw WhisperError.modelsUnavailable("Speech model files could not be loaded. Retry to download them again.")
+        }
     }
 
     private func unloadLoadedModels() async {
@@ -360,9 +370,12 @@ actor LocalTranscriber {
         if let speakerKit { return speakerKit }
         try Task.checkCancellation()
         // Fewer CoreML workers than SpeakerKit's 4 and 8: on a 17-minute sample peak memory fell from 607 MB to 403 MB.
-        let kit = try await SpeakerKit(PyannoteConfig(
-            downloadBase: downloadBase.path, verbose: false, concurrentSegmenterWorkers: 2, concurrentEmbedderWorkers: 4
-        ))
+        let kit = try await Self.removingDamagedModel(at: Self.speakerKitDirectory(in: downloadBase)) {
+            try await SpeakerKit(PyannoteConfig(
+                downloadBase: downloadBase.path, load: true, verbose: false,
+                concurrentSegmenterWorkers: 2, concurrentEmbedderWorkers: 4
+            ))
+        }
         try Task.checkCancellation()
         // Another caller may have finished loading while this one waited.
         if let speakerKit {
@@ -397,21 +410,23 @@ actor LocalTranscriber {
         try Task.checkCancellation()
         progressHandler(.preparingModel)
         try repairParakeetVocabulary()
-        let models = try await AsrModels.downloadAndLoad(
-            to: Self.parakeetDirectory(in: downloadBase),
-            version: Self.parakeetVersion,
-            progressHandler: { progress in
-                switch progress.phase {
-                case .listing:
-                    progressHandler(.preparingModel)
-                case .downloading:
-                    guard let fraction = progress.fractionCompleted.unitClamped else { return }
-                    progressHandler(.downloadingModel(fraction))
-                case .compiling:
-                    progressHandler(.loadingModel)
+        let models = try await Self.removingDamagedModel(at: Self.parakeetDirectory(in: downloadBase)) {
+            try await AsrModels.downloadAndLoad(
+                to: Self.parakeetDirectory(in: downloadBase),
+                version: Self.parakeetVersion,
+                progressHandler: { progress in
+                    switch progress.phase {
+                    case .listing:
+                        progressHandler(.preparingModel)
+                    case .downloading:
+                        guard let fraction = progress.fractionCompleted.unitClamped else { return }
+                        progressHandler(.downloadingModel(fraction))
+                    case .compiling:
+                        progressHandler(.loadingModel)
+                    }
                 }
-            }
-        )
+            )
+        }
         try Task.checkCancellation()
         progressHandler(.loadingModel)
         let manager = AsrManager(config: .default)

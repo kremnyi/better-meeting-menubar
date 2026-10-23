@@ -48,12 +48,17 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private var startContinuation: CheckedContinuation<Void, Error>?
     private var stopContinuation: CheckedContinuation<Void, Error>?
     private var startCaptureTask: Task<Void, Never>?
+    private var startTimeoutTask: Task<Void, Never>?
+    private var stopTimeoutTask: Task<Void, Never>?
     private var starting = false
     private var captureStopped = false
     // A call with no keyboard or mouse input must not let the Mac idle-sleep mid-recording.
     private var sleepActivity: NSObjectProtocol?
     var startCapture: (SCStream) async throws -> Void = { try await $0.startCapture() }
     var stopCapture: (SCStream) async throws -> Void = { try await $0.stopCapture() }
+    // ScreenCaptureKit normally reports a recording output within a second; finalizing a long MP4 on a slow drive can take
+    // several seconds. A minute is far beyond both, so only a callback that will never come ends the wait.
+    var callbackTimeout: Duration = .seconds(60)
     // Audio buffers stay on audioQueue so the main thread is not woken for each one.
     private nonisolated let meter = OSAllocatedUnfairLock(initialState: MeterState())
     nonisolated let audioQueue = DispatchQueue(label: "com.kremnyi.bettermeeting.audio-levels", qos: .userInitiated)
@@ -188,12 +193,19 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
 
         try await withCheckedThrowingContinuation { continuation in
             startContinuation = continuation
+            // A screen recording starts only when its output reports in; without that report the start would wait forever.
+            startTimeoutTask = Task {
+                try? await Task.sleep(for: callbackTimeout)
+                guard !Task.isCancelled else { return }
+                finishStart(with: .failure(RecorderError.startTimedOut))
+            }
             startCaptureTask = Task {
                 do {
                     try await startCapture(stream)
-                    if mode == .audioOnly { finishStart(with: .success(())) }
+                    // A start that timed out can finish late; its result must not settle a later session.
+                    if mode == .audioOnly, self.stream === stream { finishStart(with: .success(())) }
                 } catch {
-                    finishStart(with: .failure(error))
+                    if self.stream === stream { finishStart(with: .failure(error)) }
                 }
             }
         }
@@ -222,7 +234,17 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                 do {
                     captureStopped = true
                     try await stopCapture(stream)
-                    if audioRecording.withLock({ $0 != nil }) { finalizeAudio(error: nil) }
+                    if audioRecording.withLock({ $0 != nil }) {
+                        finalizeAudio(error: nil)
+                    } else if stopContinuation != nil, stream === self.stream {
+                        // The output's finish callback ends the stop. The stream is already stopped, so a missing
+                        // callback fails the stop without touching the file; the recording stays in its folder.
+                        stopTimeoutTask = Task {
+                            try? await Task.sleep(for: callbackTimeout)
+                            guard !Task.isCancelled else { return }
+                            finishStop(with: .failure(RecorderError.stopTimedOut))
+                        }
+                    }
                 } catch {
                     // Clean-up may still need to stop a capture that failed to stop here.
                     if stream === self.stream { captureStopped = false }
@@ -383,12 +405,27 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                 captureStopped = true
                 try? await stopCapture(stream)
             }
-            // The capture queue can still hold its last buffers when capture ends.
-            await withCheckedContinuation { continuation in
-                audioQueue.async { continuation.resume() }
+            // The capture queue can still hold its last buffers when capture ends. A writer or queue that never
+            // answers must not hold the stop forever.
+            let outcome = OSAllocatedUnfairLock<Result<Void, Error>?>(initialState: nil)
+            let finishTask = Task { [audioQueue] in
+                await withCheckedContinuation { continuation in
+                    audioQueue.async { continuation.resume() }
+                }
+                let result: Result<Void, Error>
+                do { try await recording.finish(); result = .success(()) } catch { result = .failure(error) }
+                outcome.withLock { $0 = result }
             }
+            await Self.wait(for: finishTask, atMost: callbackTimeout)
             var failure = error
-            do { try await recording.finish() } catch { failure = failure ?? error }
+            switch outcome.withLock({ $0 }) {
+            case .success: break
+            case .failure(let writeError): failure = failure ?? writeError
+            case nil:
+                failure = failure ?? RecorderError.stopTimedOut
+                // cleanUp would cancel the writer and delete the file; the late finish keeps what was recorded.
+                audioRecording.withLock { $0 = nil }
+            }
             if stopContinuation != nil {
                 finishStop(with: failure.map { .failure($0) } ?? .success(()))
             } else {
@@ -400,6 +437,8 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private func finishStart(with result: Result<Void, Error>) {
         guard let continuation = startContinuation else { return }
         startContinuation = nil
+        startTimeoutTask?.cancel()
+        startTimeoutTask = nil
         if case .failure = result {
             cleanUp()
         }
@@ -422,6 +461,10 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private func cleanUp() {
         let previousStream = captureStopped ? nil : stream
         captureStopped = false
+        startTimeoutTask?.cancel()
+        startTimeoutTask = nil
+        stopTimeoutTask?.cancel()
+        stopTimeoutTask = nil
         stream = nil
         recordingOutput = nil
         microphone = nil
@@ -440,12 +483,25 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         }
         // Settle the start task first so stopCapture never overlaps a
         // still-in-flight startCapture when an early delegate failure triggers cleanUp.
+        // A startCapture that never returns must not keep the stream running, so the wait is bounded.
         let startTask = startCaptureTask
         startCaptureTask = nil
         let stopCapture = stopCapture
+        let limit = callbackTimeout
         Task {
-            _ = await startTask?.value
+            if let startTask { await Self.wait(for: startTask, atMost: limit) }
             if let previousStream { try? await stopCapture(previousStream) }
+        }
+    }
+
+    private static func wait(for task: Task<Void, Never>, atMost limit: Duration) async {
+        let resumed = OSAllocatedUnfairLock(initialState: false)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let resume = {
+                if resumed.withLock({ wasResumed in defer { wasResumed = true }; return !wasResumed }) { continuation.resume() }
+            }
+            let timer = Task { try? await Task.sleep(for: limit); resume() }
+            Task { await task.value; timer.cancel(); resume() }
         }
     }
 }
@@ -481,6 +537,8 @@ enum RecorderError: LocalizedError {
     case microphonePermissionDenied
     case noDisplay
     case noMicrophone
+    case startTimedOut
+    case stopTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -496,6 +554,10 @@ enum RecorderError: LocalizedError {
             "The selected display is unavailable. Choose a connected display in Options."
         case .noMicrophone:
             "The selected microphone is unavailable. Choose a connected microphone in Options."
+        case .startTimedOut:
+            "The recording did not start. Try again."
+        case .stopTimedOut:
+            "The recording did not finish saving in time. Check the meeting folder for the file."
         }
     }
 }

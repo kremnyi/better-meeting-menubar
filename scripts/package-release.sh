@@ -72,3 +72,25 @@ for item in feed.findall("channel/item"):
 feed.write("appcast.xml", encoding="utf-8", xml_declaration=True)
 PY
 xcrun swift -module-cache-path .build/module-cache scripts/verify-update.swift appcast.xml App/Info.plist "dist/$archive"
+
+# Prune dist/ only after the archive and feed passed verification. Keeps the current version, every
+# version still in appcast.xml (shipped builds can produce crash reports), and every stable ZIP (the
+# beta feed above needs one). Older dSYMs, betas and feed leftovers are deleted. Files with other names
+# (release notes, "Better Meeting.app") are never touched.
+prune_dist() {
+    local dist=$1 feed=$2 current=$3 file base rest v
+    local -a keep
+    keep=("$current" ${(f)"$(sed -n 's|.*<sparkle:shortVersionString>\(.*\)</sparkle:shortVersionString>.*|\1|p' "$feed")"})
+    for file in "$dist"/Better-Meeting-*(N); do
+        base=${file:t}
+        [[ $base == Better-Meeting-*-(arm64|appcast|preparation)* ]] || continue
+        rest=${base#Better-Meeting-}
+        v=${rest%%-(arm64|appcast|preparation)*}
+        [[ -n $v && $v != $rest ]] || continue
+        (( ${keep[(Ie)$v]} )) && continue
+        [[ $base == Better-Meeting-$v-arm64.zip* && $v != *b[0-9]* ]] && continue
+        echo "Pruning $file"
+        rm -rf -- "$file"
+    done
+}
+prune_dist dist appcast.xml "$version"

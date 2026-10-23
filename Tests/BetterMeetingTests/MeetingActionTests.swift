@@ -48,7 +48,7 @@ final class MeetingActionTests: XCTestCase {
                 XCTAssertTrue(blocked.needsTranscription)
                 XCTAssertEqual(blocked.recoveryFolder?.resolvingSymlinksInPath().path, staging.resolvingSymlinksInPath().path)
                 XCTAssertTrue(MeetingHistorySection.rowHelp(blocked).contains("could not be restored"))
-                let model = AppModel(defaults: defaults)
+                let model = makeModel(defaults)
                 await model.historyRefreshTask?.value
                 for scheme: ColorScheme in [.light, .dark] {
                     let view = hostingView(MenuBarControlView(), model: model, scheme: scheme)
@@ -99,7 +99,7 @@ final class MeetingActionTests: XCTestCase {
         try "# Keep this title\n\nEdited notes".write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
         let names = ["transcript.md", "transcript.json", "metadata.json"]
         let original = try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         let item = try XCTUnwrap(model.transcriptionHistory.first)
         model.retryTranscription(item)
@@ -193,6 +193,11 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertEqual(updated["titleWasProvided"] as? Bool, true)
         XCTAssertEqual(updated["customField"] as? String, "Keep this")
 
+        let lowercase = try MeetingArtifacts.createDirectory(in: root, title: "weekly sync", recordedAt: date)
+        let recased = try MeetingArtifacts.renameDirectory(lowercase, title: "Weekly Sync", recordedAt: date)
+        XCTAssertTrue(recased.lastPathComponent.hasSuffix(" — Weekly Sync"), "A case-only rename must not add a suffix")
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: root.path).contains(recased.lastPathComponent))
+
         for legacy in [false, true] {
             let pending = root.appendingPathComponent(legacy ? "Legacy capture" : "Pending capture")
             try FileManager.default.createDirectory(at: pending, withIntermediateDirectories: false)
@@ -230,13 +235,18 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertEqual(failure.body, renamed.lastPathComponent)
         XCTAssertEqual(failure.categoryIdentifier, "", "A failure opens the folder and offers no transcript actions")
         XCTAssertNil(MeetingNotifications.folder(from: UNMutableNotificationContent()))
+
+        let trash = root.appendingPathComponent(".Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: renamed, to: trash.appendingPathComponent(renamed.lastPathComponent))
+        XCTAssertNil(MeetingNotifications.folder(from: notification), "A trashed meeting must not open from the Trash")
     }
 
     @MainActor
     func testAudioWarningNotificationOpensControlsAndIgnoresStaleRecordings() throws {
         _ = NSApplication.shared
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingAudioNotification")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         let delegate = AppDelegate()
         delegate.model = model
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -343,7 +353,7 @@ final class MeetingActionTests: XCTestCase {
             let folder = try MeetingArtifacts.createDirectory(in: root, title: title, recordedAt: date)
             try MeetingArtifacts.write(title: title, recordedAt: date, duration: 60, segments: [], to: folder)
         }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         let item = try XCTUnwrap(model.transcriptionHistory.first { $0.title == "Trash me" })
         var trashed: [URL] = []
@@ -366,7 +376,7 @@ final class MeetingActionTests: XCTestCase {
         let kept = try MeetingArtifacts.createDirectory(in: root, title: "Earlier meeting", recordedAt: date)
         try MeetingArtifacts.write(title: "Earlier meeting", recordedAt: date, duration: 60, segments: [], to: kept)
         let active = try MeetingArtifacts.createDirectory(in: root, title: "Nobody came", recordedAt: date)
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         model.recording.activeFolder = active
         model.recording.didStart(at: date)
         let stopping = expectation(description: "capture stop requested")

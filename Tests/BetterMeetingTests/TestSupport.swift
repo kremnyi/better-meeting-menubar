@@ -65,7 +65,39 @@ func removeTempRoot(_ root: URL) {
     try? FileManager.default.removeItem(at: root)
 }
 
+/// Models made by `makeModel`, by the defaults they use. `removeTempDefaults` stops them first, so no timer,
+/// meeting detector or model task outlives its test.
+@MainActor private var modelsByDefaults: [ObjectIdentifier: [AppModel]] = [:]
+
+/// Use instead of `AppModel(defaults:)`: the model is stopped when the test removes its temp defaults.
+@MainActor
+func makeModel(_ defaults: UserDefaults) -> AppModel {
+    let model = AppModel(defaults: defaults)
+    modelsByDefaults[ObjectIdentifier(defaults), default: []].append(model)
+    return model
+}
+
+@MainActor
+private func stopBackgroundWork(of model: AppModel) {
+    model.recording.cancelStart()
+    model.recording.stopTimer()
+    if model.detectsMeetings { model.detectsMeetings = false }
+    model.modelPreparationTask?.cancel()
+    model.modelDownloadTask?.cancel()
+    model.cancelModelUnload()
+    model.processing.task?.cancel()
+}
+
 func removeTempDefaults(_ defaults: UserDefaults, suite: String, root: URL) {
+    let stopModels = {
+        MainActor.assumeIsolated {
+            for model in modelsByDefaults.removeValue(forKey: ObjectIdentifier(defaults)) ?? [] {
+                stopBackgroundWork(of: model)
+            }
+        }
+    }
+    // Async tests that are not on the main actor reach their defer on another thread.
+    if Thread.isMainThread { stopModels() } else { DispatchQueue.main.sync(execute: stopModels) }
     defaults.removePersistentDomain(forName: suite)
     removeTempRoot(root)
 }

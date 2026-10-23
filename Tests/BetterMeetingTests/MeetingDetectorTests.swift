@@ -167,7 +167,7 @@ final class MeetingDetectorTests: XCTestCase {
         _ = NSApplication.shared
         let (defaults, suite, root) = try makeTempDefaults("MeetingDetection")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         let delegate = AppDelegate()
         delegate.model = model
 
@@ -187,9 +187,11 @@ final class MeetingDetectorTests: XCTestCase {
 
         model.detectsMeetings = true
         XCTAssertTrue(delegate.shouldPresentMicrophoneMeeting())
-        XCTAssertTrue(AppModel(defaults: defaults).detectsMeetings, "The setting is remembered")
+        XCTAssertTrue(makeModel(defaults).detectsMeetings, "The setting is remembered")
         model.recording.didStart(at: Date())
         XCTAssertFalse(delegate.shouldPresentMicrophoneMeeting(), "A recording is already under way")
+        model.recording.state = .failed
+        XCTAssertTrue(delegate.shouldPresentMicrophoneMeeting(), "A failed recording must not hide the next call")
         model.detectsMeetings = false
     }
 }

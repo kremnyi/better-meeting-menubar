@@ -143,7 +143,9 @@ enum TranscriptionPasses {
                 open.append(reached)
                 reached += 1
             }
-            open.removeAll { !(segments[$0].end > cursor + 0.2) }
+            // A line crossing the cursor must reach well past it, or tails repeat; a short line starting after it is kept.
+            // Every pick ends past the cursor, so it moves forward and each line is picked at most once.
+            open.removeAll { !(segments[$0].end > cursor + 0.2 || (segments[$0].start >= cursor && segments[$0].end > cursor)) }
             // Keep the first candidate on ties, matching Python's max().
             var best: ScoredSegment?
             // Only a language's next line competes; its later lines would otherwise win and skip the next one.

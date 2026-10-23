@@ -86,7 +86,9 @@ enum MeetingNotifications {
             resolvingBookmarkData: bookmark, options: [.withoutUI, .withoutMounting],
             bookmarkDataIsStale: &stale
         ), folder.isFileURL,
-              (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return nil }
+              (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
+              // A bookmark follows a folder into the Trash; a trashed meeting is gone.
+              !folder.pathComponents.contains(where: { $0 == ".Trash" || $0 == ".Trashes" }) else { return nil }
         return folder
     }
 }

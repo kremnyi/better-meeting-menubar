@@ -92,7 +92,8 @@ final class AudioOnlyRecordingTests: XCTestCase {
         let blocked = OSAllocatedUnfairLock(initialState: false)
         let capture = DispatchQueue(label: "capture")
         let writer = try AudioOnlyRecording(to: url, queue: capture,
-            isReady: { input in !blocked.withLock { $0 } && input.isReadyForMoreMediaData }) { _ in }
+            isReady: { input in !blocked.withLock { $0 } && input.isReadyForMoreMediaData },
+            stallLimit: .milliseconds(300)) { _ in }
         for index in 0..<25 {
             let buffer = try sample(at: Double(index) * 0.02, frequency: 440, channels: 1)
             capture.sync { writer.append(buffer, type: .audio) }
@@ -108,8 +109,7 @@ final class AudioOnlyRecordingTests: XCTestCase {
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("encoder could not keep up"))
         }
-        XCTAssertGreaterThan(waitingSince.duration(to: .now), .seconds(1), "Temporary pressure must be given time to recover")
-        XCTAssertLessThan(waitingSince.duration(to: .now), .seconds(5), "Stopping must not wait indefinitely for an encoder")
+        XCTAssertGreaterThanOrEqual(waitingSince.duration(to: .now), .milliseconds(300), "Temporary pressure must be given time to recover")
         let audioURL = root.appendingPathComponent("stalled.m4a")
         try await AudioExtractor.extract(from: url, to: audioURL) { _ in }
         let audio = try AVAudioFile(forReading: audioURL)
@@ -143,6 +143,112 @@ final class AudioOnlyRecordingTests: XCTestCase {
         let audio = try AVAudioFile(forReading: audioURL)
         XCTAssertEqual(Double(audio.length) / audio.processingFormat.sampleRate, 0.5, accuracy: 0.06,
                        "The audio recorded before a failed stop must be kept")
+    }
+
+    @MainActor
+    func testScreenStartWithoutOutputCallbackFailsAndReleasesCapture() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        // The output never reports in, whether startCapture returns or never does.
+        let starts: [(SCStream) async throws -> Void] = [{ _ in }, { _ in try await Task.sleep(for: .seconds(3600)) }]
+        for startCapture in starts {
+            let recorder = MeetingRecorder()
+            recorder.callbackTimeout = .milliseconds(200)
+            recorder.startCapture = startCapture
+            let captureStopped = expectation(description: "the stream is stopped")
+            recorder.stopCapture = { _ in captureStopped.fulfill() }
+            let before = idleSleepAssertions()
+            let stream = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+            do {
+                try await recorder.begin(stream, to: root.appendingPathComponent("recording.mp4"), microphone: nil, mode: .screen)
+                XCTFail("A start that never reports must fail")
+            } catch RecorderError.startTimedOut {}
+            await fulfillment(of: [captureStopped], timeout: 5)
+            XCTAssertEqual(idleSleepAssertions(), before, "A failed start must let the Mac sleep again")
+            XCTAssertNil(recorder.recordingOutput)
+        }
+    }
+
+    @MainActor
+    func testLateResultOfATimedOutStartDoesNotSettleTheNextStart() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let recorder = MeetingRecorder()
+        recorder.callbackTimeout = .milliseconds(300)
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+        recorder.startCapture = { _ in
+            // Only the first start is slow; it succeeds after its own timeout.
+            if calls.withLock({ $0 += 1; return $0 }) == 1 { try await Task.sleep(for: .milliseconds(450)) }
+        }
+        recorder.stopCapture = { _ in }
+        let first = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+        do {
+            try await recorder.begin(first, to: root.appendingPathComponent("first.mov"), microphone: nil, mode: .audioOnly)
+            XCTFail("A slow start must time out")
+        } catch RecorderError.startTimedOut {}
+        // A screen start settles only on its output callback, which never comes here.
+        recorder.callbackTimeout = .seconds(1)
+        let second = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+        do {
+            try await recorder.begin(second, to: root.appendingPathComponent("second.mp4"), microphone: nil, mode: .screen)
+            XCTFail("The earlier start finishing late must not start this one")
+        } catch RecorderError.startTimedOut {}
+    }
+
+    @MainActor
+    func testAudioOnlyStopThatNeverFinishesFailsAndKeepsTheFile() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let url = root.appendingPathComponent("recording.mov")
+        let recorder = MeetingRecorder()
+        recorder.callbackTimeout = .milliseconds(200)
+        recorder.startCapture = { _ in }
+        recorder.stopCapture = { _ in }
+        let stream = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+        try await recorder.begin(stream, to: url, microphone: nil, mode: .audioOnly)
+        for index in 0..<5 {
+            let buffer = try sample(at: Double(index) * 0.02, frequency: 440, channels: 2)
+            recorder.audioQueue.sync { recorder.stream(stream, didOutputSampleBuffer: buffer, of: .audio) }
+        }
+        // A capture queue that never drains stands in for a writer that never answers.
+        let release = DispatchSemaphore(value: 0)
+        recorder.audioQueue.async { release.wait() }
+        defer { release.signal() }
+        let stopped = expectation(description: "the stop gives up")
+        Task {
+            do { try await recorder.stop(); XCTFail("A stop that never finishes must fail") }
+            catch RecorderError.stopTimedOut {} catch { XCTFail("\(error)") }
+            stopped.fulfill()
+        }
+        await fulfillment(of: [stopped], timeout: 5)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "A timed-out stop must not delete the recording")
+    }
+
+    @MainActor
+    func testScreenStopWithoutFinishCallbackFailsAndIgnoresALateCallback() async throws {
+        let root = makeTempRoot()
+        defer { removeTempRoot(root) }
+        let recorder = MeetingRecorder()
+        recorder.callbackTimeout = .milliseconds(200)
+        recorder.startCapture = { _ in
+            recorder.recordingOutputDidStartRecording(try XCTUnwrap(recorder.recordingOutput))
+        }
+        recorder.stopCapture = { _ in }
+        let before = idleSleepAssertions()
+        let stream = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+        try await recorder.begin(stream, to: root.appendingPathComponent("recording.mp4"), microphone: nil, mode: .screen)
+        let output = try XCTUnwrap(recorder.recordingOutput)
+        XCTAssertEqual(idleSleepAssertions(), before + 1)
+        do {
+            try await recorder.stop()
+            XCTFail("A stop that never reports must fail")
+        } catch RecorderError.stopTimedOut {}
+        XCTAssertEqual(idleSleepAssertions(), before, "A failed stop must let the Mac sleep again")
+        let unexpected = expectation(description: "a late callback must not report another stop")
+        unexpected.isInverted = true
+        recorder.onUnexpectedStop = { _ in unexpected.fulfill() }
+        recorder.recordingOutputDidFinishRecording(output)
+        await fulfillment(of: [unexpected], timeout: 0.2)
     }
 
     @MainActor

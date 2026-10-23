@@ -168,7 +168,7 @@ final class MeetingCalendarTests: XCTestCase {
         await calendar.reminders.task?.value
         XCTAssertEqual(center.authorizationRequests, 1)
         XCTAssertTrue(CalendarIntegration(defaults: defaults, reader: reader).notifyAtStart)
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         model.calendar = calendar
         let delegate = AppDelegate()
         delegate.model = model
@@ -213,24 +213,49 @@ final class MeetingCalendarTests: XCTestCase {
     }
 
     @MainActor
+    func testStartingFromACalendarEventSavesItWithTheRecording() async throws {
+        _ = NSApplication.shared
+        let (defaults, suite, root) = try makeTempDefaults("StartFromEvent")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let event = try calendarEventFixture(id: "started-from-this")
+        let reader = CalendarReaderFixture()
+        reader.authorizationStatus = .fullAccess
+        reader.events = [event]
+        let model = makeModel(defaults)
+        model.setOutputFolder(root)
+        model.calendar = CalendarIntegration(defaults: defaults, reader: reader, reminders: CalendarReminders(center: ReminderCenterFixture()))
+        model.calendar.setEnabled(true)
+        model.calendar.select(event.providerCalendarId, enabled: true)
+        model.recording.requestCapturePermissions = {}
+        model.recording.startCapture = { _, _ in }
+        model.startRecording(calendarEvent: event)
+        while model.state == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(model.state, .recording)
+        let folder = try XCTUnwrap(model.recording.activeFolder)
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("calendar.json"))) as? [String: Any])
+        XCTAssertEqual((saved["event"] as? [String: Any])?["occurrenceId"] as? String, "started-from-this")
+        model.recording.stopTimer()
+    }
+
+    @MainActor
     func testQuitDuringSetupCancelsStartAndTerminates() async throws {
         _ = NSApplication.shared
         let (defaults, suite, root) = try makeTempDefaults("SetupQuit")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         model.startRecording(calendarEvent: try calendarEventFixture())
         XCTAssertEqual(model.state, .preparing)
         XCTAssertEqual(model.terminationReply(confirm: { _ in .alertFirstButtonReturn }), .terminateCancel)
         XCTAssertEqual(model.terminationReply(confirm: { _ in .alertSecondButtonReturn }), .terminateNow)
 
-        let failed = AppModel(defaults: defaults)
+        let failed = makeModel(defaults)
         failed.recording.state = .preparing
         XCTAssertEqual(failed.terminationReply(confirm: { _ in
             failed.recording.state = .failed
             return .alertSecondButtonReturn
         }), .terminateNow, "Quit Anyway must quit when setup fails while the alert is open")
 
-        let active = AppModel(defaults: defaults)
+        let active = makeModel(defaults)
         defer { active.recording.stopTimer() }
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Started during quit", recordedAt: date)
@@ -388,7 +413,7 @@ final class MeetingCalendarTests: XCTestCase {
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Pending meeting", recordedAt: Date())
         try Data([1]).write(to: folder.appendingPathComponent("audio.m4a"))
         try sidecar.write(to: folder.appendingPathComponent("calendar.json"), atomically: true, encoding: .utf8)
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         XCTAssertEqual(model.transcriptionHistory.map(\.title), ["Pending meeting"], "Unfinished recordings stay in the list")
         model.historyQuery = "EXAMPLE.COM"
@@ -529,7 +554,7 @@ final class MeetingCalendarTests: XCTestCase {
         let reader = CalendarReaderFixture()
         let notificationCenter = ReminderCenterFixture()
         let calendar = CalendarIntegration(defaults: defaults, reader: reader, reminders: CalendarReminders(center: notificationCenter))
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         model.calendar = calendar
         model.prepareSpeechModel { _ in }
         try await model.modelPreparationTask?.value

@@ -47,6 +47,22 @@ final class TranscriptionPassTests: XCTestCase {
             lines.map { segment($0.0, $0.1, language, $0.2) }
         })
         XCTAssertEqual(merged.map(\.start), [0, 1.5, 5])
+        // A 0.1 s line right after the cursor is still a line.
+        let short = TranscriptionPasses.merge([
+            segment(0, 2, "en", -0.2), segment(2, 2.1, "en", -0.3), segment(0, 2, "uk", -0.5)
+        ])
+        XCTAssertEqual(short.map(\.start), [0, 2])
+        // A short tail of another pass that crosses the cursor repeats the line before it.
+        let tail = TranscriptionPasses.merge([segment(0, 10, "en", -0.2), segment(9.9, 10.15, "uk", -0.1)])
+        XCTAssertEqual(tail.map(\.start), [0])
+    }
+
+    func testLongAudioGetsADetectionWindowEveryFiveMinutes() {
+        let window = Constants.defaultWindowSamples
+        XCTAssertEqual(WhisperKit.languageWindowCount(samples: window * 4, limit: 12), 4)
+        XCTAssertEqual(WhisperKit.languageWindowCount(samples: window * 100, limit: 12), 12)
+        XCTAssertEqual(WhisperKit.languageWindowCount(samples: window * 360, limit: 12), 36, "3 h")
+        XCTAssertEqual(WhisperKit.languageWindowCount(samples: 0, limit: 12), 0)
     }
 
     func testSinglePassDropsSilenceButKeepsEveryOtherLine() async throws {
@@ -236,19 +252,19 @@ final class TranscriptionPassTests: XCTestCase {
     func testLanguagePreferencePersists() throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingLanguages")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["uk", "ru", "en"])
+        XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["uk", "ru", "en"])
         defaults.set("auto", forKey: "transcriptionLanguage")
         defaults.set(["pl", "en"], forKey: "candidateLanguages")
-        XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["pl", "en"])
+        XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["pl", "en"])
         defaults.set("uk", forKey: "transcriptionLanguage")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         XCTAssertEqual(model.transcriptionLanguages, ["uk"], "Preserve the previous single-language selection")
         model.transcriptionLanguages = ["ja", "en"]
-        XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["ja", "en"], "New choices must override both legacy preferences")
+        XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["ja", "en"], "New choices must override both legacy preferences")
         model.transcriptionLanguages = ["en"]
         model.transcriptionHints = "Anna, Approck, WhisperKit"
-        XCTAssertEqual(AppModel(defaults: defaults).transcriptionLanguages, ["en"])
-        XCTAssertEqual(AppModel(defaults: defaults).transcriptionHints, "Anna, Approck, WhisperKit")
+        XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["en"])
+        XCTAssertEqual(makeModel(defaults).transcriptionHints, "Anna, Approck, WhisperKit")
     }
 
     func testCandidateLanguagesRejectUnsupportedAndDuplicateCodes() async throws {

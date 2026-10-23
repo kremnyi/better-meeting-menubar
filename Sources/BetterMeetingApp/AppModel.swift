@@ -111,7 +111,7 @@ final class AppModel: ObservableObject {
     /// Lazy so the app never touches Core Audio while meeting detection is off.
     lazy var meetingDetector = MeetingDetector(isBusy: { [weak self] in
         guard let self else { return true }
-        return state != .idle || processing.isProcessing
+        return (state != .idle && state != .failed) || processing.isProcessing
     })
     @Published var betaUpdates: Bool {
         didSet {
@@ -128,6 +128,14 @@ final class AppModel: ObservableObject {
 
     func speechModelChanged() {
         modelReady = Self.modelIsCached(speechSettings)
+        if modelReady, modelPreparationTask != nil {
+            // The cached model is ready; a still-running download of the old one must not report on it.
+            modelPreparationTask?.cancel()
+            modelPreparationTask = nil
+            modelPreparationSettings = nil
+            modelPreparationToken += 1
+            return
+        }
         prepareSpeechModel()
     }
 
@@ -142,6 +150,8 @@ final class AppModel: ObservableObject {
     let transcriber = LocalTranscriber()
     private let library = MeetingLibrary()
     private(set) var modelUnloadTask: Task<Void, Never>?
+    var modelUnloadDelay: Duration = .seconds(300)
+    lazy var unloadSpeechModels: () async -> Void = { [transcriber] in await transcriber.unloadIfIdle() }
     var quitWhenFinished = false
     private(set) var historySearchTask: Task<Void, Never>?
     private(set) var historyRefreshTask: Task<Void, Never>?
@@ -309,6 +319,7 @@ final class AppModel: ObservableObject {
                 guard modelPreparationToken == token else { return }
                 modelReady = true
                 modelSetupStatus = "Speech model ready"
+                await refreshStoredModels()
             } catch {
                 guard modelPreparationToken == token else { return }
                 modelReady = false
@@ -318,6 +329,7 @@ final class AppModel: ObservableObject {
                     modelSetupError = error.localizedDescription
                     modelSetupStatus = "Speech model unavailable"
                 }
+                await refreshStoredModels()
                 throw error
             }
         }
@@ -459,7 +471,7 @@ final class AppModel: ObservableObject {
                 transcriptionError = nil
             }
             updateFailedTranscriptionFolders { $0.remove(item.folderURL.standardizedFileURL) }
-        } catch { lastError = error }
+        } catch { NSAlert(error: error).runActive() }
         refreshHistory()
     }
 
@@ -695,10 +707,14 @@ final class AppModel: ObservableObject {
 
     func scheduleModelUnload() {
         modelUnloadTask?.cancel()
-        modelUnloadTask = Task { [weak self, transcriber] in
-            try? await Task.sleep(for: .seconds(300))
-            guard !Task.isCancelled, let self, !self.processing.isProcessing, !self.isCapturing else { return }
-            await transcriber.unloadIfIdle()
+        modelUnloadTask = Task { [weak self] in
+            // A busy app tries again later, so a recording that is discarded still releases the model.
+            while true {
+                try? await Task.sleep(for: self?.modelUnloadDelay ?? .seconds(300))
+                guard !Task.isCancelled, let self else { return }
+                if !processing.isProcessing, !isCapturing { break }
+            }
+            await self?.unloadSpeechModels()
         }
     }
 

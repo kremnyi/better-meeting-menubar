@@ -16,7 +16,7 @@ final class TranscriptionQueueTests: XCTestCase {
         try bytes.write(to: recording)
         let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
         try await cacheEnglishTranscript(in: folder, settings: settings, text: "The recording finished saving.")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         model.speechSettings = settings
         model.transcriptionLanguages = ["en"]
         model.meetingTitle = "Still saving"
@@ -63,7 +63,7 @@ final class TranscriptionQueueTests: XCTestCase {
                 try MeetingArtifacts.write(title: "Completed meeting", recordedAt: date, duration: 60, segments: [], to: folder)
             }
         }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         try await check(model)
     }
@@ -114,6 +114,22 @@ final class TranscriptionQueueTests: XCTestCase {
             XCTAssertNil(model.completionMessage)
             model.fail(AppError.missingRecording) // Stop the synthetic recording timer; no capture was started.
         }
+    }
+
+    func testBusyIdleTimerStillReleasesSpeechModelWhenCaptureEndsUnprocessed() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("ModelUnloadWhileBusy")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let model = makeModel(defaults)
+        var unloads = 0
+        model.unloadSpeechModels = { unloads += 1 }
+        model.modelUnloadDelay = .milliseconds(20)
+        model.recording.didStart(at: Date())
+        model.scheduleModelUnload()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(unloads, 0, "A live recording keeps the speech model loaded")
+        model.fail(AppError.missingRecording) // The capture ends without reaching transcription.
+        await model.modelUnloadTask?.value
+        XCTAssertEqual(unloads, 1, "The timer must try again, not give up while busy")
     }
 
     func testProcessingLeavesALiveRecordingAlone() async throws {
@@ -213,7 +229,7 @@ final class TranscriptionQueueTests: XCTestCase {
         }
         // A real filesystem error occurs only after the second job has renamed its folder.
         try FileManager.default.createDirectory(at: second.appendingPathComponent("transcript.json"), withIntermediateDirectories: false)
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         model.processing.enqueue(ProcessingRun(folder: first, recordedAt: date, title: "First meeting", titleWasProvided: true,
                                     replacing: nil, languages: ["en"], hints: "", settings: settings))
@@ -258,7 +274,7 @@ final class TranscriptionQueueTests: XCTestCase {
         try Data([1]).write(to: failing.appendingPathComponent("audio.m4a"))
         let queued = try MeetingArtifacts.createDirectory(in: root, title: "Untitled", recordedAt: date)
         try await cacheEnglishTranscript(in: queued, settings: settings, text: "We agreed on the budget.")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         model.quitWhenFinished = true
         let (stopped, finishStop) = AsyncStream<Void>.makeStream()
@@ -270,6 +286,7 @@ final class TranscriptionQueueTests: XCTestCase {
         await model.processing.task?.value
         for _ in 0..<100 where model.processing.folder != queued { await Task.yield() }
         XCTAssertEqual(model.processing.folder, queued, "The recording behind the failed job must still run")
+        XCTAssertEqual(model.processing.title, "Budget review", "The menu must not show the failed job's title while capture stops")
         XCTAssertEqual(model.failedTranscriptionMeeting?.folderURL.standardizedFileURL, failing.standardizedFileURL)
         XCTAssertFalse(model.quitWhenFinished, "Wait and quit must not quit once a job has failed")
         model.quitWhenFinished = false // A regression must not quit the test runner.
@@ -368,7 +385,7 @@ final class TranscriptionQueueTests: XCTestCase {
         let whisper = SpeechSettings(engine: .whisper, speakerLabels: false)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Whisper meeting", recordedAt: date)
         try await cacheEnglishTranscript(in: folder, settings: whisper, text: "Whisper finished.")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         model.speechSettings = SpeechSettings(engine: .parakeet, speakerLabels: false)
         var finishDownload: CheckedContinuation<Void, Never>?
@@ -397,7 +414,7 @@ final class TranscriptionQueueTests: XCTestCase {
         let whisper = SpeechSettings(engine: .whisper, speakerLabels: false)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Whisper meeting", recordedAt: date)
         try await cacheEnglishTranscript(in: folder, settings: whisper, text: "Whisper finished.")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         var finishDownload: CheckedContinuation<Void, Never>?
         let item = StoredModelInfo(title: "Whisper", kind: .whisper(whisper.model), url: root,
@@ -438,7 +455,7 @@ final class TranscriptionQueueTests: XCTestCase {
     func testRetrySetupDoesNotStartASecondDownloadWhileOptionsDownloads() async throws {
         let (defaults, suite, root) = try makeTempDefaults("RetryDuringDownload")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         // A failed setup leaves the model unready, as on a Mac that has not downloaded it.
         model.prepareSpeechModel { _ in throw URLError(.notConnectedToInternet) }
@@ -472,7 +489,7 @@ final class TranscriptionQueueTests: XCTestCase {
             runs.append(ProcessingRun(folder: folder, recordedAt: date, title: name, titleWasProvided: true,
                                       replacing: nil, languages: ["en"], hints: "", settings: settings))
         }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         model.exportAfterRecording = true
         model.quitWhenFinished = true

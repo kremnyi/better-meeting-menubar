@@ -156,9 +156,9 @@ final class ProcessingQueue: ObservableObject {
                 succeeded = !cancelled && completed == total
             case .recording(let run):
                 folder = run.folder
+                title = run.title
                 do { try await run.stopTask?.value } catch { succeeded = false }
                 if succeeded {
-                    title = run.title
                     succeeded = await finishRecording(run)
                     // Break so the next job runs in a new task this cancellation does not reach.
                     if Task.isCancelled { break jobs }

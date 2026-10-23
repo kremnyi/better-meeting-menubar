@@ -83,6 +83,8 @@ final class RecoveryTests: XCTestCase {
         }
         if case .success = await cancelled.result { XCTFail("Cancelled export must not replace saved audio") }
         XCTAssertEqual(try Data(contentsOf: audioURL), Data("previous audio".utf8))
+        let stale = root.appendingPathComponent(".audio-\(UUID().uuidString).m4a")
+        try Data("partial export".utf8).write(to: stale)
         try await AudioExtractor.extract(from: sourceURL, to: audioURL) { _ in }
         XCTAssertGreaterThan(try AVAudioFile(forReading: audioURL).length, 0)
         XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
@@ -168,7 +170,7 @@ final class RecoveryTests: XCTestCase {
     func testBackgroundModelSetupCanRetryWithoutTakingOverRecording() async throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingSetup")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         model.meetingTitle = "Next meeting"
         model.prepareSpeechModel { _ in throw URLError(.notConnectedToInternet) }
         let first = try XCTUnwrap(model.modelPreparationTask)
@@ -201,7 +203,7 @@ final class RecoveryTests: XCTestCase {
     func testChangingSetupReplacesRunningTask() async throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingSetupReplace")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         var replacedRan = false
         model.prepareSpeechModel { _ in
             try await Task.sleep(for: .seconds(30))
@@ -223,7 +225,7 @@ final class RecoveryTests: XCTestCase {
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Quit check", recordedAt: Date())
         try Data([1]).write(to: folder.appendingPathComponent("audio.m4a"))
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         model.retryTranscription(try XCTUnwrap(model.unfinishedRecordings.first))
         let processing = try XCTUnwrap(model.processing.task)
@@ -328,7 +330,7 @@ final class RecoveryTests: XCTestCase {
         let pending = try MeetingArtifacts.createDirectory(in: root, title: "Release planning", recordedAt: date)
         try Data([1]).write(to: pending.appendingPathComponent("recording.mp4"))
         _ = NSApplication.shared
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         let item = try XCTUnwrap(model.unfinishedRecordings.first)
         model.retryTranscription(item)
@@ -368,7 +370,7 @@ final class RecoveryTests: XCTestCase {
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Background failure", recordedAt: Date())
         try Data([1]).write(to: folder.appendingPathComponent("audio.m4a"))
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         let item = try XCTUnwrap(model.unfinishedRecordings.first)
         var announcements: [String] = []
@@ -388,7 +390,7 @@ final class RecoveryTests: XCTestCase {
         await model.historyRefreshTask?.value
         XCTAssertEqual(model.state, .idle)
         XCTAssertTrue(model.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL))
-        let reopened = AppModel(defaults: defaults)
+        let reopened = makeModel(defaults)
         XCTAssertTrue(reopened.failedTranscriptionFolders.contains(item.folderURL.standardizedFileURL))
         await reopened.historyRefreshTask?.value
 
@@ -402,7 +404,7 @@ final class RecoveryTests: XCTestCase {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingPermissions")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         for (error, permission, title): (RecorderError, PrivacyPermission, String) in [
             (.screenPermissionDenied, .screenRecording, "Restart Better Meeting"),
             (.microphonePermissionDenied, .microphone, "Try again")
@@ -435,7 +437,7 @@ final class RecoveryTests: XCTestCase {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingLayout")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         let closed = hostingView(MenuBarControlView(), model: model)
         let presented = hostingView(MenuBarControlView(captureOptionsPresented: true), model: model)
@@ -465,7 +467,7 @@ final class RecoveryTests: XCTestCase {
         if let icon = NSImage(contentsOf: repository.appendingPathComponent("Assets/AppIconMaster.png")) {
             NSApp.applicationIconImage = icon
         }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.refreshStoredModels()
         let meeting = MeetingHistoryItem(
             title: "Design review", recordedAt: Date(), duration: 60,
@@ -584,7 +586,7 @@ final class RecoveryTests: XCTestCase {
             try MeetingArtifacts.write(title: "Meeting \(index)", recordedAt: date, duration: 60, segments: [], to: folder)
         }
         _ = NSApplication.shared
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         func size() -> NSSize {
             NSHostingView(rootView: MenuBarControlView()
@@ -604,9 +606,10 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(model.historyQuery, "", "Typing must wait for the native search delay")
         model.meetingTitle = "Unrelated update"
         menu.layoutSubtreeIfNeeded()
-        try await Task.sleep(for: .milliseconds(50))
+        await Task.yield()
         XCTAssertEqual(field.stringValue, "Meeting 1", "View updates must preserve pending search text")
-        try await Task.sleep(for: .seconds(1))
+        let deadline = ContinuousClock.now + .seconds(10)
+        while model.historyQuery != "Meeting 1", ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(model.historyQuery, "Meeting 1")
         XCTAssertEqual(size(), initial)
         await model.historySearchTask?.value
@@ -657,7 +660,7 @@ final class RecoveryTests: XCTestCase {
                  try MeetingArtifacts.write(title: "Meeting \(index)", recordedAt: recordedAt, duration: 60, segments: [], to: folder)
              }
 
-            let model = AppModel(defaults: defaults)
+            let model = makeModel(defaults)
             await model.historyRefreshTask?.value
             return hostingView(MenuBarControlView(), model: model).fittingSize.height
         }
@@ -684,7 +687,7 @@ final class RecoveryTests: XCTestCase {
             try MeetingArtifacts.write(title: title, recordedAt: date, duration: Double(720 + index * 180), segments: [], to: folder)
         }
         _ = NSApplication.shared
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         model.captureAccess = { (true, .authorized) }
         // Start on the half hour so the times look scheduled; the menu reads the real clock, so run before 22:00.
         let reader = CalendarReaderFixture()
@@ -741,7 +744,7 @@ final class RecoveryTests: XCTestCase {
                 try MeetingArtifacts.write(title: "Meeting \(index)", recordedAt: date, duration: 60, segments: [], to: folder)
             }
         }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         XCTAssertEqual(model.captureResolution, .pixels1440)
         XCTAssertEqual(model.captureQuality, .standard)
@@ -750,7 +753,7 @@ final class RecoveryTests: XCTestCase {
         model.selectedMicrophoneID = "test-mic"
         model.captureResolution = .pixels1920
         model.captureQuality = .smooth
-        let reopened = AppModel(defaults: defaults)
+        let reopened = makeModel(defaults)
         await reopened.historyRefreshTask?.value
         XCTAssertEqual(reopened.outputRoot.path, root.path)
         XCTAssertEqual(reopened.selectedDisplayID, 42)
@@ -764,7 +767,7 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(reopened.terminationReply(), .terminateNow)
         defaults.set(999, forKey: "captureResolution")
         defaults.set(999, forKey: "captureQuality")
-        let invalidPreferences = AppModel(defaults: defaults)
+        let invalidPreferences = makeModel(defaults)
         XCTAssertEqual(invalidPreferences.captureResolution, .pixels1440)
         XCTAssertEqual(invalidPreferences.captureQuality, .standard)
     }
@@ -846,7 +849,7 @@ final class RecoveryTests: XCTestCase {
     func testRecordingAudioWarningClearsWithoutResizingOrRepeating() throws {
         _ = NSApplication.shared
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingAudioWarning")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         var announcements: [String] = []
         model.accessibilityAnnouncement = { announcements.append($0) }
         defer {
@@ -908,7 +911,7 @@ final class RecoveryTests: XCTestCase {
     @MainActor
     func testRecordingHealthDetectsLostSourcesAndRecoveryDuringSilence() throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingSourceHealth")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         defer {
             model.fail(AppError.missingRecording)
             removeTempDefaults(defaults, suite: suite, root: root)
@@ -946,7 +949,7 @@ final class RecoveryTests: XCTestCase {
     @MainActor
     func testRecordingDiskPreflightAndWarningRecovery() throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingDiskSpace")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         defer {
             model.fail(AppError.missingRecording)
             removeTempDefaults(defaults, suite: suite, root: root)
@@ -980,7 +983,7 @@ final class RecoveryTests: XCTestCase {
         let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Long meeting", recordedAt: date)
         try await cacheEnglishTranscript(in: folder, settings: settings, text: "We kept talking.")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         model.speechSettings = settings
         model.transcriptionLanguages = ["en"]
         model.meetingTitle = "Long meeting"
@@ -1062,7 +1065,7 @@ final class RecoveryTests: XCTestCase {
             try MeetingArtifacts.write(title: title, recordedAt: date, duration: 0, segments: [], to: folder)
             if index == 0 { oldest = folder }
         }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         XCTAssertEqual(model.transcriptionHistory.count, 12)
         model.historyQuery = "cafe"
@@ -1090,7 +1093,7 @@ final class RecoveryTests: XCTestCase {
             try MeetingArtifacts.write(title: title, recordedAt: Date(), duration: 60, segments: [], to: folder)
         }
         defaults.set(oldRoot, forKey: "outputFolder")
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         let started = expectation(description: "Scanning away from the main thread")
         let release = DispatchSemaphore(value: 0)

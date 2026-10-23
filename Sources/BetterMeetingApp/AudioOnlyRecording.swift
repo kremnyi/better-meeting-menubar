@@ -21,13 +21,16 @@ final class AudioOnlyRecording: @unchecked Sendable {
     private var finishContinuation: CheckedContinuation<Void, Error>?
     private let onFailure: @Sendable (Error) -> Void
     private let isReady: @Sendable (AVAssetWriterInput) -> Bool
+    private let stallLimit: Duration
 
     init(to url: URL, queue: DispatchQueue,
          isReady: @escaping @Sendable (AVAssetWriterInput) -> Bool = { $0.isReadyForMoreMediaData },
+         stallLimit: Duration = .seconds(30),
          onFailure: @escaping @Sendable (Error) -> Void) throws {
         self.queue = queue
         self.onFailure = onFailure
         self.isReady = isReady
+        self.stallLimit = stallLimit
         writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         writer.movieFragmentInterval = CMTime(seconds: 5, preferredTimescale: 600)
         var inputs: [SCStreamOutputType: AVAssetWriterInput] = [:]
@@ -74,7 +77,7 @@ final class AudioOnlyRecording: @unchecked Sendable {
             while appended < queued {
                 let item = pending[type, default: []][appended]
                 guard isReady(input) else {
-                    if item.receivedAt.duration(to: .now) >= .seconds(2) { error = BackpressureError() }
+                    if item.receivedAt.duration(to: .now) >= stallLimit { error = BackpressureError() }
                     break
                 }
                 guard input.append(item.buffer) else {

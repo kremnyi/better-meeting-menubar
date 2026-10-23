@@ -1,5 +1,6 @@
 import XCTest
 @testable import BetterMeetingApp
+import CoreML
 
 final class ModelStorageTests: XCTestCase {
     func testModelStorageMigrationMovesKnownModels() throws {
@@ -154,6 +155,29 @@ final class ModelStorageTests: XCTestCase {
         } catch {
             XCTAssertTrue(FileManager.default.fileExists(atPath: locked.path))
         }
+    }
+
+    func testDamagedModelIsRemovedOnlyForCoreMLLoadFailure() async throws {
+        let base = makeTempRoot()
+        defer { removeTempRoot(base) }
+        let folder = base.appendingPathComponent("model")
+        try write("weights", to: folder.appendingPathComponent("weights.bin"))
+
+        for error in [CancellationError() as Error, NSError(domain: NSCocoaErrorDomain, code: 4)] {
+            do {
+                _ = try await LocalTranscriber.removingDamagedModel(at: folder) { throw error }
+                XCTFail("The load error must propagate")
+            } catch {}
+            XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path), "Only a CoreML load failure removes the model")
+        }
+
+        do {
+            _ = try await LocalTranscriber.removingDamagedModel(at: folder) {
+                throw NSError(domain: MLModelErrorDomain, code: 0)
+            }
+            XCTFail("A damaged model must report that it is unavailable")
+        } catch {}
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "A damaged model must download again")
     }
 
     private func write(_ contents: String, to url: URL) throws {

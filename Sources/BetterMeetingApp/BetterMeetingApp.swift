@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     /// The call may have ended, or a recording may have started, between posting and presenting.
     func shouldPresentMicrophoneMeeting() -> Bool {
-        model?.detectsMeetings == true && model?.state == .idle && model?.processing.isProcessing == false
+        model?.detectsMeetings == true && (model?.state == .idle || model?.state == .failed) && model?.processing.isProcessing == false
     }
 
     func startMicrophoneRecording(action: String, start: (() -> Void)? = nil) {

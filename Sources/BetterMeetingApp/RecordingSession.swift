@@ -27,6 +27,13 @@ final class RecordingSession: ObservableObject {
     private var startTask: Task<Void, Never>?
     private let recorder = MeetingRecorder()
     lazy var stopCapture: () async throws -> Void = { [recorder] in try await recorder.stop() }
+    lazy var requestCapturePermissions: () async throws -> Void = { [recorder] in try await recorder.requestPermissions() }
+    lazy var startCapture: (URL, CaptureMode) async throws -> Void = { [recorder, model] url, mode in
+        try await recorder.start(
+            to: url, displayID: model.selectedDisplayID, microphoneID: model.selectedMicrophoneID,
+            resolution: model.captureResolution, quality: model.captureQuality, mode: mode
+        )
+    }
     unowned let model: AppModel
 
     init(model: AppModel) {
@@ -54,7 +61,7 @@ final class RecordingSession: ObservableObject {
                 let space = await Task.detached(priority: .utility) { RecordingDiskSpace.read(at: root) }.value
                 checkDiskSpace(space)
                 try space?.preflight()
-                try await recorder.requestPermissions()
+                try await requestCapturePermissions()
 
                 // Resolve only the exact event the user clicked, never a title/time match.
                 let event: CalendarEvent?
@@ -76,10 +83,7 @@ final class RecordingSession: ObservableObject {
                 let recordingURL = folder.appendingPathComponent(mode.filename)
                 activeFolder = folder
                 try event?.attach(to: folder, recordedAt: startedAt)
-                try await recorder.start(
-                    to: recordingURL, displayID: model.selectedDisplayID, microphoneID: model.selectedMicrophoneID,
-                    resolution: model.captureResolution, quality: model.captureQuality, mode: mode
-                )
+                try await startCapture(recordingURL, mode)
                 didStart(at: startedAt)
                 // Capture never waits for the user to answer the prompt.
                 Task { await MeetingNotifications.requestPermission() }

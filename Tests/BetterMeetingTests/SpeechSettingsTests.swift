@@ -65,10 +65,10 @@ final class SpeechSettingsTests: XCTestCase {
         let (defaults, suite, root) = try makeTempDefaults("SpeechSettingsLanguages")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         defaults.set(["ja", "en"], forKey: "transcriptionLanguages")
-        XCTAssertEqual(AppModel(defaults: defaults).speechSettings.engine, .whisper)
+        XCTAssertEqual(makeModel(defaults).speechSettings.engine, .whisper)
         defaults.removeObject(forKey: "speechSettings")
         defaults.set(["uk", "ru", "en"], forKey: "transcriptionLanguages")
-        XCTAssertEqual(AppModel(defaults: defaults).speechSettings.selectedEngine, .parakeet)
+        XCTAssertEqual(makeModel(defaults).speechSettings.selectedEngine, .parakeet)
     }
 
     func testLanguagePickerPrioritizesSelectedResultsAndKeepsOneLanguage() {
@@ -84,7 +84,7 @@ final class SpeechSettingsTests: XCTestCase {
     func testSettingsPersistWithDefaultsAndMeeting() throws {
         let (defaults, suite, root) = try makeTempDefaults("SpeechSettings")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let model = AppModel(defaults: defaults)
+        let model = makeModel(defaults)
         XCTAssertEqual(model.speechSettings.model, .turbo)
         XCTAssertEqual(model.speechSettings.selectedEngine, .parakeet)
         XCTAssertEqual(model.speechSettings.speakerLabels, true, "Speaker labels are on by default")
@@ -92,11 +92,11 @@ final class SpeechSettingsTests: XCTestCase {
         model.speechSettings.engine = .parakeet
         model.speechSettings.model = .large
         model.speechSettings.noSpeechThreshold = 0.7
-        XCTAssertEqual(AppModel(defaults: defaults).speechSettings, model.speechSettings, "Turning labels off is kept")
+        XCTAssertEqual(makeModel(defaults).speechSettings, model.speechSettings, "Turning labels off is kept")
         let saved = defaults.data(forKey: "speechSettings")
         // Preferences saved before labels defaulted on carry no choice, so they turn on.
         defaults.set(try JSONEncoder().encode(SpeechSettings()), forKey: "speechSettings")
-        XCTAssertEqual(AppModel(defaults: defaults).speechSettings.speakerLabels, true)
+        XCTAssertEqual(makeModel(defaults).speechSettings.speakerLabels, true)
         defaults.set(saved, forKey: "speechSettings")
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Options", recordedAt: date)
