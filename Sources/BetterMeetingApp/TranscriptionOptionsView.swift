@@ -404,7 +404,7 @@ struct RetranscriptionView: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel", action: dismiss).keyboardShortcut(.cancelAction)
                 Button(meeting.needsTranscription ? "Transcribe" : "Re-transcribe") {
                     dismiss()
                     start(languages, hints, settings)

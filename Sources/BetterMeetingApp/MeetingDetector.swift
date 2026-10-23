@@ -165,9 +165,7 @@ final class MeetingDetector {
     /// Marked as suggested so the call is not offered again when the user's own recording ends mid-call.
     func ownRecordingStarted() {
         guard enabled else { return }
-        waiting?.cancel()
-        waiting = nil
-        if suggested { remove(MicrophoneMeeting.requestID) }
+        withdraw(stopping: false)
         suggested = true
     }
 

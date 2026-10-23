@@ -66,19 +66,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        if notification.request.content.categoryIdentifier == CalendarReminder.categoryID {
-            return await shouldPresentCalendarReminder(notification.request) ? [.banner, .list, .sound] : []
-        }
-        if notification.request.content.categoryIdentifier == MeetingNotifications.audioWarningCategory {
-            return await shouldPresentAudioWarning(notification.request) ? [.banner, .list] : []
-        }
-        if notification.request.content.categoryIdentifier == MeetingNotifications.diskWarningCategory {
-            return await shouldPresentDiskWarning(notification.request) ? [.banner, .list] : []
-        }
-        if notification.request.content.categoryIdentifier == MicrophoneMeeting.categoryID {
+        let request = notification.request
+        switch request.content.categoryIdentifier {
+        case CalendarReminder.categoryID:
+            return await shouldPresentCalendarReminder(request) ? [.banner, .list, .sound] : []
+        case MeetingNotifications.audioWarningCategory:
+            return await shouldPresentAudioWarning(request) ? [.banner, .list] : []
+        case MeetingNotifications.diskWarningCategory:
+            return await shouldPresentDiskWarning(request) ? [.banner, .list] : []
+        case MicrophoneMeeting.categoryID:
             return await shouldPresentMicrophoneMeeting() ? [.banner, .list, .sound] : []
+        default:
+            return [.banner, .list]
         }
-        return [.banner, .list]
     }
 
     /// The call may have ended, or a recording may have started, between posting and presenting.
@@ -109,15 +109,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func userNotificationCenter(
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
     ) async {
-        if response.notification.request.content.categoryIdentifier == CalendarReminder.categoryID {
-            await handleCalendarReminder(response.notification.request, action: response.actionIdentifier)
-            return
+        let request = response.notification.request
+        switch request.content.categoryIdentifier {
+        case CalendarReminder.categoryID: await handleCalendarReminder(request, action: response.actionIdentifier)
+        case MicrophoneMeeting.categoryID: startMicrophoneRecording(action: response.actionIdentifier)
+        default: openNotification(request, action: response.actionIdentifier)
         }
-        if response.notification.request.content.categoryIdentifier == MicrophoneMeeting.categoryID {
-            startMicrophoneRecording(action: response.actionIdentifier)
-            return
-        }
-        openNotification(response.notification.request, action: response.actionIdentifier)
     }
 
     func shouldPresentCalendarReminder(_ request: UNNotificationRequest) async -> Bool {
@@ -131,8 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func handleCalendarReminder(_ request: UNNotificationRequest, action: String,
                                 start: ((CalendarEvent) -> Void)? = nil) async {
-        guard action == UNNotificationDefaultActionIdentifier || action == CalendarReminder.startActionID else { return }
-        guard let model else { return }
+        guard action == UNNotificationDefaultActionIdentifier || action == CalendarReminder.startActionID,
+              let model else { return }
         if action == CalendarReminder.startActionID, model.state == .idle || model.state == .failed {
             do {
                 guard model.calendar.notifyAtStart,
@@ -170,12 +167,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func openNotification(_ request: UNNotificationRequest, action: String = UNNotificationDefaultActionIdentifier) {
         if [MeetingNotifications.audioWarningCategory, MeetingNotifications.diskWarningCategory].contains(request.content.categoryIdentifier) {
-            guard action == UNNotificationDefaultActionIdentifier else { return }
-            guard model?.state == .recording, let id = model?.recording.id else { return }
+            guard action == UNNotificationDefaultActionIdentifier, model?.state == .recording,
+                  let id = model?.recording.id else { return }
             let identifier = request.content.categoryIdentifier == MeetingNotifications.diskWarningCategory
                 ? MeetingNotifications.diskWarningID(id) : id.uuidString
-            guard identifier == request.identifier else { return }
-            showMenu()
+            if identifier == request.identifier { showMenu() }
             return
         }
         guard let folder = MeetingNotifications.folder(from: request.content) else { return }

@@ -1,13 +1,9 @@
 # Better Meeting
 
-Record a display, system audio, and microphone from the macOS menu bar. After
-recording stops, the app transcribes the audio locally with Parakeet or Whisper.
-Each meeting gets a folder with the video, audio, and transcript; clicking the
-finished meeting in the menu opens its transcript.
-
-Requires Apple Silicon and macOS 15+. The default Parakeet engine downloads about
-470 MB of speech model files during initial setup; Whisper's default model is
-about 1.6 GB. Transcription runs locally and works offline afterward.
+Better Meeting records a display, system audio, and your microphone from the
+macOS menu bar. When you stop, it transcribes the audio on your Mac with
+Parakeet or Whisper. Each meeting gets its own folder with the recording and a
+Markdown transcript.
 
 Project website: [kremnyi.github.io/better-meeting-menubar](https://kremnyi.github.io/better-meeting-menubar/)
 
@@ -15,20 +11,29 @@ Project website: [kremnyi.github.io/better-meeting-menubar](https://kremnyi.gith
 
 The app's menu, shown with fictional calendar events and meetings.
 
+- [Requirements](#requirements)
 - [Install with Homebrew](#install-with-homebrew)
-- [Update the app](#update-the-app)
-- [Record a meeting](#record-a-meeting)
-- [Calendar integration](#calendar-integration)
-- [Calls that are not on the calendar](#calls-that-are-not-on-the-calendar)
-- [Recording settings](#recording-settings)
-- [Transcription settings](#transcription-settings)
-- [Saved meetings](#saved-meetings)
-- [Meeting files and titles](#meeting-files-and-titles)
-- [Screenshots and export bundles](#screenshots-and-export-bundles)
+- [Permissions](#permissions)
 - [Privacy and model storage](#privacy-and-model-storage)
-- [Build from source](#build-from-source)
+- [Record a meeting](#record-a-meeting)
+- [Features](#features)
+- [Options](#options)
+- [Saved meetings](#saved-meetings)
+- [Update the app](#update-the-app)
+- [Uninstall](#uninstall)
 - [Limits](#limits)
+- [Build from source](#build-from-source)
 - [Project origin and license](#project-origin-and-license)
+
+## Requirements
+
+- A Mac with Apple Silicon and macOS 15 or later.
+- Disk space for one speech model. The default Parakeet v3 model is about
+  470 MB. Whisper models are about 490 MB (Small), 1.6 GB (Large v3 Turbo,
+  the Whisper default), or 3.1 GB (Large v3). Speaker labels add about 11 MB.
+- Free space for recordings. The app does not start a recording with less than
+  250 MB free and warns below 2 GB. If free space falls below 250 MB during a
+  recording, the app stops and saves it, then transcribes it.
 
 ## Install with Homebrew
 
@@ -38,506 +43,188 @@ brew install --cask kremnyi/better-meeting/better-meeting
 open -a "Better Meeting"
 ```
 
-The tap keeps the name `kremnyi/better-meeting`. If you installed before the
-repository was renamed, run the tap command above to update its URL.
-
 The cask downloads the app from [GitHub Releases](https://github.com/kremnyi/better-meeting-menubar/releases)
-and verifies its SHA-256 checksum. You can also download the ZIP there, extract
-it, and move the app to `/Applications`. Xcode is not required.
+and verifies its SHA-256 checksum.
 
-Releases use a self-signed certificate, without an Apple Developer ID or notarization. If
-macOS blocks the first launch, try opening the app, then use **System Settings
-→ Privacy & Security → Open Anyway**. See [Apple's instructions](https://support.apple.com/102445).
-Managed Macs may not allow this exception.
+### Direct download
+
+Download the ZIP from [GitHub Releases](https://github.com/kremnyi/better-meeting-menubar/releases),
+extract it, and move the app to `/Applications`. Xcode is not required.
+
+### First launch
+
+Releases use a self-signed certificate. They have no Apple Developer ID and are
+not notarized. If macOS blocks the first launch, try to open the app once, then
+go to **System Settings → Privacy & Security** and click **Open Anyway**. See
+[Apple's instructions](https://support.apple.com/102445). Managed Macs may not
+allow this exception. All releases use the same certificate, so macOS
+recognizes the app after updates.
+
+## Permissions
+
+- **Screen & System Audio Recording** (required): captures the display and the
+  meeting audio. Audio-only recordings need it too, for system audio. After you
+  grant it, use **Restart Better Meeting** in the menu.
+- **Microphone** (required): records your side of the meeting.
+- **Notifications** (optional): recording warnings and transcription results.
+  The app asks when your first recording starts.
+- **Calendars** (optional): full read access, which macOS requires to read
+  events. The app asks only when you turn on **Use calendar** in
+  **Options → Meetings** and then click **Allow calendar access**. It never
+  edits events.
+
+If access is blocked, the menu shows **Open System Settings**. Automatic meeting
+detection needs no extra permission: macOS only reports that some app uses the
+microphone, not what it records.
+
+## Privacy and model storage
+
+Recording, transcription, speaker labels, screenshots, screen text (OCR), and
+automatic naming run on your Mac. The app does not upload meetings, transcripts,
+or calendar details. Only two things use the network:
+
+- **Model downloads.** Speech and speaker models download from Hugging Face
+  once per selected model. After that, transcription works offline.
+- **Updates.** The app checks GitHub for updates and downloads them from there.
+
+Models are stored in `~/Library/Application Support/BetterMeeting/models/`.
+**Options → Advanced transcription → Models** lists each model with its size,
+and lets you download or delete it. A deleted model downloads again the next
+time it is needed. Uninstalling the app keeps models; see [Uninstall](#uninstall).
+
+## Record a meeting
+
+1. Click the Better Meeting icon in the menu bar.
+2. Type a meeting name, or leave it empty for an automatic name.
+3. Click **Start recording**, or press Return. To record only system audio and
+   microphone, open the arrow beside the button and choose **Record audio-only**.
+4. Click stop when the meeting ends. The app transcribes the recording, then
+   lists the meeting in the menu. Click it to open the transcript.
+
+To discard a recording, click **Cancel recording** and confirm. The recording
+moves to the Trash without transcription.
+
+The first time, the app downloads the speech model in the background. You can
+record during setup; transcription waits until the model is ready. While a
+recording runs, the Mac does not sleep from inactivity.
+
+## Features
+
+- Screen recording or audio-only recording, with live microphone and
+  system-audio meters.
+- Warnings for silent or disconnected sources and low disk space, also as
+  notifications when the menu is closed.
+- Local transcription with Parakeet v3 (25 European languages, automatic
+  language detection) or Whisper (more languages, one pass per selected
+  language).
+- Optional speaker labels (**Speaker 1**, **Speaker 2**) from SpeakerKit. They
+  are on by default and describe voices in one meeting, not real names.
+- Automatic meeting titles from the transcript, with Apple's `NaturalLanguage`
+  framework.
+- Calendar integration: upcoming meetings in the menu, one-click recording named
+  after the event, and links to join Google Meet, Zoom, or Teams calls.
+- Recording suggestions when a calendar meeting starts, or when another app uses
+  the microphone. Both are off by default.
+- Search across meeting titles and transcript text, including your own edits.
+- Rename, re-transcribe with other settings, copy the transcript, show in
+  Finder, or move a meeting to the Trash.
+- Retry or resume unfinished transcriptions, one at a time or all together.
+- Export bundles with screenshots, screen text, and a timeline for use with
+  other tools.
+- In-app updates with Sparkle, with optional beta releases.
+
+## Options
+
+Open **Options** in the bottom-left corner of the menu.
+
+- **Recording**: display, microphone, and video resolution and frame rate.
+- **Files**: save folder, and automatic export of screenshots and screen text.
+- **Meetings**: calendar access and calendars, next meeting in the menu bar, and
+  recording suggestions.
+- **Advanced transcription**: engine, languages, model, vocabulary hints,
+  decoding, speaker labels, and downloaded models.
+- **App & updates**: launch at login, recording time in the menu bar, updates,
+  beta releases, and **About Better Meeting**.
+
+## Saved meetings
+
+Meetings are saved in `~/Documents/Better Meetings` by default. Change the folder
+in **Options → Files**. Each meeting has its own folder:
+
+```text
+2026-09-04 14.30.00 — Product sync/
+├── recording.mp4       screen recording (recording.mov for audio-only)
+├── audio.m4a           audio used for transcription
+├── transcript.md       transcript with timestamps
+├── transcript.json     timed segments, language tags, speaker IDs
+├── metadata.json       title, date, duration, settings, status
+└── pass_uk.json        Whisper cache for one language pass
+```
+
+Some meetings also have `speaker_turns.json` (speaker labels), `calendar.json`
+(started from a calendar event), or `artifacts/` (export bundle). The `pass_*.json`
+files are safe to delete. See [docs/calendar-data.md](docs/calendar-data.md) for
+calendar data.
+
+You can edit `transcript.md`. Search and **Copy Transcript** use your edits.
+**Re-transcribe…** replaces the transcript, including your edits.
 
 ## Update the app
 
-Open **Options → App & updates** to see the installed version, release notes, and
-**Check for Updates** below the automatic-download setting. Update progress and
-errors stay on that page, without separate update dialogs. Sparkle verifies updates
-with a separate signing key before extraction.
-**Release notes** opens the offered update's version, or the installed version
-when no update is offered, including beta releases.
+**Options → App & updates** shows the installed version, release notes, and
+**Check for Updates**. Turn on **Download updates automatically** to check in the
+background; it is off by default. Turn on **Include beta releases** to also get
+beta builds. Sparkle verifies each update with a separate signing key. An update
+waits until recording and processing finish.
 
-Enable **Download updates automatically** there to check GitHub on each launch and
-periodically while the app is open, preparing updates in the background. This is off
-by default. When a check finds an update, **Update and Restart** appears on that page
-and beside **Options** in the menu footer; one click downloads it, installs it, and
-reopens the app. An update prepared in the background shows **Restart to Update**
-instead, and also installs when you quit. Recording or processing must finish before
-restarting; a clicked update waits and then installs. Failed updates show an inline
-retry action. A background check that fails, for example before the network connects
-at login, shows no error and tries again when the Mac is online.
-
-**Include beta releases** on the same page opts into pre-release builds tagged as beta.
-They install the same way as stable releases, which still arrive either way. Turn
-the toggle off to stop receiving betas. The installed beta stays until a newer
-stable release arrives. Beta cuts are published as GitHub pre-releases, so the
-repository's latest release always stays on stable.
-
-To update with Homebrew, finish any active recording, quit the app, and run:
+With Homebrew, finish any recording, quit the app, and run:
 
 ```bash
 brew update
 brew upgrade --cask kremnyi/better-meeting/better-meeting
 ```
 
-Releases reuse the same signing certificate so macOS can recognize the app across
-updates. Uninstalling the app keeps saved meetings and downloaded models; see
-[Privacy and model storage](#privacy-and-model-storage) for how to remove the models.
-
-## Record a meeting
-
-1. Open the app.
-2. Enter a meeting name or leave it empty for automatic naming. Press Return to
-   start recording right away.
-3. Open **Options** in the bottom-left corner to choose a display, microphone, and save folder.
-   The app remembers these choices. Defaults are the main display, system
-   microphone, and `~/Documents/Better Meetings`.
-4. Click the main **Start recording** area for screen video and audio. To capture
-   system audio and microphone without screen video, open the arrow on the right
-   side of the button and choose **Record audio-only**. That starts immediately
-   using the same meeting name or calendar details. Screen recording remains the
-   default for the main action; choosing audio-only does not change it.
-   Both modes require **Screen & System Audio Recording** and
-   **Microphone** access. If access is blocked, click **Open System Settings** to enable it,
-   then use **Restart Better Meeting** for screen access or **Try again** for microphone access.
-5. Stop recording and wait for transcription. Click the finished meeting to
-   open its transcript. To discard a recording instead, click **Cancel recording**
-   below the stop button and confirm; the recording moves to the Trash without
-   being transcribed.
-
-The app downloads and prepares the selected speech model in the background when
-needed. The menu shows progress; you can record during setup, but transcription
-waits until the model is ready. If setup fails, use **Retry setup**.
-If Core ML cannot load the model files, the app clears that model's cache so retrying
-downloads a fresh copy. Other downloaded models and saved meetings are kept.
-If Parakeet's vocabulary is damaged, retry fetches only that small file again,
-keeping the downloaded model files.
-Five minutes after the last transcription, the app releases the model from memory;
-the next transcription loads it again, which takes a few seconds.
-
-While recording, separate microphone and system-audio meters show incoming sound.
-An empty meter can mean silence; check the selected input if it stays empty while
-you expect sound.
-
-The meeting name stays editable while recording; a name typed or changed then is
-used when recording stops. The menu bar shows the elapsed time beside the icon;
-turn off **Show recording time in the menu bar** in **Options → App & updates** to
-hide it.
-
-If neither source has detected audio after 30 seconds, an amber warning replaces
-the recording status. With the menu closed, the app also sends one notification;
-click it to open the recording controls. Recording continues. The warning clears
-when either source detects audio. After the first 30 seconds, the app also warns
-if either source stops delivering buffers for ten seconds or the selected microphone
-disconnects. Silent buffers count as healthy; if a source sends no buffers during
-a quiet period, check it only if sound is expected. These warnings clear when data resumes.
-
-The app checks available capacity on the recording drive before capture. Below
-250 MB it asks you to free space or choose another save folder before retrying.
-Below 2 GB it shows a low-space warning, rechecking every ten seconds while
-recording. A notification also appears when the menu is closed. The warning clears
-after space is freed. If free space falls below 250 MB while recording, the app
-stops the recording, saves it, and starts its transcription, because a screen
-recording that fills the drive cannot be opened. A notification gives the reason.
-Free-space estimates do not guarantee that a long recording will fit.
-
-While a recording runs, the Mac does not go to sleep from inactivity, so a call
-with no keyboard or mouse input keeps recording. The display can still turn off.
-Closing the lid or choosing Sleep still puts the Mac to sleep.
-
-While recording, the menu-bar icon dims and brightens every two seconds; it spins
-during processing. With Reduce Motion enabled it stays still in both states.
-A warning icon appears if recording or transcription fails, or if screen or microphone
-access needs attention, and stays until you retry, dismiss the error, or grant access.
-Recordings that are only waiting to be transcribed don't raise it. Search, Finder, and **Copy Transcript** remain available during
-transcription and export; renaming and starting another job wait until processing finishes.
-
-Before your first recording or retry, the app asks permission to send notifications
-for recording warnings and transcription results. Click a recording warning to open the
-recording controls. Click **Transcript ready** to open the transcript, or use its
-**Copy Transcript** and **Show in Finder** actions; a notification about a failed
-transcription opens the meeting's folder.
-You can change notification access in macOS **System Settings → Notifications
-→ Better Meeting**.
-
-To open the app automatically when you sign in, enable **Launch at login** in
-**Options → App & updates**.
-If macOS requires approval, use **Open Login Items…** below the checkbox and allow
-Better Meeting to open at login.
-
-## Calendar integration
-
-The menu can show your meetings from the macOS Calendar app. Enable
-**Use calendar** in **Options → Meetings** and choose which calendars to read. The menu lists
-today's remaining meetings under **Upcoming meetings**. The record button on the
-next meeting starts a recording named after the event. Once that meeting is under way
-or starts within five minutes, **Start recording** itself becomes **Record
-"<title>"**. A meeting that appears on two selected calendars is listed once.
-Click a meeting to join its Google Meet, Zoom, or Teams call in the browser;
-meetings without a call link open Calendar.
-Once today is done the menu names the first meeting of tomorrow.
-**Show next meeting in the menu bar**, on by default once calendar access is granted,
-adds the next meeting's timing beside the menu-bar icon once it starts within the
-hour, such as `in 15m`, or `until 11:00` while it runs. The preview shows no title
-and steps aside while you record, while processing runs, or when the icon shows a
-warning. With **When a calendar meeting starts** enabled
-under **Suggest recording**, the app also sends a notification when the event starts.
-
-The integration is off by default, reads events only, and never edits them.
-macOS requires full calendar access for reading; the app requests it only when you
-click **Allow calendar access** in **Options → Meetings**. If a refresh fails, the last successful
-snapshot stays visible and is marked stale in **Options → Meetings**; disabling
-the integration or losing access clears it. Event details stay on your Mac. Links
-between recordings and calendar events are stored in the meeting folder; see
-[docs/calendar-data.md](docs/calendar-data.md) for the data model.
-
-## Calls that are not on the calendar
-
-Enable **Detect meetings automatically** under **Suggest recording** in **Options → Meetings**
-for meetings nobody scheduled. It works with the calendar turned off. When another app has been using the microphone for
-half a minute, the app sends a notification with **Start recording**; nothing is
-recorded until you click it. macOS reports only that some app is recording, never
-what it records, so this needs no extra permission and reads nothing from the other
-app. Dictation, Voice Memos, and other short microphone use can still trigger it.
-The option is off by default.
-Detection watches the default macOS input device. A call using another microphone
-can be missed; start that recording manually or from its calendar event.
-
-## Recording settings
-
-Options groups settings under **Recording** and **Files**.
-Rows below them open the **Meetings**, **Advanced transcription**, and **App &
-updates** pages; the arrow beside each page title returns to Options. Settings stay
-available after an error. Display, microphone, and video quality lock while
-capture starts, records, or stops. **Advanced transcription** opens engine, language,
-and decoding settings, which lock while transcription runs. Engine and model choices
-also lock during model preparation or download. Changes made during a recording
-apply when it stops.
-The save folder and automatic export lock during either. Meetings and App &
-updates never lock, so a prepared update can install as soon as the meeting finishes.
-The **Video** menu under Recording sets **Resolution** and **Frame rate**, which default
-to 1440 px and 10 fps. Resolution
-limits the video's longest edge to 1280, 1440, 1920, or 2560 pixels. It uses
-Retina pixels, preserves the display's proportions,
-and never upscales smaller displays. Frame rate sets a maximum of 5, 10, or
-30 fps. Higher settings can increase file size and processing load; macOS manages
-compression bitrate. These settings do not affect audio or transcription.
-
-## Transcription settings
-
-### Engine
-
-**Advanced transcription → Engine** chooses the transcription engine. **Parakeet v3** is
-the default: it runs one fast pass with automatic language detection and punctuation
-for 25 European languages, including Ukrainian, Russian, and English; its model is
-about 470 MB and downloads once. **Whisper** supports every language WhisperKit lists
-and runs one pass per selected language; choose it for other languages. Settings
-saved before Parakeet became the default switch to it unless their languages include
-one Parakeet doesn't support, and meetings already transcribed with Whisper keep
-Whisper when you retry or re-transcribe them. The
-language, model, vocabulary, and decoding rows apply to Whisper only. Changing
-engines only downloads the model if it is missing; it loads on the next
-transcription. Parakeet segments get a script-based uk/ru/en tag for the
-transcript and bundles — treat it as a hint, not model output. Latin-script lines
-get the English tag only when macOS language detection also finds English, so
-German, Polish, French, or Dutch lines stay untagged. Manage downloaded models
-under **Advanced transcription → Models**; see
-[Privacy and model storage](#privacy-and-model-storage).
-
-### Languages
-
-When Whisper is selected, choose the expected **Advanced transcription → Languages**
-in one menu. Parakeet detects each language itself, so the row appears only for Whisper.
-Ukrainian, Russian, and English are selected by default. Choose one for a
-single pass or several for multilingual
-meetings; at least one is required. The app remembers your selection.
-
-Each selected language adds one pass over the whole recording. The app merges
-segments by confidence and filters likely silence hallucinations. Fewer languages
-finish faster. Progress shows the current language and pass. All languages listed
-by WhisperKit are available.
-
-### Model
-
-**Advanced transcription → Model** offers multilingual Small, Large v3 Turbo
-(default), and Large v3.
-Small uses less memory; Large v3 takes longer and uses more memory. Changing
-models downloads it if it is missing; it loads on the next transcription. The
-picker waits for an active download to finish.
-
-### Vocabulary
-
-Use **Advanced transcription → Vocabulary** for names, companies, and technical terms separated
-by commas. These optional hints use Whisper's existing prompt support and stay on
-your Mac. The app remembers them; changing hints reruns the affected language passes.
-
-### Decoding
-
-**Advanced transcription** shows engine, model, and vocabulary settings with
-**Decoding** right below them. It expands temperature, fallback attempts and
-temperature increase, no-speech and log-probability thresholds, and the repetition
-threshold. Downloaded models are listed last on the page.
-
-**Reset decoding defaults** resets decoding without changing the selected model,
-vocabulary, or speaker-label option. Model and decoding settings are saved with
-each transcript; retries reuse them and changed settings invalidate cached passes.
-
-### Speaker labels
-
-**Advanced transcription → Add speaker labels** is on by default; turn it off there
-if you don't need labels. Settings saved before this default turn it on unless you had
-switched it off, and meetings already transcribed without labels keep that when
-retried. SpeakerKit identifies voices locally after transcription and adds **Speaker 1**,
-**Speaker 2**, and so on to the transcript and exported timeline. The first use
-downloads about 11 MB of models; later runs use the saved models offline.
-This adds processing time. Labels describe voices within this meeting, not real
-names or identities across meetings. Each transcript segment gets the speaker
-with the most overlapping speech; ties and unmatched segments stay unlabeled.
-Fast turn-taking within a segment and overlapping voices can be mislabeled.
-
-The setting is saved with each meeting and is also available in **Re-transcribe… → Advanced…**.
-Changing it reuses matching transcription passes. Speaker turns are cached in
-`speaker_turns.json`; changing the audio or a damaged cache reruns detection.
-If speaker detection fails, the transcript is saved without labels and the menu
-shows the error. Cancellation keeps completed passes for a later retry.
-
-## Saved meetings
-
-The menu lists all completed meetings, most recent first, with each meeting's day,
-start time, and length. It shows five at a time; scroll or search (the field states how
-many meetings it searches) to reach older ones. **Recorded meetings** shows the disk
-space all meetings use, and hovering a row shows its full title and folder size. The
-folder button beside **Recorded meetings** opens the meetings folder. Search finds matching titles
-and saved transcript text across all completed meetings in the selected folder,
-including older meetings and manual Markdown edits. Search runs locally. While the
-menu is open, ⌘F searches, ⌘, opens Options, and ⌘Q quits.
-
-Click a meeting to open its transcript; recordings that are not transcribed open
-their folder instead. Use the **•••** button on a meeting row, or right-click the
-row, for **Open Transcript**, **Show in Finder**, **Copy Transcript**, **Rename…**,
-**Re-transcribe…**, **Export bundle…**, and **Move to Trash**.
-Copy uses the saved Markdown, including any edits. Rename updates the folder,
-title, and metadata while keeping the transcript body and media files. Move to
-Trash moves the whole meeting folder to the macOS Trash, so you can still restore it
-from there.
-
-After a transcript is saved, the menu offers **Open Transcript**, **Copy Transcript**,
-and **Show in Finder** below the confirmation.
-
-### Re-transcribe a meeting
-
-**Re-transcribe…** states the engine, languages, and speaker labels it will use for a
-saved meeting, and **Advanced…** there changes them along with the model, vocabulary,
-and decoding.
-It reuses matching passes and keeps the current transcript available until the
-replacement is ready. A successful run replaces the transcript, including manual
-edits, while preserving the meeting name. Cancellation or failure keeps the old files.
-
-### Transcribe all unfinished recordings
-
-When recordings failed, were cancelled, or are waiting for transcription, the
-menu shows their count with **Transcribe**, or **Transcribe all** for several; the
-arrow beside it picks a single recording. Choosing it transcribes them in
-order; progress shows **Transcribing 2 of 3** plus the current meeting and the
-number still waiting, and the list marks the current meeting with its progress and
-the rest as **Queued**. Cancel stops the queue and reports how many finished;
-every recording keeps its completed language passes. If you quit while the
-queue runs, the app asks whether to wait until it finishes.
-
-### Retry or cancel transcription
-
-If transcription fails, the error appears below **Start recording**, so the next
-meeting still starts with one click. Use **Retry transcription** there, or **Retry**
-on the meeting's row, to resume from the saved audio or video. After a restart, unfinished recordings appear with **Transcribe** in the
-menu; see [Transcribe all unfinished recordings](#transcribe-all-unfinished-recordings).
-When quitting during work, choose **Finish and quit** or **Wait and quit** to let
-saving finish. Force Quit or power loss can leave an unfinished video that cannot
-be recovered.
-The menu shows **Stopping…** until capture has finished saving; another recording
-and updates wait for that completion. Cancelling also waits for capture to stop
-before moving its folder to the Trash. A stop or Trash failure is shown and keeps
-the remaining files available for recovery.
-
-If the app quits while re-transcription replaces a transcript, the next history scan
-restores the previous complete transcript, including manual edits. A replacement
-that finished saving keeps its new transcript. If restoration is blocked by file
-permissions, the meeting shows **Recovery required**; fix the folder's permissions,
-then choose **Retry recovery**. Transcription, renaming, and export stay unavailable
-until then, and bulk transcription skips the meeting. **Show in Finder** remains available to inspect the saved files.
-
-**Cancel** next to the progress bar stops processing and keeps the recording and completed
-language passes. Use **Transcribe** in the menu to resume later, even after a restart.
-A failure or **Cancel** ends only the current job: a recording you stopped while it ran
-still transcribes next. When that recording finishes, the inline error closes; the failed
-meeting keeps **Retry** on its row. After a failure, **Wait and quit** keeps the app open.
-
-With Whisper, each completed language pass is saved in the meeting folder as
-`pass_<language>.json`, for example `pass_uk.json`. Retry reuses matching passes and
-reruns any missing or damaged ones. Changing the audio, model, or decoding options
-invalidates the affected cache. The files are safe to delete. Parakeet runs one pass
-without a cache, so a cancelled or failed Parakeet run starts over. Finished
-transcripts are not regenerated automatically.
-
-## Meeting files and titles
-
-Unfinished recordings can be renamed before transcription. **Copy Transcript**
-and **Export bundle** become available when the transcript exists. If the meetings
-folder becomes unreadable or disconnects, the menu reports the error and keeps the
-last available list. Use **Retry** after reconnecting it, or **Choose folder…**.
-
-```text
-2026-09-04 14.30.00 — Product sync/
-├── recording.mp4
-├── audio.m4a
-├── transcript.md
-├── transcript.json
-├── pass_uk.json
-├── pass_ru.json
-├── pass_en.json
-└── metadata.json
-```
-
-Audio-only meetings have `recording.mov` with system-audio and microphone tracks
-instead of `recording.mp4`; it contains no video. Processing mixes those tracks
-into `audio.m4a` for playback and transcription. Both modes support history,
-recovery, re-transcription, and export; audio-only exports have empty screen files.
-
-`transcript.md` has timestamps and a link to the recording. `transcript.json` stores
-segment times, text, language tags, and optional speaker IDs. `metadata.json` stores the title,
-recording date, duration, speech settings, and transcription status.
-`pass_<language>.json` files are Whisper's per-language caches; see
-[Retry or cancel transcription](#retry-or-cancel-transcription). Meetings with speaker labels
-also keep `speaker_turns.json`, and meetings started from a calendar event keep
-`calendar.json`; see [docs/calendar-data.md](docs/calendar-data.md).
-
-For unnamed meetings, Apple's `NaturalLanguage` framework looks for a person,
-company, or product and a repeated topic. A discussion with Anna about a pricing
-review might become `Anna — Pricing Review`. The folder, Markdown heading, and
-metadata use the same title. Existing folders are never overwritten.
-Long folder names are shortened to fit filesystem limits; the title inside the meeting stays intact.
-
-Naming needs no additional model or API. Product names use a heuristic based on
-repeated capitalized nouns; recognition varies with the transcript and language
-support on the Mac. If no usable name and topic are found, the date-based name
-remains. Typed titles and titles from older folders are preserved.
-
-## Screenshots and export bundles
-
-Choose **Export bundle…** from a finished meeting's **•••** menu or right-click.
-The app reads the
-saved video, extracts screenshots and screen text, and opens `artifacts/` in Finder.
-If the original video was removed, export still works from the saved transcript,
-with empty screen files. `HOW-TO.md` explains which media is unavailable; saved
-Markdown edits are kept. An existing but damaged recording still reports an error
-instead of silently omitting its screenshots.
-Enable **Options → Files → Include screenshots and screen text** to run this
-after each transcript is saved. Automatic export is off by default.
-
-Screen extraction samples every two seconds, keeps screen changes and a frame
-at least every 90 seconds, and recognizes text with Apple's Vision framework.
-Repeated lines are removed. It exports up to 30 screenshots spread across the
-recording, preferring frames with more new text. If no text is recognized, it
-still selects screenshots. OCR uses supported languages from the transcript;
-small text, rapid changes, and unsupported languages can be missed.
-
-```text
-artifacts/
-├── transcript.md
-├── transcript.json
-├── timeline.md
-├── screen.json
-├── screens/
-├── screens_index.md
-├── languages.json
-├── PROMPT.md
-└── HOW-TO.md
-```
-
-The timeline combines speech, newly recognized screen text, screenshot links,
-and gaps of at least eight seconds between speech segments. `HOW-TO.md` reports
-language shares based on transcribed speech duration; `languages.json` stores
-the same durations and shares. Percentages exclude gaps and describe language
-labels, not recognition accuracy.
-
-The exported Markdown includes manual transcript edits. The timeline and language
-shares use the timed JSON segments, which manual Markdown edits do not change.
-Audio and video stay in the meeting folder. `PROMPT.md` is a short instruction
-for using the bundle with an external assistant; the app does not send it anywhere.
-
-Export runs locally with progress and cancellation. Regenerating replaces the
-previous bundle only when the new one is ready. Failure or cancellation preserves
-the transcript and any previous bundle. Automatic export failures appear in the
-menu without marking the saved transcript as failed.
-
-## Privacy and model storage
-
-Recording, transcription, screenshots, OCR, and automatic naming run on your Mac.
-The app does not upload meetings. Update checks contact GitHub. Speech models
-download from Hugging Face once per selected model and work offline after setup.
-Removing or damaging those files can require another download.
-
-Model files live under `~/Library/Application Support/BetterMeeting/`. Whisper
-models are in `models/argmaxinc/whisperkit-coreml/`; tokenizer files are stored
-under `models/openai/`. WhisperKit calls the turbo model
-`openai_whisper-large-v3-v20240930`; its model files total about 1.6 GB.
-Downloaded model files are kept when switching. The first load can take longer
-while Core ML prepares the model.
-
-Parakeet models live under `models/parakeet-tdt-0.6b-v3/` (about 470 MB) and are
-downloaded while Parakeet is the selected engine, which it is by default. The FluidAudio runtime is
-Apache-2.0; the model weights are CC-BY-4.0, © NVIDIA Corporation. See
-[ThirdPartyNotices.md](ThirdPartyNotices.md).
-
-Speaker models are downloaded only when processing with **Add speaker labels** enabled,
-under `models/argmaxinc/speakerkit-coreml/`. Speaker detection runs locally
-and releases its models after each run. Its memory
-use also includes the decoded recording, so longer meetings need more memory.
-
-**Advanced transcription → Models** lists every model. Downloaded ones show
-their size with a **Delete…** button, which asks for confirmation on the row; models
-that are missing show their approximate download size with a **Download** button, so
-they can be fetched ahead of time. An interrupted download shows **Partial download**
-with both buttons: download to finish it, or delete the partial files. Progress appears on the row during a download, and a transcription
-that needs the same model waits for it instead of downloading it again. **Show models
-folder** opens the whole folder, and a deleted model downloads again the next
-time it is needed. Deleting one that is in memory releases it first.
-A deletion failure appears on the Models page. Model sizes add together:
-Parakeet is about 470 MB, and each Whisper model is about 490 MB to 3.1 GB,
-depending on the selection, plus optional speaker models.
-
-Updating from an earlier version moves models stored under
-`~/Documents/huggingface/` to the new location on first launch, so they are not
-downloaded again. Migration fills missing files in partial caches and keeps
-conflicting old files until they have a verified replacement. Removing the app does not delete saved meetings or downloaded
-models. To free the model files, delete them under **Advanced transcription → Models**, or run
-`brew uninstall --zap --cask kremnyi/better-meeting/better-meeting` if you
-installed with Homebrew. Saved meetings are always kept.
+## Uninstall
+
+Uninstalling never deletes saved meetings.
+
+- Homebrew: `brew uninstall --cask kremnyi/better-meeting/better-meeting`. Add
+  `--zap` to also remove downloaded models and app settings.
+- Direct download: delete the app from `/Applications`. To remove models,
+  delete them first in **Options → Advanced transcription → Models**, or delete
+  `~/Library/Application Support/BetterMeeting/`.
+
+## Limits
+
+- Video capture records one whole display. Window-only capture is not available.
+- Transcription and export run one at a time. You can record while a
+  transcription runs.
+- Speaker labels can need correction. The app does not name speakers.
+- Force Quit or power loss during a recording can leave a video that cannot be
+  recovered. To quit while the app is working, choose **Finish and quit** or
+  **Wait and quit**.
+- Whisper can produce text during silence.
+- Parakeet v3 supports 25 European languages. Choose Whisper for other languages.
+- File import, live captions, and meeting summaries are not included.
+- The selected microphone, and for video the selected display, must be
+  connected when recording starts.
 
 ## Build from source
 
 Source builds require Xcode 16 or newer. See [CONTRIBUTING.md](CONTRIBUTING.md)
 for building, testing, signing, publishing releases, and updating the website.
 
-## Limits
-
-- Video capture records one whole display; audio-only captures system audio and microphone. Window-only capture is not available.
-- Transcription and export run one at a time; a recording can start while transcription finishes in the background.
-- Speaker labels may need correction; automatic speaker naming is not available.
-- Whisper can produce text during silence; the no-speech filter does not catch every case.
-- Parakeet v3 covers 25 European languages; choose Whisper for other languages.
-- File import, live captions, and meeting summaries are not included.
-- The selected microphone must be connected when recording starts; video capture also requires the selected display.
-
 ## Project origin and license
 
 This macOS app is based on [GivenFLY/better-meeting](https://github.com/GivenFLY/better-meeting),
-which processes existing recordings. The original implementation remains in
-that repository and this fork's Git history. The macOS app is made by
-[Bohdan Kremnyi](https://kremnyi.com); **Options → App & updates → About Better
-Meeting** shows the installed version, links to the project and its author, and
-this attribution.
+which processes existing recordings. The macOS app is made by
+[Bohdan Kremnyi](https://kremnyi.com).
 
-Licensed under [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution
-and [ThirdPartyNotices.md](ThirdPartyNotices.md) for dependency licenses.
+Licensed under [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
+
+Third-party credits: [WhisperKit and SpeakerKit](https://github.com/argmaxinc/argmax-oss-swift)
+by Argmax (MIT), [FluidAudio](https://github.com/FluidInference/FluidAudio)
+(Apache-2.0), and [Sparkle](https://github.com/sparkle-project/Sparkle) (MIT).
+[Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) model
+weights are © NVIDIA Corporation, CC-BY-4.0. See
+[ThirdPartyNotices.md](ThirdPartyNotices.md) for full license details.

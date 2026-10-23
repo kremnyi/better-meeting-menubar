@@ -307,22 +307,16 @@ actor LocalTranscriber {
 
     // Forget the engine before awaiting cleanup, so a transcription that starts meanwhile loads a fresh one.
     private func unloadWhisper() async {
-        let loaded = whisper
-        whisper = nil
         loadedModel = nil
-        if let loaded { await loaded.unloadModels() }
+        await whisper.take()?.unloadModels()
     }
 
     private func unloadParakeet() async {
-        let loaded = parakeet
-        parakeet = nil
-        if let loaded { await loaded.cleanup() }
+        await parakeet.take()?.cleanup()
     }
 
     private func unloadSpeakerKit() async {
-        let loaded = speakerKit
-        speakerKit = nil
-        if let loaded { await loaded.unloadModels() }
+        await speakerKit.take()?.unloadModels()
     }
 
     func deleteStoredModel(at url: URL) async throws {
@@ -446,65 +440,49 @@ actor LocalTranscriber {
         activeTranscriptions += 1
         defer { activeTranscriptions -= 1 }
         switch settings.selectedEngine {
-        case .whisper:
-            return try await transcribeWhisper(
-                audioURL: audioURL, audio: audio,
-                languages: languages, hints: hints, settings: settings, audioReady: audioReady,
-                progressHandler: progressHandler
-            )
         case .parakeet:
             return try await transcribeParakeet(audio: audio, progressHandler: progressHandler)
-        }
-    }
-
-    private func transcribeWhisper(
-        audioURL: URL,
-        audio: MeetingAudio,
-        languages: [String],
-        hints: String,
-        settings: SpeechSettings,
-        audioReady: (@Sendable () async throws -> Void)?,
-        progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
-    ) async throws -> [TranscriptSegment] {
-        try await TranscriptionPasses.run(
-            audioURL: audioURL, languages: languages, hints: hints, settings: settings, audioReady: audioReady,
-            detectLanguages: {
+        case .whisper:
+            return try await TranscriptionPasses.run(
+                audioURL: audioURL, languages: languages, hints: hints, settings: settings, audioReady: audioReady,
+                detectLanguages: {
+                    let whisper = try await self.prepare(model: settings.model, progressHandler: progressHandler)
+                    return try await whisper.languageProbabilities(in: audio.load())
+                },
+                progressHandler: progressHandler
+            ) { options, report in
                 let whisper = try await self.prepare(model: settings.model, progressHandler: progressHandler)
-                return try await whisper.languageProbabilities(in: audio.load())
-            },
-            progressHandler: progressHandler
-        ) { options, report in
-            let whisper = try await self.prepare(model: settings.model, progressHandler: progressHandler)
-            guard let language = options.language else { throw TranscriptionError.invalidLanguages }
-            var options = options
-            let hints = hints.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !hints.isEmpty {
-                guard let tokenizer = whisper.tokenizer else { throw WhisperError.tokenizerUnavailable() }
-                options.promptTokens = tokenizer.encode(text: " " + hints)
-            }
-            report(0)
-            let samples = try await audio.load()
-            try Task.checkCancellation()
-            let duration = Double(samples.count) / Double(WhisperKit.sampleRate)
-            // Chunks decoded in parallel finish out of order; report the furthest point reached.
-            let furthest = OSAllocatedUnfairLock(initialState: 0.0)
-            whisper.segmentDiscoveryCallback = { segments in
-                guard duration > 0, let end = segments.map(\.end).max() else { return }
-                report(furthest.withLock { reached in
-                    reached = max(reached, min(max(Double(end) / duration, 0), 0.99))
-                    return reached
-                })
-            }
-            defer { whisper.segmentDiscoveryCallback = nil }
-            let results = try await whisper.transcribe(audioArray: samples, decodeOptions: options)
-            try Task.checkCancellation()
-            return results.flatMap(\.segments).compactMap { segment in
-                let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty else { return nil }
-                return ScoredSegment(
-                    start: Double(segment.start), end: Double(segment.end), text: text,
-                    lang: language, score: segment.avgLogprob, nospeech: segment.noSpeechProb
-                )
+                guard let language = options.language else { throw TranscriptionError.invalidLanguages }
+                var options = options
+                let hints = hints.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !hints.isEmpty {
+                    guard let tokenizer = whisper.tokenizer else { throw WhisperError.tokenizerUnavailable() }
+                    options.promptTokens = tokenizer.encode(text: " " + hints)
+                }
+                report(0)
+                let samples = try await audio.load()
+                try Task.checkCancellation()
+                let duration = Double(samples.count) / Double(WhisperKit.sampleRate)
+                // Chunks decoded in parallel finish out of order; report the furthest point reached.
+                let furthest = OSAllocatedUnfairLock(initialState: 0.0)
+                whisper.segmentDiscoveryCallback = { segments in
+                    guard duration > 0, let end = segments.map(\.end).max() else { return }
+                    report(furthest.withLock { reached in
+                        reached = max(reached, min(max(Double(end) / duration, 0), 0.99))
+                        return reached
+                    })
+                }
+                defer { whisper.segmentDiscoveryCallback = nil }
+                let results = try await whisper.transcribe(audioArray: samples, decodeOptions: options)
+                try Task.checkCancellation()
+                return results.flatMap(\.segments).compactMap { segment in
+                    let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return nil }
+                    return ScoredSegment(
+                        start: Double(segment.start), end: Double(segment.end), text: text,
+                        lang: language, score: segment.avgLogprob, nospeech: segment.noSpeechProb
+                    )
+                }
             }
         }
     }

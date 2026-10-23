@@ -47,21 +47,21 @@ enum MeetingNotifications {
     }
 
     static func audioWarning(recordingID: UUID, message: String) -> UNNotificationRequest {
-        let content = UNMutableNotificationContent()
-        content.title = "Check your recording"
-        content.body = message
-        content.categoryIdentifier = audioWarningCategory
-        return UNNotificationRequest(identifier: recordingID.uuidString, content: content, trigger: nil)
+        warning(recordingID.uuidString, title: "Check your recording", message: message, category: audioWarningCategory)
     }
 
     static func diskWarningID(_ recordingID: UUID) -> String { recordingID.uuidString + "-disk" }
 
     static func diskWarning(recordingID: UUID, message: String) -> UNNotificationRequest {
+        warning(diskWarningID(recordingID), title: "Low recording disk space", message: message, category: diskWarningCategory)
+    }
+
+    private static func warning(_ identifier: String, title: String, message: String, category: String) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
-        content.title = "Low recording disk space"
+        content.title = title
         content.body = message
-        content.categoryIdentifier = diskWarningCategory
-        return UNNotificationRequest(identifier: diskWarningID(recordingID), content: content, trigger: nil)
+        content.categoryIdentifier = category
+        return UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
     }
 
     static func remove(_ identifier: String) {

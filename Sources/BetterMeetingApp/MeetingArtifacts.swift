@@ -145,27 +145,17 @@ enum MeetingArtifacts {
         to folder: URL
     ) throws {
         let resolvedTitle = resolvedTitle(title, recordedAt: recordedAt)
-        let transcript = transcriptMarkdown(
+        try transcriptMarkdown(
             title: resolvedTitle,
             recordedAt: recordedAt,
             duration: duration,
             segments: segments,
             recordingFilename: recordingFilename ?? recordingURL(in: folder).lastPathComponent
-        )
-        try transcript.write(
-            to: folder.appendingPathComponent("transcript.md"),
-            atomically: true,
-            encoding: .utf8
-        )
+        ).write(to: folder.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-
-        let transcriptData = try encoder.encode(segments)
-        try transcriptData.write(
-            to: folder.appendingPathComponent("transcript.json"),
-            options: .atomic
-        )
+        try encoder.encode(segments).write(to: folder.appendingPathComponent("transcript.json"), options: .atomic)
 
         try writeMetadata(
             title: resolvedTitle,
@@ -198,11 +188,7 @@ enum MeetingArtifacts {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        let manifestData = try encoder.encode(manifest)
-        try manifestData.write(
-            to: folder.appendingPathComponent("metadata.json"),
-            options: .atomic
-        )
+        try encoder.encode(manifest).write(to: folder.appendingPathComponent("metadata.json"), options: .atomic)
     }
 
     static func replaceTranscript(
@@ -228,19 +214,19 @@ enum MeetingArtifacts {
             try? fm.removeItem(at: staging)
             throw error
         }
-        var replaced: [Int] = []
+        var replaced = 0
         do {
-            for (index, name) in transcriptFiles.enumerated() {
+            for name in transcriptFiles {
                 let data = try Data(contentsOf: staging.appendingPathComponent(name))
                 try data.write(to: meeting.folderURL.appendingPathComponent(name), options: .atomic)
-                replaced.append(index)
+                replaced += 1
             }
             // A crash after this marker must keep the new, complete set of files.
             try Data().write(to: staging.appendingPathComponent("committed"), options: .atomic)
         } catch {
             do {
-                for index in replaced {
-                    try originals[index].write(to: meeting.folderURL.appendingPathComponent(transcriptFiles[index]), options: .atomic)
+                for (name, original) in zip(transcriptFiles, originals).prefix(replaced) {
+                    try original.write(to: meeting.folderURL.appendingPathComponent(name), options: .atomic)
                 }
             } catch {
                 throw MeetingActionError.transcriptRecovery(staging)
@@ -262,6 +248,7 @@ enum MeetingArtifacts {
                 return $0.lastPathComponent.hasPrefix(".transcript-")
                     && values?.isDirectory == true && values?.isSymbolicLink != true
             }
+        // Destinations change only after every backup is written, so a stage missing any backup holds nothing to restore.
         let pending = stages.filter { staging in
             !fm.fileExists(atPath: staging.appendingPathComponent("committed").path)
                 && transcriptFiles.allSatisfy { fm.fileExists(atPath: staging.appendingPathComponent("previous-" + $0).path) }
@@ -269,12 +256,9 @@ enum MeetingArtifacts {
         // Multiple abandoned attempts from older builds need manual recovery; retain every backup.
         guard pending.count <= 1 else { throw MeetingActionError.transcriptRecovery(pending[0]) }
         for staging in stages {
-            let backups = transcriptFiles.map { staging.appendingPathComponent("previous-" + $0) }
-            // Destinations change only after every backup is written, so a stage missing any backup holds nothing to restore.
-            if !fm.fileExists(atPath: staging.appendingPathComponent("committed").path),
-               backups.allSatisfy({ fm.fileExists(atPath: $0.path) }) {
+            if staging == pending.first {
                 do {
-                    let originals = try backups.map { try Data(contentsOf: $0) }
+                    let originals = try transcriptFiles.map { try Data(contentsOf: staging.appendingPathComponent("previous-" + $0)) }
                     for (name, data) in zip(transcriptFiles, originals) {
                         try data.write(to: folder.appendingPathComponent(name), options: .atomic)
                     }
@@ -288,11 +272,16 @@ enum MeetingArtifacts {
         }
     }
 
-    static func speechSettings(in folder: URL) -> SpeechSettings? {
+    private static func manifest(in folder: URL) -> MeetingManifest? {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let data = try? Data(contentsOf: folder.appendingPathComponent("metadata.json")) else { return nil }
-        guard var settings = (try? decoder.decode(MeetingManifest.self, from: data))?.speechSettings else { return nil }
+        return (try? Data(contentsOf: folder.appendingPathComponent("metadata.json"))).flatMap {
+            try? decoder.decode(MeetingManifest.self, from: $0)
+        }
+    }
+
+    static func speechSettings(in folder: URL) -> SpeechSettings? {
+        guard var settings = manifest(in: folder)?.speechSettings else { return nil }
         // Meetings saved before Parakeet became the default recorded no engine; Whisper transcribed them.
         settings.engine = settings.engine ?? .whisper
         return settings
@@ -317,8 +306,6 @@ enum MeetingArtifacts {
     static func meeting(in folder: URL) -> MeetingHistoryItem? {
         transcriptLock.lock()
         defer { transcriptLock.unlock() }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
         let values = try? folder.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey])
         guard values?.isDirectory == true else { return nil }
         var recoveryFolder: URL?
@@ -326,10 +313,7 @@ enum MeetingArtifacts {
         catch MeetingActionError.transcriptRecovery(let backup) { recoveryFolder = backup }
         catch { recoveryFolder = folder }
 
-        let metadataURL = folder.appendingPathComponent("metadata.json")
-        let manifest = (try? Data(contentsOf: metadataURL)).flatMap {
-            try? decoder.decode(MeetingManifest.self, from: $0)
-        }
+        let manifest = Self.manifest(in: folder)
         let hasMarkdown = FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path)
         let hasTranscripts = hasMarkdown
             && FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.json").path)

@@ -93,9 +93,7 @@ struct MenuBarControlView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         case .available, .downloaded, .ready:
-            Button(updates.actionTitle) {
-                updates.performAction()
-            }
+            Button(updates.actionTitle, action: updates.performAction)
             .buttonStyle(.plain)
             .font(.caption)
             .foregroundStyle(updates.canPerformAction ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
@@ -183,18 +181,13 @@ struct MenuBarControlView: View {
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { startFromMenu() }
                 .help("Press Return to start recording")
-            StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle) { mode in
-                startFromMenu(mode: mode)
-            }
+            StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle) { startFromMenu(mode: $0) }
         }
     }
 
     private func startFromMenu(mode: CaptureMode = .screen) {
-        if let event = StartRecordingButton.imminentEvent(in: model.calendar, title: model.meetingTitle, at: Date()) {
-            model.startRecording(calendarEvent: event, mode: mode)
-        } else {
-            model.startRecording(mode: mode)
-        }
+        let event = StartRecordingButton.imminentEvent(in: model.calendar, title: model.meetingTitle, at: Date())
+        model.startRecording(calendarEvent: event, mode: mode)
     }
 
     @ViewBuilder
@@ -492,6 +485,7 @@ struct MenuBarControlView: View {
                 HStack(spacing: 8) { failureSecondaryActions }
                 VStack(alignment: .leading, spacing: 8) { failureSecondaryActions }
             }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -499,19 +493,14 @@ struct MenuBarControlView: View {
     private var failureSecondaryActions: some View {
         if model.privacyPermission != nil || model.showsRecordingOptionsAction {
             Button(model.primaryButtonTitle, action: model.primaryAction)
-                .buttonStyle(.bordered)
         } else if let folder = model.completedFolder {
             Button("Show saved files") { NSWorkspace.shared.open(folder) }
-                .buttonStyle(.bordered)
         }
         Button("Back to meetings", action: model.dismissFailure)
-            .buttonStyle(.bordered)
     }
 
     private var primaryActionButton: some View {
-        Button {
-            model.primaryAction()
-        } label: {
+        Button(action: model.primaryAction) {
             Label {
                 Text(model.primaryButtonTitle)
                     .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))

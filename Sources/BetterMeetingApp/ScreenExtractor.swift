@@ -53,8 +53,7 @@ enum ScreenExtractor {
                     try Task.checkCancellation()
                     continue
                 }
-                let added = addedLines(lines, previous: previousText)
-                keyframes.append(ScreenEvent(time: time, added: added))
+                keyframes.append(ScreenEvent(time: time, added: addedLines(lines, previous: previousText)))
                 previousText = lines
                 previousSignature = signature
                 previousTime = time
@@ -112,12 +111,11 @@ enum ScreenExtractor {
     static func shouldKeep(_ signature: [UInt8], previous: [UInt8]?, gap: Double) -> Bool {
         guard let previous else { return true }
         let changes = zip(signature, previous).map { abs(Int($0) - Int($1)) }
-        return gap >= 90 || changes.filter { $0 > 14 }.count >= 3 || (changes.max() ?? 0) > 60
+        return gap >= 90 || changes.count(where: { $0 > 14 }) >= 3 || (changes.max() ?? 0) > 60
     }
 
     static func recognitionLanguages(for languages: [String]) throws -> [String] {
-        let request = textRequest()
-        let supported = try request.supportedRecognitionLanguages()
+        let supported = try textRequest().supportedRecognitionLanguages()
         return languages.compactMap { language in
             supported.first { $0 == language || $0.hasPrefix(language + "-") }
         }
@@ -151,7 +149,7 @@ enum ScreenExtractor {
     }
 
     static func selectedIndices(in events: [ScreenEvent], duration: Double, limit: Int) -> [Int] {
-        guard limit > 0, !events.isEmpty else { return [] }
+        guard limit > 0 else { return [] }
         let text = events.indices.filter { !events[$0].added.isEmpty }
         let candidates = text.isEmpty ? Array(events.indices) : text
         guard candidates.count > limit else { return candidates }

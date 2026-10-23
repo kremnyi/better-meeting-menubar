@@ -71,11 +71,9 @@ final class AudioOnlyRecording: @unchecked Sendable {
             return
         }
         for (type, input) in inputs where !finishedInputs.contains(type) {
-            let queued = pending[type]?.count ?? 0
             var appended = 0
             var error: Error?
-            while appended < queued {
-                let item = pending[type, default: []][appended]
+            for item in pending[type] ?? [] {
                 guard isReady(input) else {
                     if item.receivedAt.duration(to: .now) >= stallLimit { error = BackpressureError() }
                     break

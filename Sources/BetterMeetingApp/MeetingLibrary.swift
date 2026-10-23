@@ -43,20 +43,13 @@ final class MeetingLibrary: Sendable {
 
     // shortcut: scan saved Markdown on demand; add an index if large libraries make search slow.
     func search(_ meetings: [MeetingHistoryItem], query: String) -> [MeetingHistoryItem] {
-        var matches: [MeetingHistoryItem] = []
-        for meeting in meetings {
-            guard !Task.isCancelled else { return [] }
-            if meeting.title.localizedStandardContains(query) {
-                matches.append(meeting)
-                continue
-            }
-            let transcript = try? String(contentsOf: meeting.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8)
-            if transcript?.localizedStandardContains(query) == true
-                || MeetingCalendar.searchFields(in: meeting.folderURL).contains(where: { $0.localizedStandardContains(query) }) {
-                matches.append(meeting)
-            }
+        let matches = meetings.filter { meeting in
+            !Task.isCancelled && (meeting.title.localizedStandardContains(query)
+                || (try? String(contentsOf: meeting.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8))?
+                    .localizedStandardContains(query) == true
+                || MeetingCalendar.searchFields(in: meeting.folderURL).contains { $0.localizedStandardContains(query) })
         }
-        return matches
+        return Task.isCancelled ? [] : matches
     }
 
     private static func stamp(_ url: URL) -> Stamp {

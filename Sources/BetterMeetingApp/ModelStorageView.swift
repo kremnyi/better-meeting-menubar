@@ -73,12 +73,9 @@ struct ModelStorageView: View {
     }
 
     private func size(_ item: StoredModelInfo) -> String {
-        guard item.installed else {
-            if item.existsOnDisk {
-                return "Partial download · " + ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file)
-            }
-            return "Not downloaded · about \(ByteCountFormatter.string(fromByteCount: item.downloadBytes, countStyle: .file))"
-        }
-        return item.sizeBytes > 0 ? ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file) : "Downloaded"
+        let bytes = ByteCountFormatter.string(fromByteCount: item.sizeBytes, countStyle: .file)
+        if item.installed { return item.sizeBytes > 0 ? bytes : "Downloaded" }
+        if item.existsOnDisk { return "Partial download · " + bytes }
+        return "Not downloaded · about \(ByteCountFormatter.string(fromByteCount: item.downloadBytes, countStyle: .file))"
     }
 }

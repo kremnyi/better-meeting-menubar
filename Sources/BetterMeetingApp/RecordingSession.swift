@@ -64,12 +64,9 @@ final class RecordingSession: ObservableObject {
                 try await requestCapturePermissions()
 
                 // Resolve only the exact event the user clicked, never a title/time match.
-                let event: CalendarEvent?
-                if let calendarEvent {
-                    event = try await model.calendar.eventForRecording(id: calendarEvent.id)
-                } else {
-                    event = nil
-                }
+                let event: CalendarEvent? = if let calendarEvent {
+                    try await model.calendar.eventForRecording(id: calendarEvent.id)
+                } else { nil }
                 let title = event?.title ?? manualTitle
                 model.meetingTitle = title
                 titleWasProvided = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -80,10 +77,9 @@ final class RecordingSession: ObservableObject {
                     title: title,
                     recordedAt: startedAt
                 )
-                let recordingURL = folder.appendingPathComponent(mode.filename)
                 activeFolder = folder
                 try event?.attach(to: folder, recordedAt: startedAt)
-                try await startCapture(recordingURL, mode)
+                try await startCapture(folder.appendingPathComponent(mode.filename), mode)
                 didStart(at: startedAt)
                 // Capture never waits for the user to answer the prompt.
                 Task { await MeetingNotifications.requestPermission() }
@@ -145,13 +141,11 @@ final class RecordingSession: ObservableObject {
 
     private func captureStoppedExternally(with error: Error?) {
         guard state == .recording else { return }
-
         if let error {
             model.fail(error, folder: activeFolder)
-            return
+        } else {
+            finish(stoppingCapture: false)
         }
-
-        finish(stoppingCapture: false)
     }
 
     func finish(stoppingCapture stopCapture: Bool) {
@@ -263,10 +257,10 @@ final class RecordingSession: ObservableObject {
         guard let recordingID = id else { return }
         lastDiskCheck = Date()
         let destination = activeFolder ?? model.outputRoot
-        Task { [model] in
+        Task {
             let space = await Task.detached(priority: .utility) { RecordingDiskSpace.read(at: destination) }.value
-            guard self.id == recordingID else { return }
-            model.recording.checkDiskSpace(space)
+            guard id == recordingID else { return }
+            checkDiskSpace(space)
         }
     }
 

@@ -57,9 +57,7 @@ enum SpeakerLabels {
         try Task.checkCancellation()
         let samples = try await audio.load()
         try Task.checkCancellation()
-        let result = try await kit.diarize(audioArray: samples, progressCallback: { update in
-            progress(update.fractionCompleted)
-        })
+        let result = try await kit.diarize(audioArray: samples, progressCallback: { progress($0.fractionCompleted) })
         try Task.checkCancellation()
         return result.segments.compactMap { segment in
             guard let speaker = segment.speaker.speakerId else { return nil }
@@ -77,7 +75,7 @@ enum SpeakerLabels {
         return segments.map { segment in
             var labeled = segment
             var overlap: [Int: Double] = [:]
-            var index = Self.firstIndex(in: furthestEnd) { $0 > segment.start }
+            var index = firstIndex(in: furthestEnd) { $0 > segment.start }
             while index < sorted.count, sorted[index].start < segment.end {
                 let turn = sorted[index]
                 let seconds = min(segment.end, turn.end) - max(segment.start, turn.start)

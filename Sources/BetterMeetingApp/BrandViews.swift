@@ -36,8 +36,7 @@ enum BrandAssets {
     }
 
     private static func makeRecordingMenuBarIcon(dark: Bool) -> NSImage {
-        let pointSize = NSSize(width: 18, height: 18)
-        let image = NSImage(size: pointSize, flipped: false) { rect in
+        NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
             NSGraphicsContext.saveGraphicsState()
             menuBarIcon.draw(in: rect)
             (dark ? NSColor.white : NSColor.black).setFill()
@@ -49,8 +48,6 @@ enum BrandAssets {
             NSRect(x: 13, y: 0, width: 5, height: 5).fill(using: .sourceAtop)
             return true
         }
-        image.isTemplate = false
-        return image
     }
 }
 

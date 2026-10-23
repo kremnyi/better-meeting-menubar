@@ -215,7 +215,7 @@ struct UpcomingMeetingView: View {
                         if let event = layout.primary {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(alignment: .top, spacing: 8) {
-                                    Button { open(event) } label: {
+                                    openButton(event, accessibilityLabel: "\(event.title), \(event.relativeStart(at: Date())), \(event.timeRange)") {
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(event.title).lineLimit(2)
                                             TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -225,10 +225,6 @@ struct UpcomingMeetingView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .contentShape(Rectangle())
                                     }
-                                    .buttonStyle(MeetingRowButtonStyle())
-                                    .help(Self.openLabel(for: event) + " · " + event.title)
-                                    .accessibilityLabel("\(event.title), \(event.relativeStart(at: Date())), \(event.timeRange)")
-                                    .accessibilityHint(Self.openHint(for: event))
                                     Button { record(event) } label: {
                                         Image(systemName: "record.circle")
                                             .font(.system(size: 16))
@@ -246,7 +242,7 @@ struct UpcomingMeetingView: View {
                                             .font(.caption).foregroundStyle(.secondary)
                                         VStack(alignment: .leading, spacing: 4) {
                                             ForEach(layout.compact) { meeting in
-                                                Button { open(meeting) } label: {
+                                                openButton(meeting, accessibilityLabel: "\(meeting.title), \(meeting.timeRange)") {
                                                     HStack(spacing: 8) {
                                                         Text(meeting.timeRange)
                                                             .font(.caption).monospacedDigit().foregroundStyle(.secondary)
@@ -255,10 +251,6 @@ struct UpcomingMeetingView: View {
                                                     }
                                                     .contentShape(Rectangle())
                                                 }
-                                                .buttonStyle(MeetingRowButtonStyle())
-                                                .help(Self.openLabel(for: meeting) + " · " + meeting.title)
-                                                .accessibilityLabel("\(meeting.title), \(meeting.timeRange)")
-                                                .accessibilityHint(Self.openHint(for: meeting))
                                             }
                                         }
                                     }
@@ -282,16 +274,12 @@ struct UpcomingMeetingView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("No more meetings today.")
                                 if let tomorrow = layout.tomorrowFirst {
-                                    Button { open(tomorrow) } label: {
+                                    openButton(tomorrow, accessibilityLabel: "\(tomorrow.title), tomorrow \(tomorrow.timeRange)") {
                                         Text("Tomorrow " + tomorrow.scheduledStart.formatted(date: .omitted, time: .shortened) + " · " + tomorrow.title)
                                             .lineLimit(1)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .contentShape(Rectangle())
                                     }
-                                    .buttonStyle(MeetingRowButtonStyle())
-                                    .help(Self.openLabel(for: tomorrow) + " · " + tomorrow.title)
-                                    .accessibilityLabel("\(tomorrow.title), tomorrow \(tomorrow.timeRange)")
-                                    .accessibilityHint(Self.openHint(for: tomorrow))
                                 }
                             }
                             .wrappingCaption()
@@ -312,8 +300,17 @@ struct UpcomingMeetingView: View {
         if let url = event.joinURL { NSWorkspace.shared.open(url) } else { openCalendar() }
     }
 
-    private static func openLabel(for event: CalendarEvent) -> String {
-        event.joinService.map { "Join on " + $0 } ?? "Open Calendar"
+    private func openButton<Label: View>(_ event: CalendarEvent, accessibilityLabel: LocalizedStringKey,
+                                         @ViewBuilder label: () -> Label) -> some View {
+        Button(action: { open(event) }, label: label)
+            .buttonStyle(MeetingRowButtonStyle())
+            .help((event.joinService.map { "Join on " + $0 } ?? "Open Calendar") + " · " + event.title)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint(Self.openHint(for: event))
+    }
+
+    private static func openHint(for event: CalendarEvent) -> String {
+        event.joinService.map { "Joins the \($0) call in your browser" } ?? "Opens Calendar"
     }
 
     private static func caption(for event: CalendarEvent, at now: Date) -> String {
@@ -322,10 +319,6 @@ struct UpcomingMeetingView: View {
 
     private static func moreToday(_ count: Int, spoken: Bool = false) -> String {
         "\(count) more" + (spoken ? (count == 1 ? " meeting" : " meetings") : "") + " today"
-    }
-
-    private static func openHint(for event: CalendarEvent) -> String {
-        event.joinService.map { "Joins the \($0) call in your browser" } ?? "Opens Calendar"
     }
 }
 
@@ -355,12 +348,11 @@ struct UpcomingMeetingLayout {
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
         let today = CalendarEvent.withoutDuplicates(events).filter { $0.scheduledStart < tomorrowStart }
         let compact = Array(today.dropFirst().prefix(compactLimit))
-        let tomorrow = events.first { $0.scheduledStart >= tomorrowStart }
         return UpcomingMeetingLayout(
             primary: today.first,
             compact: compact,
             extraTodayCount: max(0, today.count - 1 - compact.count),
-            tomorrowFirst: today.isEmpty ? tomorrow : nil
+            tomorrowFirst: today.isEmpty ? events.first(where: { $0.scheduledStart >= tomorrowStart }) : nil
         )
     }
 }
@@ -382,15 +374,12 @@ extension CalendarEvent {
         if days == 1 { return "Tomorrow " + scheduledStart.formatted(date: .omitted, time: .shortened) }
         if days != 0 { return scheduledStart.formatted(date: .abbreviated, time: .omitted) }
         let minutes = Int(ceil(scheduledStart.timeIntervalSince(now) / 60))
-        if compact {
-            if minutes < 60 { return "in \(minutes)m" }
-            let remainder = minutes % 60
-            return "in \(minutes / 60)h" + (remainder == 0 ? "" : "\(remainder)m")
-        }
-        let verb = "Starts "
-        if minutes < 60 { return verb + "in \(minutes) min" }
         let remainder = minutes % 60
-        return verb + "in \(minutes / 60) hr" + (remainder == 0 ? "" : " \(remainder) min")
+        if compact {
+            return minutes < 60 ? "in \(minutes)m" : "in \(minutes / 60)h" + (remainder == 0 ? "" : "\(remainder)m")
+        }
+        if minutes < 60 { return "Starts in \(minutes) min" }
+        return "Starts in \(minutes / 60) hr" + (remainder == 0 ? "" : " \(remainder) min")
     }
 
     var timeRange: String {

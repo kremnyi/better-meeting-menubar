@@ -173,25 +173,11 @@ struct MeetingHistorySection: View {
                         Text(item.title)
                             .lineLimit(1)
                         if isNew {
-                            Text("New")
-                                .font(.caption)
-                                .foregroundStyle(.tint)
-                                .lineLimit(1)
-                                .fixedSize()
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(Color.accentColor.opacity(0.15), in: Capsule())
+                            capsule("New", tinted: true)
                                 .help("Just saved")
                         }
                         if let badge, !(badge == .failed && canEdit) {
-                            Text(badge.text)
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(badge.isWorking ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                                .lineLimit(1)
-                                .fixedSize()
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background((badge.isWorking ? Color.accentColor : Color.secondary).opacity(0.15), in: Capsule())
+                            capsule(badge.text, tinted: badge.isWorking)
                         }
                     }
                     .font(.callout)
@@ -258,6 +244,17 @@ struct MeetingHistorySection: View {
         }
     }
 
+    private func capsule(_ text: String, tinted: Bool) -> some View {
+        Text(text)
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(tinted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background((tinted ? Color.accentColor : Color.secondary).opacity(0.15), in: Capsule())
+    }
+
     private func open(_ item: MeetingHistoryItem) {
         if item.needsTranscription {
             NSWorkspace.shared.open(item.folderURL)
@@ -320,7 +317,6 @@ private struct MeetingSearchField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
-        field.placeholderString = placeholder
         field.delegate = context.coordinator
         field.toolTip = "Search titles, transcripts, and calendar attendees (⌘F)"
         field.setAccessibilityLabel("Search all meetings")

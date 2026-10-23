@@ -81,13 +81,8 @@ extension AppModel {
     var captureAccessSettingsURL: URL? {
         guard state == .idle, !processing.isProcessing else { return nil }
         let access = grantedAccess
-        if !access.screen {
-            return PrivacyPermission.screenRecording.settingsURL
-        }
-        switch access.microphone {
-        case .denied, .restricted: return PrivacyPermission.microphone.settingsURL
-        default: return nil
-        }
+        if !access.screen { return PrivacyPermission.screenRecording.settingsURL }
+        return [.denied, .restricted].contains(access.microphone) ? PrivacyPermission.microphone.settingsURL : nil
     }
 
     var failureTitle: String? {

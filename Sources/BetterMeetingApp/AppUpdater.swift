@@ -160,9 +160,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate, SPUUserD
         retryTask = Task { [weak self] in
             for await path in NWPathMonitor() where path.status == .satisfied { break }
             try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, let self, self.canCheckForUpdates,
-                  self.updater.automaticallyChecksForUpdates else { return }
-            self.updater.checkForUpdatesInBackground()
+            guard !Task.isCancelled, let self, canCheckForUpdates, updater.automaticallyChecksForUpdates else { return }
+            updater.checkForUpdatesInBackground()
         }
     }
 

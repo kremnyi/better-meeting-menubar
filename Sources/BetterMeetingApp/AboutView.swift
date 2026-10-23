@@ -46,7 +46,29 @@ struct AboutView: View {
 
             VStack(spacing: 0) {
                 ForEach(Self.links) { link in
-                    LinkRow(link: link)
+                    Link(destination: link.url) {
+                        HStack(spacing: 10) {
+                            Image(systemName: link.systemImage)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 18)
+                            Text(link.title)
+                            Spacer(minLength: 8)
+                            Text(link.detail)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                        .padding(.horizontal, 6)
+                        .frame(height: 28)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .hoverHighlight(cornerRadius: 5)
+                    .help(link.url.absoluteString)
+                    .accessibilityLabel(link.accessibilityLabel)
                     if link.id != Self.links.last?.id {
                         Divider().padding(.leading, 36)
                     }
@@ -65,36 +87,6 @@ struct AboutView: View {
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
-        }
-    }
-
-    private struct LinkRow: View {
-        let link: AboutLink
-
-        var body: some View {
-            Link(destination: link.url) {
-                HStack(spacing: 10) {
-                    Image(systemName: link.systemImage)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18)
-                    Text(link.title)
-                    Spacer(minLength: 8)
-                    Text(link.detail)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                }
-                .padding(.horizontal, 6)
-                .frame(height: 28)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .hoverHighlight(cornerRadius: 5)
-            .help(link.url.absoluteString)
-            .accessibilityLabel(link.accessibilityLabel)
         }
     }
 }

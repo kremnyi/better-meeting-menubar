@@ -5,10 +5,9 @@ struct UpdateOptionsView: View {
     var version: String?
 
     private var releaseNotesURL: URL {
-        let notesVersion: String?
-        switch updates.status {
-        case .available(let offered), .downloaded(let offered), .ready(let offered): notesVersion = offered
-        default: notesVersion = version
+        let notesVersion: String? = switch updates.status {
+        case .available(let offered), .downloaded(let offered), .ready(let offered): offered
+        default: version
         }
         guard let notesVersion, !notesVersion.isEmpty else { return AppUpdater.releaseURL }
         return URL(string: "https://github.com/kremnyi/better-meeting-menubar/releases/tag/v\(notesVersion)") ?? AppUpdater.releaseURL

@@ -71,15 +71,13 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     }
 
     func audioHealth(at time: ContinuousClock.Instant = .now) -> RecordingAudioHealth {
-        let health = meter.withLock { state in
-            RecordingAudioHealth(
-                microphoneMissing: state.levels[.microphone].map { $0.time.duration(to: time) >= .seconds(10) } ?? true,
-                systemMissing: state.levels[.audio].map { $0.time.duration(to: time) >= .seconds(10) } ?? true
-            )
+        let levels = meter.withLock { $0.levels }
+        let missing = { (type: SCStreamOutputType) in
+            levels[type].map { $0.time.duration(to: time) >= .seconds(10) } ?? true
         }
         return RecordingAudioHealth(
-            microphoneMissing: health.microphoneMissing || microphone?.isConnected == false,
-            systemMissing: health.systemMissing
+            microphoneMissing: missing(.microphone) || microphone?.isConnected == false,
+            systemMissing: missing(.audio)
         )
     }
 
@@ -110,10 +108,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             throw RecorderError.microphonePermissionDenied
         }
 
-        let content = try await SCShareableContent.excludingDesktopWindows(
-            false,
-            onScreenWindowsOnly: false
-        )
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         let captureDisplayID = mode == .audioOnly || displayID == 0 ? CGMainDisplayID() : displayID
         guard let display = content.displays.first(where: { $0.displayID == captureDisplayID }) else {
             throw RecorderError.noDisplay
@@ -126,10 +121,9 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         }
 
         let ownBundleID = Bundle.main.bundleIdentifier
-        let excludedApps = content.applications.filter { $0.bundleIdentifier == ownBundleID }
         let filter = SCContentFilter(
             display: display,
-            excludingApplications: excludedApps,
+            excludingApplications: content.applications.filter { $0.bundleIdentifier == ownBundleID },
             exceptingWindows: []
         )
 
@@ -344,11 +338,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     nonisolated func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
         Task { @MainActor in
             guard recordingOutput === self.recordingOutput else { return }
-            if stopContinuation != nil {
-                finishStop(with: .success(()))
-            } else {
-                finishUnexpectedStop(with: nil)
-            }
+            settleStop(with: nil)
         }
     }
 
@@ -390,8 +380,14 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             finishStart(with: .failure(error))
         } else if audioRecording.withLock({ $0 != nil }) {
             finalizeAudio(error: error)
-        } else if stopContinuation != nil {
-            finishStop(with: .failure(error))
+        } else {
+            settleStop(with: error)
+        }
+    }
+
+    private func settleStop(with error: Error?) {
+        if stopContinuation != nil {
+            finishStop(with: error.map { .failure($0) } ?? .success(()))
         } else {
             finishUnexpectedStop(with: error)
         }
@@ -426,11 +422,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                 // cleanUp would cancel the writer and delete the file; the late finish keeps what was recorded.
                 audioRecording.withLock { $0 = nil }
             }
-            if stopContinuation != nil {
-                finishStop(with: failure.map { .failure($0) } ?? .success(()))
-            } else {
-                finishUnexpectedStop(with: failure)
-            }
+            settleStop(with: failure)
         }
     }
 
@@ -472,11 +464,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
             ProcessInfo.processInfo.endActivity(sleepActivity)
             self.sleepActivity = nil
         }
-        let recording = audioRecording.withLock { recording -> AudioOnlyRecording? in
-            defer { recording = nil }
-            return recording
-        }
-        recording?.cancel()
+        audioRecording.withLock { $0.take() }?.cancel()
         meter.withLock { state in
             state.stream = nil
             state.levels.removeAll()

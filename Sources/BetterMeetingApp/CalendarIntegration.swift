@@ -91,14 +91,8 @@ final class CalendarIntegration: ObservableObject {
 
     var diagnosticSummary: String {
         let access = authorization == .fullAccess ? "access granted" : "access needed"
-        let refresh: String
-        if isStale {
-            refresh = "last refresh failed; showing saved meetings"
-        } else if let lastSuccessfulRefresh {
-            refresh = "updated \(lastSuccessfulRefresh.formatted(date: .omitted, time: .shortened))"
-        } else {
-            refresh = "not refreshed yet"
-        }
+        let refresh = isStale ? "last refresh failed; showing saved meetings"
+            : lastSuccessfulRefresh.map { "updated \($0.formatted(date: .omitted, time: .shortened))" } ?? "not refreshed yet"
         return "Calendar: \(access) · \(refresh)"
     }
 

@@ -176,13 +176,11 @@ final class AppModel: ObservableObject {
         failedTranscriptionFolders = Set((defaults.stringArray(forKey: failedTranscriptionFoldersKey) ?? []).map {
             URL(fileURLWithPath: $0).standardizedFileURL
         })
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        outputRoot = defaults.url(forKey: "outputFolder")
-            ?? documents.appendingPathComponent("Better Meetings", isDirectory: true)
-        if defaults.url(forKey: "outputFolder") == nil {
-            try? FileManager.default.createDirectory(at: documents.appendingPathComponent("Better Meetings", isDirectory: true),
-                                                     withIntermediateDirectories: true)
-        }
+        let savedRoot = defaults.url(forKey: "outputFolder")
+        let defaultRoot = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Better Meetings", isDirectory: true)
+        if savedRoot == nil { try? FileManager.default.createDirectory(at: defaultRoot, withIntermediateDirectories: true) }
+        outputRoot = savedRoot ?? defaultRoot
         selectedDisplayID = CGDirectDisplayID(clamping: defaults.integer(forKey: "displayID"))
         selectedMicrophoneID = defaults.string(forKey: "microphoneID") ?? ""
         captureResolution = CaptureResolution(rawValue: defaults.integer(forKey: "captureResolution")) ?? .pixels1440
@@ -202,15 +200,13 @@ final class AppModel: ObservableObject {
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
         if (try? speechSettings.validate()) == nil { speechSettings = SpeechSettings() }
+        let loadedSettings = speechSettings
         // Default on for preferences only; a saved meeting without the field keeps no labels on retry.
-        if speechSettings.speakerLabels == nil {
-            speechSettings.speakerLabels = true
-            defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings")
-        }
+        if speechSettings.speakerLabels == nil { speechSettings.speakerLabels = true }
         if speechSettings.engine == nil, !transcriptionLanguages.allSatisfy(SpeechSettings.parakeetLanguages.contains) {
             speechSettings.engine = .whisper
-            defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings")
         }
+        if speechSettings != loadedSettings { defaults.set(try? JSONEncoder().encode(speechSettings), forKey: "speechSettings") }
         storedModels = LocalTranscriber.storedModels(sizes: false)
         modelReady = Self.modelIsCached(speechSettings)
         grantedAccess = captureAccess()
@@ -335,8 +331,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshStoredModels() async {
-        let models = await Task.detached(priority: .utility) { LocalTranscriber.storedModels() }.value
-        storedModels = models
+        storedModels = await Task.detached(priority: .utility) { LocalTranscriber.storedModels() }.value
     }
 
     func deleteStoredModel(_ item: StoredModelInfo) async {
@@ -384,9 +379,9 @@ final class AppModel: ObservableObject {
             }
             let report: @Sendable (Double) -> Void = { [weak self] fraction in
                 Task { @MainActor [weak self] in
-                    guard let self, let shown = self.modelDownload, shown.id == item.id,
+                    guard let self, let shown = modelDownload, shown.id == item.id,
                           Self.shownPercent(fraction) != Self.shownPercent(shown.fraction) else { return }
-                    self.modelDownload = (item.id, fraction)
+                    modelDownload = (item.id, fraction)
                 }
             }
             do {

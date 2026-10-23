@@ -88,7 +88,6 @@ final class MeetingAudio: Sendable {
     @Sendable private static func decode(_ url: URL) async throws -> [Float] {
         let asset = AVURLAsset(url: url)
         let allTracks = try await asset.loadTracks(withMediaType: .audio)
-        guard !allTracks.isEmpty else { throw AudioExtractionError.cannotCreateExporter }
         // The m4a export leaves out disabled tracks, keeps the source rate, and has at most two channels.
         var tracks: [AVAssetTrack] = []
         for track in allTracks where try await track.load(.isEnabled) { tracks.append(track) }

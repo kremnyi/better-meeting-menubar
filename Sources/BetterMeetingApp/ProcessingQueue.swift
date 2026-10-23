@@ -28,8 +28,7 @@ extension LocalTranscriptionProgress {
         case .preparingModel: (.preparingModel, nil)
         case .downloadingModel(let fraction): (.downloadingModel, fraction)
         case .loadingModel: (.loadingModel, nil)
-        case .transcribing: nil
-        case .engineTranscribing: nil
+        case .transcribing, .engineTranscribing: nil
         }
     }
 }
@@ -92,16 +91,15 @@ final class ProcessingQueue: ObservableObject {
             var succeeded = false
             do {
                 let destination = try await createBundle(for: meeting)
-                model.showJobResult(in: meeting.folderURL)
                 model.completionMessage = "Export bundle saved in the meeting folder."
                 NSWorkspace.shared.open(destination)
                 succeeded = true
             } catch {
-                model.showJobResult(in: meeting.folderURL)
                 model.completionMessage = Task.isCancelled
                     ? "Export cancelled. Existing meeting files and bundle are kept."
                     : "Export failed: \(error.localizedDescription)"
             }
+            model.showJobResult(in: meeting.folderURL)
             queueFinished(succeeded: succeeded)
         }
     }
@@ -314,17 +312,16 @@ final class ProcessingQueue: ObservableObject {
                 export.cancel()
                 _ = await export.result
             }
-            let failedFolder = folder
             if Task.isCancelled {
-                model.transcriptionCancelled(in: failedFolder)
+                model.transcriptionCancelled(in: folder)
                 model.completionMessage = replacing == nil
                     ? "Transcription cancelled. Recording kept; transcribe it from the menu to resume."
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
                 return false
             }
-            model.transcriptionFailed(in: failedFolder, error: error)
+            model.transcriptionFailed(in: folder, error: error)
             model.accessibilityAnnouncement("Transcription failed for \(run.title). Open Better Meeting to retry.")
-            await MeetingNotifications.post(title: run.title, folder: failedFolder, failed: true)
+            await MeetingNotifications.post(title: run.title, folder: folder, failed: true)
             return false
         }
     }
@@ -401,9 +398,7 @@ final class ProcessingQueue: ObservableObject {
     }
 
     func updateTranscriptionProgress(_ progress: LocalTranscriptionProgress) {
-        guard !cancelling else { return }
-        guard isProcessing, !isExportingBundle, phase != .labelingSpeakers else { return }
-
+        guard !cancelling, isProcessing, !isExportingBundle, phase != .labelingSpeakers else { return }
         if let step = progress.modelStep {
             setPhase(step.phase, fraction: step.fraction)
         } else if case .transcribing(let fraction, let language, let pass, let total) = progress {
