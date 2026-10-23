@@ -592,6 +592,11 @@ final class RecoveryTests: XCTestCase {
             NSHostingView(rootView: MenuBarControlView()
                 .environmentObject(model).environmentObject(model.updates)).fittingSize
         }
+        // Each new menu view refreshes history on appear, and a refresh restarts a pending search.
+        func searchFinished() async {
+            await model.historyRefreshTask?.value
+            await model.historySearchTask?.value
+        }
         let initial = size()
         let menu = hostingView(MenuBarControlView(), model: model)
         menu.frame = NSRect(origin: .zero, size: initial)
@@ -612,11 +617,11 @@ final class RecoveryTests: XCTestCase {
         while model.historyQuery != "Meeting 1", ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(model.historyQuery, "Meeting 1")
         XCTAssertEqual(size(), initial)
-        await model.historySearchTask?.value
+        await searchFinished()
         XCTAssertEqual(model.transcriptionHistory.count, 1)
         XCTAssertEqual(size(), initial)
         model.historyQuery = "no such meeting"
-        await model.historySearchTask?.value
+        await searchFinished()
         XCTAssertTrue(model.transcriptionHistory.isEmpty)
         XCTAssertEqual(size(), initial)
         let cell = try XCTUnwrap(field.cell as? NSSearchFieldCell)
