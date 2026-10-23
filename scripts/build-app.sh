@@ -39,7 +39,7 @@ strip -x "$app_dir/Contents/MacOS/BetterMeeting"
 sparkle_dir="$build_dir/artifacts/sparkle/Sparkle"
 sparkle_framework="$app_dir/Contents/Frameworks/Sparkle.framework"
 ditto "$sparkle_dir/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$sparkle_framework"
-# ponytail: this app is not sandboxed; restore Sparkle's XPC services if sandboxing is added.
+# shortcut: this app is not sandboxed; restore Sparkle's XPC services if sandboxing is added.
 rm -rf "$sparkle_framework/Versions/B/XPCServices" "$sparkle_framework/XPCServices"
 for binary in "$sparkle_framework/Versions/B/Sparkle" "$sparkle_framework/Versions/B/Autoupdate" \
     "$sparkle_framework/Versions/B/Updater.app/Contents/MacOS/Updater"; do
