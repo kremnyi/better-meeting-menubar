@@ -213,8 +213,7 @@ enum MeetingArtifacts {
         defer { transcriptLock.unlock() }
         try recoverTranscript(in: meeting.folderURL)
         let fm = FileManager.default
-        let names = transcriptFiles
-        let originals = try names.map { try Data(contentsOf: meeting.folderURL.appendingPathComponent($0)) }
+        let originals = try transcriptFiles.map { try Data(contentsOf: meeting.folderURL.appendingPathComponent($0)) }
         let staging = meeting.folderURL.appendingPathComponent(".transcript-\(UUID().uuidString)")
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
         do {
@@ -222,7 +221,7 @@ enum MeetingArtifacts {
                       segments: segments, titleWasProvided: meeting.titleWasProvided, speechSettings: speechSettings,
                       recordingFilename: recordingURL(in: meeting.folderURL).lastPathComponent, to: staging)
             // Keep durable backups until all replacements succeed, including across an interrupted write.
-            for (name, original) in zip(names, originals) {
+            for (name, original) in zip(transcriptFiles, originals) {
                 try original.write(to: staging.appendingPathComponent("previous-" + name), options: .atomic)
             }
         } catch {
@@ -231,7 +230,7 @@ enum MeetingArtifacts {
         }
         var replaced: [Int] = []
         do {
-            for (index, name) in names.enumerated() {
+            for (index, name) in transcriptFiles.enumerated() {
                 let data = try Data(contentsOf: staging.appendingPathComponent(name))
                 try data.write(to: meeting.folderURL.appendingPathComponent(name), options: .atomic)
                 replaced.append(index)
@@ -241,7 +240,7 @@ enum MeetingArtifacts {
         } catch {
             do {
                 for index in replaced {
-                    try originals[index].write(to: meeting.folderURL.appendingPathComponent(names[index]), options: .atomic)
+                    try originals[index].write(to: meeting.folderURL.appendingPathComponent(transcriptFiles[index]), options: .atomic)
                 }
             } catch {
                 throw MeetingActionError.transcriptRecovery(staging)

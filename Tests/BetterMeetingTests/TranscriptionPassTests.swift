@@ -1,4 +1,3 @@
-import AVFoundation
 import CoreML
 import os
 import WhisperKit
@@ -301,7 +300,9 @@ final class TranscriptionPassTests: XCTestCase {
         }
         let cache = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/model-check")
         let transcriber = LocalTranscriber(downloadBase: cache)
-        let segments = try await transcriber.transcribe(audioURL: URL(fileURLWithPath: path)) { _ in }
+        let segments = try await transcriber.transcribe(
+            audioURL: URL(fileURLWithPath: path), audio: MeetingAudio(url: URL(fileURLWithPath: path))
+        ) { _ in }
         XCTAssertEqual(Set(segments.compactMap(\.language)), Set(["uk", "ru", "en"]))
         XCTAssertTrue(segments.allSatisfy { !$0.text.contains("<|") && $0.end > $0.start })
         for language in ["uk", "ru", "en"] {
@@ -311,13 +312,13 @@ final class TranscriptionPassTests: XCTestCase {
             XCTAssertTrue(pass.contains { ($0["nospeech"] as? Double ?? 0) > 0 }, "No-speech probabilities must be computed, not hardcoded")
         }
         let audio = URL(fileURLWithPath: path)
-        let hinted = try await transcriber.transcribe(audioURL: audio, languages: ["en"], hints: "Anna, Michael, pricing, release schedule") { _ in }
+        let hinted = try await transcriber.transcribe(audioURL: audio, audio: MeetingAudio(url: audio), languages: ["en"], hints: "Anna, Michael, pricing, release schedule") { _ in }
         XCTAssertFalse(hinted.isEmpty)
         XCTAssertTrue(hinted.allSatisfy { $0.language == "en" && !$0.text.contains("<|") })
         let pass = audio.deletingLastPathComponent().appendingPathComponent("pass_en.json")
         let completedPass = try Data(contentsOf: pass)
         let work = Task {
-            try await transcriber.transcribe(audioURL: audio, languages: ["en"], hints: "Different hints force another pass") { _ in }
+            try await transcriber.transcribe(audioURL: audio, audio: MeetingAudio(url: audio), languages: ["en"], hints: "Different hints force another pass") { _ in }
         }
         try await Task.sleep(for: .milliseconds(100))
         work.cancel()

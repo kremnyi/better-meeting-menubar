@@ -331,19 +331,13 @@ struct UpcomingMeetingView: View {
 
 /// The negative padding lets the hover highlight bleed past the text without moving it.
 struct MeetingRowButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { Row(configuration: configuration) }
-
-    private struct Row: View {
-        let configuration: ButtonStyleConfiguration
-
-        var body: some View {
-            configuration.label
-                .padding(.horizontal, MeetingHistorySection.hoverInset)
-                .padding(.vertical, 3)
-                .hoverHighlight(cornerRadius: 6, pressed: configuration.isPressed)
-                .padding(.horizontal, -MeetingHistorySection.hoverInset)
-                .padding(.vertical, -3)
-        }
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, MeetingHistorySection.hoverInset)
+            .padding(.vertical, 3)
+            .hoverHighlight(cornerRadius: 6, pressed: configuration.isPressed)
+            .padding(.horizontal, -MeetingHistorySection.hoverInset)
+            .padding(.vertical, -3)
     }
 }
 

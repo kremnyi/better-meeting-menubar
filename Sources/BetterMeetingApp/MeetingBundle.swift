@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-struct LanguageShare: Codable, Equatable {
+struct LanguageShare: Encodable {
     let language: String
     let seconds: Double
     let share: Double

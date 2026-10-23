@@ -196,7 +196,6 @@ final class ProcessingQueue: ObservableObject {
         return Double(audio.length) / audio.fileFormat.sampleRate
     }
 
-    @discardableResult
     func finishRecording(_ run: ProcessingRun, inBatch: Bool = false) async -> Bool {
         lastOptions = (run.languages, run.hints, run.settings)
         var folder = run.folder

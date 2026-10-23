@@ -327,7 +327,6 @@ struct TranscriptionLanguagePicker: View {
             .padding(.bottom, 4)
     }
 
-    @ViewBuilder
     private func languageRow(_ language: TranscriptionLanguage) -> some View {
         Toggle(language.label, isOn: Binding(
             get: { languages.contains(language.rawValue) },
@@ -353,7 +352,7 @@ struct TranscriptionLanguagePicker: View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let selectedSet = Set(selected)
         let matches = TranscriptionLanguage.allCases.filter { language in
-            trimmed.isEmpty || language.label.localizedStandardContains(trimmed)
+            language.label.localizedStandardContains(trimmed)
                 || language.rawValue.localizedStandardContains(trimmed)
         }
         return matches.sorted {

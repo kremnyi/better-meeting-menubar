@@ -484,7 +484,6 @@ struct MenuBarControlView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .accessibilityIdentifier("open-recording-options")
             } else {
                 primaryActionButton
             }

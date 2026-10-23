@@ -129,7 +129,11 @@ enum TranscriptionPasses {
     }
 
     // Port of GivenFLY/better-meeting asr.py _merge at e9b524d; unlike upstream, a candidate must add half its length past the cursor, or sentences repeat.
-    static func merge(_ passes: [ScoredSegment], noSpeechThreshold: Float = 0.6, logProbThreshold: Float = -1) -> [ScoredSegment] {
+    static func merge(
+        _ passes: [ScoredSegment],
+        noSpeechThreshold: Float = SpeechSettings().noSpeechThreshold,
+        logProbThreshold: Float = SpeechSettings().logProbThreshold
+    ) -> [ScoredSegment] {
         let segments = withoutSilence(passes, noSpeechThreshold: noSpeechThreshold, logProbThreshold: logProbThreshold)
             .sorted { $0.start < $1.start }
         guard var cursor = segments.first?.start else { return [] }

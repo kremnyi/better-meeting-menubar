@@ -12,11 +12,7 @@ final class MeetingLibrary: Sendable {
         let meeting: MeetingHistoryItem?
     }
 
-    private struct Cache: Sendable {
-        var folders: [URL: Folder] = [:]
-    }
-
-    private let cache = OSAllocatedUnfairLock(initialState: Cache())
+    private let cache = OSAllocatedUnfairLock<[URL: Folder]>(initialState: [:])
 
     func meetings(in root: URL) throws -> [MeetingHistoryItem] {
         let folders = try FileManager.default.contentsOfDirectory(
@@ -30,7 +26,7 @@ final class MeetingLibrary: Sendable {
             // The folder's date changes when files are added, removed, or replaced atomically.
             let stamps = [Self.stamp(folder), Self.stamp(folder.appendingPathComponent("metadata.json"))]
             let meeting: MeetingHistoryItem?
-            if let cached = cache.withLock({ $0.folders[folder] }), cached.stamps == stamps,
+            if let cached = cache.withLock({ $0[folder] }), cached.stamps == stamps,
                cached.meeting?.recoveryFolder == nil {
                 meeting = cached.meeting
             } else {
@@ -41,7 +37,7 @@ final class MeetingLibrary: Sendable {
         }
         .sorted { $0.recordedAt > $1.recordedAt }
         let kept = scanned
-        if !Task.isCancelled { cache.withLock { $0.folders = kept } }
+        if !Task.isCancelled { cache.withLock { $0 = kept } }
         return meetings
     }
 

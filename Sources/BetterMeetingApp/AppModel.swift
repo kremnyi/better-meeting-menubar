@@ -108,7 +108,6 @@ final class AppModel: ObservableObject {
             meetingDetector.setEnabled(detectsMeetings)
         }
     }
-    /// Lazy so the app never touches Core Audio while meeting detection is off.
     lazy var meetingDetector = MeetingDetector(isBusy: { [weak self] in
         guard let self else { return true }
         return (state != .idle && state != .failed) || processing.isProcessing

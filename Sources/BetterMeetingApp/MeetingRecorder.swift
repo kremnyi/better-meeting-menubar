@@ -306,7 +306,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         let flags = format.mFormatFlags
         let isFloat = flags & kAudioFormatFlagIsFloat != 0
         let isInteger = flags & kAudioFormatFlagIsSignedInteger != 0
-        guard frames > 0, channels > 0, format.mFormatID == kAudioFormatLinearPCM,
+        guard channels > 0, format.mFormatID == kAudioFormatLinearPCM,
               isFloat ? bytes == 4 : isInteger && (bytes == 2 || bytes == 4) else { return 0 }
         let nonInterleaved = flags & kAudioFormatFlagIsNonInterleaved != 0
         let stride = nonInterleaved ? 1 : channels

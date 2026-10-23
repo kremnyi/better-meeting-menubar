@@ -9,8 +9,6 @@ final class AudioMeters: ObservableObject {
     }
 
     @Published private(set) var levels = Levels()
-    var microphone: Double { levels.microphone }
-    var system: Double { levels.system }
 
     /// Levels are compared in whole percent; finer changes are invisible and would redraw every tick.
     func update(microphone: Double, system: Double) {
@@ -28,8 +26,8 @@ struct AudioMetersView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            meter("Microphone", level: meters.microphone)
-            meter("System audio", level: meters.system)
+            meter("Microphone", level: meters.levels.microphone)
+            meter("System audio", level: meters.levels.system)
         }
     }
 

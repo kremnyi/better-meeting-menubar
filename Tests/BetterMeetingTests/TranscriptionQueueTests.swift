@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import SwiftUI
 import XCTest
 @testable import BetterMeetingApp

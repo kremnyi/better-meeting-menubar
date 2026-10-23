@@ -869,8 +869,7 @@ final class RecoveryTests: XCTestCase {
         let initialSize = view.fittingSize
         model.recording.checkAudio(elapsed: 29.99, audioDetected: false)
         XCTAssertFalse(model.recording.audioWarning)
-        let panels = ProcessInfo.processInfo.environment["BETTER_MEETING_PANELS_PREVIEW_PATH"].map { URL(fileURLWithPath: $0) }
-        if let panels { try writePreview(view, to: panels.appendingPathComponent("recording-normal.png")) }
+        try writePanelPreview(view, name: "recording-normal")
         let redrawsBefore = redraws
         model.recording.checkAudio(elapsed: 30, audioDetected: false)
         XCTAssertTrue(model.recording.audioWarning)
@@ -881,12 +880,10 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(model.state, .recording, "A warning must not stop recording")
         let warningView = hostingView(view.rootView, model: model)
         XCTAssertEqual(warningView.fittingSize, initialSize, "The warning must not move the recording controls")
-        if let panels {
-            try writePreview(warningView, to: panels.appendingPathComponent("recording-audio-warning.png"))
-            let dark = hostingView(MenuBarControlView(), model: model, scheme: .dark)
-            XCTAssertEqual(dark.fittingSize, initialSize)
-            try writePreview(dark, to: panels.appendingPathComponent("recording-audio-warning-dark.png"))
-        }
+        try writePanelPreview(warningView, name: "recording-audio-warning")
+        let dark = hostingView(MenuBarControlView(), model: model, scheme: .dark)
+        XCTAssertEqual(dark.fittingSize, initialSize)
+        try writePanelPreview(dark, name: "recording-audio-warning-dark")
         let silence = try meterSample(0), tone = try meterSample(0.1)
         for source: SCStreamOutputType in [.microphone, .audio] {
             let recorder = MeetingRecorder()

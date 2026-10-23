@@ -1,6 +1,6 @@
 import Foundation
 
-struct RecordingDiskSpace: Equatable {
+struct RecordingDiskSpace {
     let availableBytes: Int64
 
     var isLow: Bool { availableBytes < 2_000_000_000 }

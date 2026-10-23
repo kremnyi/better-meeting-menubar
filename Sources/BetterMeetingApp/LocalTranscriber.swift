@@ -1,4 +1,3 @@
-import AVFoundation
 import CoreML
 import FluidAudio
 import Foundation
@@ -401,7 +400,6 @@ actor LocalTranscriber {
         }
     }
 
-    @discardableResult
     func prepareParakeet(
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> AsrManager {
@@ -438,7 +436,7 @@ actor LocalTranscriber {
 
     func transcribe(
         audioURL: URL,
-        audio: MeetingAudio? = nil,
+        audio: MeetingAudio,
         languages: [String] = TranscriptionLanguage.defaultCandidates,
         hints: String = "",
         settings: SpeechSettings = SpeechSettings(),
@@ -447,7 +445,6 @@ actor LocalTranscriber {
     ) async throws -> [TranscriptSegment] {
         activeTranscriptions += 1
         defer { activeTranscriptions -= 1 }
-        let audio = audio ?? MeetingAudio(url: audioURL)
         switch settings.selectedEngine {
         case .whisper:
             return try await transcribeWhisper(

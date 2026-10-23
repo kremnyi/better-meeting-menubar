@@ -15,8 +15,6 @@ concurrency:
 
 # Each matrix entry runs on its own runner, so the tests and the app bundle
 # run in parallel and a push finishes in the longer of the two, not their sum.
-# Entries share one job definition; the matrix sets the job name, the run
-# command, and the crash-report artifact name.
 jobs:
   check:
     name: ${{ matrix.name }}
