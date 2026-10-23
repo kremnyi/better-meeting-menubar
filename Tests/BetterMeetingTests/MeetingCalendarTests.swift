@@ -266,9 +266,8 @@ final class MeetingCalendarTests: XCTestCase {
 
     @MainActor
     func testConcurrentRefreshesSerializeAndCoalesce() async throws {
-        let suite = "CalendarCoalesce.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("CalendarCoalesce")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let reader = CalendarReaderFixture()
         reader.authorizationStatus = .fullAccess
         let calendar = CalendarIntegration(defaults: defaults, reader: reader)
@@ -298,9 +297,8 @@ final class MeetingCalendarTests: XCTestCase {
 
     @MainActor
     func testRefreshFailureKeepsLastGoodSnapshotAndReportsStaleState() async throws {
-        let suite = "CalendarFailure.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("CalendarFailure")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let reader = CalendarReaderFixture()
         reader.authorizationStatus = .fullAccess
         let calendar = CalendarIntegration(defaults: defaults, reader: reader)
@@ -403,9 +401,8 @@ final class MeetingCalendarTests: XCTestCase {
 
     @MainActor
     func testEventKitOptInSelectionRevocationAndStaleResults() async throws {
-        let suite = "CalendarOptIn.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let (defaults, suite, root) = try makeTempDefaults("CalendarOptIn")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let reader = CalendarReaderFixture()
         let calendar = CalendarIntegration(defaults: defaults, reader: reader)
         await calendar.refresh()
@@ -449,9 +446,7 @@ final class MeetingCalendarTests: XCTestCase {
 
     @MainActor
     func testExactOccurrenceOnlyAndPrivateSearchableSnapshot() async throws {
-        let suite = "CalendarSnapshot.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = makeTempRoot(suite)
+        let (defaults, suite, root) = try makeTempDefaults("CalendarSnapshot")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let event = try calendarEventFixture()
         let reader = CalendarReaderFixture()

@@ -456,9 +456,7 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testOptionsAndUpdateLayouts() async throws {
-        let suite = "BetterMeetingPanelLayout.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = makeTempRoot(suite)
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingPanelLayout")
         defaults.set(root.appendingPathComponent("Better Meetings"), forKey: "outputFolder")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
@@ -675,9 +673,7 @@ final class RecoveryTests: XCTestCase {
         guard let path = ProcessInfo.processInfo.environment["BETTER_MEETING_PREVIEW_PATH"] else {
             throw XCTSkip("Set BETTER_MEETING_PREVIEW_PATH to render the menu with fictional meetings")
         }
-        let suite = "BetterMeetingPreview.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = makeTempRoot(suite)
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingPreview")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let output = root.appendingPathComponent("Better Meetings")
         defaults.set(output, forKey: "outputFolder")
@@ -1085,9 +1081,7 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testHistoryRefreshKeepsResultsAndIgnoresAnOldFolderScan() async throws {
-        let suite = "BetterMeetingHistory.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        let root = makeTempRoot(suite)
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingHistory")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let oldRoot = root.appendingPathComponent("old")
         let newRoot = root.appendingPathComponent("new")

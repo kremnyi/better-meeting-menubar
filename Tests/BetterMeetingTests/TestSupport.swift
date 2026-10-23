@@ -50,10 +50,12 @@ func makeTempRoot(_ label: String = "BetterMeeting") -> URL {
     return root
 }
 
+/// The suite is a path inside the temp root. A named suite leaves an empty plist in
+/// ~/Library/Preferences even after `removePersistentDomain`, one per test run.
 func makeTempDefaults(_ label: String) throws -> (defaults: UserDefaults, suite: String, root: URL) {
-    let suite = "\(label).\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     let root = makeTempRoot(label)
+    let suite = root.appendingPathComponent("defaults").path
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(root, forKey: "outputFolder")
     return (defaults, suite, root)
 }
