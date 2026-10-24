@@ -19,7 +19,7 @@ All app code is in `Sources/BetterMeetingApp/`; tests in `Tests/` are named afte
 - Meeting files: `MeetingArtifacts.swift` (folder layout, writes, rename, transcript replacement), `MeetingLibrary.swift` (history scan and search), `MeetingBundle.swift` and `ScreenExtractor.swift` (export bundle), `AssistantHandoff.swift` (Open in Claude app, Claude Code, Codex app, or Codex CLI).
 - Calendar and detection: `CalendarIntegration.swift`, `CalendarEvent.swift`, `CalendarReminders.swift`, `MeetingCalendar.swift` (sidecar search), `CalendarViews.swift`, `MeetingDetector.swift`.
 - Notifications and updates: `MeetingNotifications.swift`, `AppUpdater.swift` (Sparkle).
-- Menu UI: `MenuBarControlView.swift`, `MeetingHistorySection.swift`, `BrandViews.swift` (menu-bar icon and label), `TranscriptionOptionsView.swift` (Options pages and Re-transcribe), `ModelStorageView.swift`, `UpdateOptionsView.swift`, `AboutView.swift`, `ErrorPanel.swift`.
+- Menu UI: `MenuBarControlView.swift`, `MeetingHistorySection.swift`, `BrandViews.swift` (menu-bar icon and label), `NotchPanel.swift` (notch mode: status beside the notch and the menu below it), `TranscriptionOptionsView.swift` (Options pages and Re-transcribe), `ModelStorageView.swift`, `UpdateOptionsView.swift`, `AboutView.swift`, `ErrorPanel.swift`.
 - Packaging: `App/Info.plist`, `scripts/` (build, package, release), `Casks/`, `appcast.xml`; website in `site/`.
 
 ## Skills

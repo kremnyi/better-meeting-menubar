@@ -98,7 +98,7 @@ time it is needed. Uninstalling the app keeps models; see [Uninstall](#uninstall
 
 ## Record a meeting
 
-1. Click the Better Meeting icon in the menu bar.
+1. Click the Better Meeting icon in the menu bar, or the notch in notch mode.
 2. Type a meeting name, or leave it empty for an automatic name.
 3. Click **Start recording**, or press Return. To record only system audio and
    microphone, open the arrow beside the button and choose **Record audio-only**.
@@ -151,8 +151,14 @@ Open **Options** in the bottom-left corner of the menu.
   recording suggestions.
 - **Advanced transcription**: engine, languages, model, vocabulary hints,
   decoding, speaker labels, and downloaded models.
-- **App & updates**: launch at login, recording time in the menu bar, updates,
-  beta releases, and **About Better Meeting**.
+- **App & updates**: launch at login, where the app shows (menu bar, notch, or
+  both), recording time in the menu bar, updates, beta releases, and
+  **About Better Meeting**.
+
+With **Show in → Notch**, status shows beside the notch: the recording time, the
+next meeting, or progress. Click the notch to open the menu, and press Escape or
+click elsewhere to close it. The notch stays visible over full-screen apps. A
+display without a notch shows a drawn one at the top center of the screen.
 
 ## Saved meetings
 

@@ -561,7 +561,7 @@ final class RecoveryTests: XCTestCase {
                 XCTAssertLessThanOrEqual(view.fittingSize.height, 420, "About must fit the menu without scrolling")
             }
             if name == "options-app" {
-                XCTAssertLessThanOrEqual(view.fittingSize.height, 300, "App settings must stay compact")
+                XCTAssertLessThanOrEqual(view.fittingSize.height, 325, "App settings must stay compact")
                 appHeight = view.fittingSize.height
             }
             if name == "options-update-error", let appHeight {

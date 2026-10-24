@@ -6,7 +6,7 @@ import UserNotifications
 struct BetterMeetingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var spinner = MenuBarSpinner()
+    @StateObject private var spinner: MenuBarSpinner
     @StateObject private var model: AppModel
 
     init() {
@@ -14,8 +14,11 @@ struct BetterMeetingApp: App {
         AppLogger.mirrorsToConsole = false
         LocalTranscriber.prepareModelStorage()
         let model = AppModel()
+        let spinner = MenuBarSpinner()
         _model = StateObject(wrappedValue: model)
+        _spinner = StateObject(wrappedValue: spinner)
         appDelegate.model = model
+        appDelegate.notch = NotchController(model: model, spinner: spinner)
         model.calendar.startMonitoring()
         // Core Audio's first default-device query takes ~50 ms; let the first frame draw before it.
         Task { @MainActor in model.meetingDetector.setEnabled(model.detectsMeetings) }
@@ -24,7 +27,12 @@ struct BetterMeetingApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: Binding(
+            get: { model.statusPlacement.showsMenuBarIcon },
+            // Removing the icon from the menu bar (⌘-drag) keeps the app reachable from the notch.
+            // SwiftUI also writes the current value back; reassigning it would publish and update the scene again.
+            set: { if !$0, model.statusPlacement.showsMenuBarIcon { model.statusPlacement = .notch } }
+        )) {
             MenuBarControlView()
                 .environmentObject(model)
                 .environmentObject(model.updates)
@@ -37,6 +45,10 @@ struct BetterMeetingApp: App {
             )
         }
         .menuBarExtraStyle(.window)
+        .onChange(of: model.statusPlacement, initial: true) { _, placement in
+            // Outside the scene update, which must not create windows or publish changes.
+            Task { appDelegate.notch?.setShown(placement.showsNotch) }
+        }
         .onChange(of: model.automaticUpdateChecks, initial: true) { _, enabled in
             model.updates.start(automaticChecks: enabled)
         }
@@ -55,6 +67,7 @@ struct BetterMeetingApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     weak var model: AppModel?
+    var notch: NotchController?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         MeetingNotifications.center?.delegate = self
@@ -151,6 +164,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         NSApp.activate(ignoringOtherApps: true)
         if let window = model?.menuWindow, window.isVisible {
             window.makeKeyAndOrderFront(nil)
+            return
+        }
+        if let notch, notch.isShown {
+            notch.expand()
             return
         }
         clickStatusItem()

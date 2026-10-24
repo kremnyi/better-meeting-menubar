@@ -110,7 +110,13 @@ struct CaptureOptionsView: View {
                     .toggleCaption()
                     .help(launchAtLoginError ?? "")
                 }
+                Picker("Show in", selection: $model.statusPlacement) {
+                    ForEach(StatusPlacement.allCases) { Text($0.label).tag($0) }
+                }
+                .fixedSize()
+                .help("The notch stays visible over full-screen apps. A display without a notch shows a drawn one.")
                 Toggle("Show recording time in the menu bar", isOn: $model.menuBarRecordingTime)
+                    .disabled(!model.statusPlacement.showsMenuBarIcon)
                     .setting(help: "Shows the elapsed time beside the menu bar icon while recording")
             }
             VStack(alignment: .leading, spacing: 5) {

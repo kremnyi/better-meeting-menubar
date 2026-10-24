@@ -656,10 +656,25 @@ private struct MenuWindowReader: NSViewRepresentable {
 
     final class WindowView: NSView {
         weak var model: AppModel?
+        private var keyObserver: Any?
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            super.viewWillMove(toWindow: newWindow)
+            if newWindow == nil, model?.menuWindow === window { model?.menuWindow = nil }
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            keyObserver.map(NotificationCenter.default.removeObserver)
+            keyObserver = nil
+            guard let window else { return }
             model?.menuWindow = window
+            // With both the menu bar and the notch, the menu opened last routes notifications.
+            keyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.model?.menuWindow = self?.window }
+            }
         }
     }
 }
