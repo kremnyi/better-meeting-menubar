@@ -50,12 +50,17 @@ final class NotchTests: XCTestCase {
             }
         }
 
+        model.captureAccess = { (true, .authorized) }
+        await settle()
+        XCTAssertEqual(panel.frame, housing, "Idle, the panel hides behind the housing, where drawn black can't show")
+        XCTAssertNil(model.menuWindow, "A collapsed notch must not hide audio and disk warnings")
+
+        model.captureAccess = { (false, .denied) }
         await settle()
         XCTAssertEqual(panel.frame.maxY, screen.frame.maxY, "The panel hangs from the top edge")
         XCTAssertEqual(panel.frame.height, housing.height, "Collapsed, the panel is as tall as the notch")
         XCTAssertEqual(panel.frame.midX, housing.midX, accuracy: 1, "Status sits evenly on both sides of the notch")
-        XCTAssertGreaterThan(panel.frame.width, housing.width + 60, "Status needs room beside the housing")
-        XCTAssertNil(model.menuWindow, "A collapsed notch must not hide audio and disk warnings")
+        XCTAssertGreaterThan(panel.frame.width, housing.width + 60, "A warning shows beside the housing")
         try writePreview(of: panel, name: "notch-collapsed")
 
         notch.expand()
@@ -73,6 +78,20 @@ final class NotchTests: XCTestCase {
         XCTAssertFalse(notch.expanded)
         XCTAssertEqual(panel.frame.height, housing.height)
         XCTAssertNil(model.menuWindow, "Closing the menu must let warnings through again")
+
+        // A key panel in an inactive app: SwiftUI alone would drop this first click.
+        panel.makeKey()
+        func click(atHeight y: CGFloat) {
+            panel.sendEvent(NSEvent.mouseEvent(
+                with: .leftMouseDown, location: NSPoint(x: panel.frame.width / 2, y: y), modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: panel.windowNumber, context: nil,
+                eventNumber: 0, clickCount: 1, pressure: 1)!)
+        }
+        click(atHeight: housing.height / 2)
+        await settle()
+        XCTAssertTrue(notch.expanded, "One click on the notch opens the menu")
+        click(atHeight: panel.frame.height - housing.height / 2)
+        XCTAssertFalse(notch.expanded, "A click on the notch row closes the menu")
     }
 
     /// Like `writePanelPreview`, at the size the controller gave the panel.

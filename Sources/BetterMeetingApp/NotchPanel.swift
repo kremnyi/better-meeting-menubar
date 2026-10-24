@@ -76,9 +76,9 @@ final class NotchController: ObservableObject {
         guard panel == nil else { return }
         let panel = NotchPanel()
         panel.onCancel = { [weak self] in self?.collapse() }
-        panel.onInactiveClick = { [weak self] in
-            guard let self, !expanded else { return false }
-            expand()
+        panel.onStatusRowClick = { [weak self] location in
+            guard let self, let panel = self.panel, location.y >= panel.frame.height - notchSize.height else { return false }
+            toggle()
             return true
         }
         let content = NSHostingView(rootView:
@@ -156,8 +156,8 @@ final class NotchController: ObservableObject {
 
 final class NotchPanel: NSPanel {
     var onCancel: (() -> Void)?
-    /// Returns true when it handled the click.
-    var onInactiveClick: (() -> Bool)?
+    /// Takes a click's location in the window; returns true when the click was on the status row.
+    var onStatusRowClick: ((NSPoint) -> Bool)?
 
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -178,9 +178,9 @@ final class NotchPanel: NSPanel {
     // The menu's search field and Options page need keyboard input.
     override var canBecomeKey: Bool { true }
 
-    // SwiftUI spends the first click on a panel that isn't key making it key, so the notch would need two clicks.
+    // SwiftUI drops the first click while the app is inactive, so the notch would sometimes need two clicks.
     override func sendEvent(_ event: NSEvent) {
-        if event.type == .leftMouseDown, !isKeyWindow, onInactiveClick?() == true { return }
+        if event.type == .leftMouseDown, onStatusRowClick?(event.locationInWindow) == true { return }
         super.sendEvent(event)
     }
 
@@ -199,7 +199,7 @@ struct NotchView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let radius: CGFloat = controller.expanded ? 18 : 10
+        let radius: CGFloat = controller.expanded ? 18 : isQuiet ? controller.notchSize.height / 2 : 10
         VStack(spacing: 0) {
             statusRow
             if controller.expanded {
@@ -220,36 +220,45 @@ struct NotchView: View {
         let breath = MenuBarStatusLabel.recordingBreath(elapsed: clock.elapsed, reduceMotion: reduceMotion)
         let detail = statusDetail
         // Equal sides keep the camera housing centred.
-        let side: CGFloat = detail == nil ? 34 : 66
+        let side: CGFloat = isQuiet ? 0 : detail == nil ? 34 : 66
         let icon = MenuBarStatusIcon(state: model.state, processing: model.processing.isProcessing,
                                      processingFrame: spinner.frame, attention: model.needsAttention, breath: breath)
         return HStack(spacing: 0) {
-            icon
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: breath)
-                .frame(width: side)
+            if side > 0 {
+                icon
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: breath)
+                    .frame(width: side)
+            }
             Color.clear.frame(width: controller.notchSize.width)
-            Color.clear
-                .frame(width: side)
-                .overlay {
-                    if let detail {
-                        Text(detail.text)
-                            .monospacedDigit()
-                            .foregroundStyle(detail.highlighted ? Color.signalCoralBright : Color.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+            if side > 0 {
+                Color.clear
+                    .frame(width: side)
+                    .overlay {
+                        if let detail {
+                            Text(detail.text)
+                                .monospacedDigit()
+                                .foregroundStyle(detail.highlighted ? Color.signalCoralBright : Color.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
                     }
-                }
-                .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
+            }
         }
         .frame(height: controller.notchSize.height)
         .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: controller.toggle)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(icon: icon, detail: detail?.text))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, controller.toggle)
         .help(controller.expanded ? "Close Better Meeting" : "Open Better Meeting")
+    }
+
+    /// With nothing to show, the panel shrinks behind the camera housing: drawn black still glows on a
+    /// backlit display, so it never matches the housing beside it. A click there still opens the menu.
+    private var isQuiet: Bool {
+        !controller.expanded && model.state == .idle && !model.processing.isProcessing
+            && !model.needsAttention && statusDetail == nil
     }
 
     private var statusDetail: (text: String, highlighted: Bool)? {

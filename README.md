@@ -156,7 +156,8 @@ Open **Options** in the bottom-left corner of the menu.
   **About Better Meeting**.
 
 With **Show in → Notch**, status shows beside the notch: the recording time, the
-next meeting, or progress. Click the notch to open the menu, and press Escape or
+next meeting, progress, or a warning. With nothing to show, the panel hides
+behind the notch. Click the notch to open the menu, and press Escape or
 click elsewhere to close it. The notch stays visible over full-screen apps. A
 display without a notch shows a drawn one at the top center of the screen.
 
