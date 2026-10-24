@@ -32,6 +32,7 @@ final class NotchTests: XCTestCase {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingNotch")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
+        _ = try menuBarIconAsset()
         let model = makeModel(defaults)
         await model.historyRefreshTask?.value
         let notch = NotchController(model: model, spinner: MenuBarSpinner())

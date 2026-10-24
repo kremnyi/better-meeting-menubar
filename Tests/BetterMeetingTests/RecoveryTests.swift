@@ -270,12 +270,7 @@ final class RecoveryTests: XCTestCase {
 
     @MainActor
     func testRecordingColorsOnlyTheExistingDot() throws {
-        let asset = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Assets/MenuBarIconTemplate.png")
-        let source = try XCTUnwrap(NSImage(contentsOf: asset))
-        source.setName("MenuBarIconTemplate")
-        defer { source.setName(nil) }
+        let source = try menuBarIconAsset()
         let baseline = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
             source.draw(in: rect)
             return true

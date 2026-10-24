@@ -43,6 +43,21 @@ func writePNG(_ bitmap: NSBitmapImageRep, to output: URL) throws {
     try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: output)
 }
 
+/// The test bundle has no asset catalog, and `BrandAssets.menuBarIcon` loads once per process. Every test that
+/// draws the menu bar icon calls `menuBarIconAsset()` first, so the icon is the real artwork in any test order.
+private let namedMenuBarIcon: NSImage? = {
+    let asset = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Assets/MenuBarIconTemplate.png")
+    let image = NSImage(contentsOf: asset)
+    image?.setName("MenuBarIconTemplate")
+    return image
+}()
+
+func menuBarIconAsset() throws -> NSImage {
+    try XCTUnwrap(namedMenuBarIcon)
+}
+
 func makeTempRoot(_ label: String = "BetterMeeting") -> URL {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("\(label)-\(UUID().uuidString)", isDirectory: true)
