@@ -12,9 +12,9 @@ enum AssistantHandoff: CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .claude: "Claude"
+        case .claude: "Claude app"
         case .claudeCode: "Claude Code"
-        case .codex: "Codex"
+        case .codex: "Codex app"
         case .codexCLI: "Codex CLI"
         }
     }

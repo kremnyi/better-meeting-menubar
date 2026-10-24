@@ -87,7 +87,7 @@ or calendar details. Only two things use the network:
   once per selected model. After that, transcription works offline.
 - **Updates.** The app checks GitHub for updates and downloads them from there.
 
-**Open in** gives a meeting to Claude, Claude Code, Codex, or Codex CLI. The app
+**Open in** gives a meeting to Claude app, Claude Code, Codex app, or Codex CLI. The app
 sends nothing itself. The AI app uploads the transcript to Anthropic or OpenAI
 only when you send a message there.
 
@@ -132,10 +132,10 @@ recording runs, the Mac does not sleep from inactivity.
 - Search across meeting titles and transcript text, including your own edits.
 - Rename, re-transcribe with other settings, copy the transcript, show in
   Finder, or move a meeting to the Trash.
-- **Open in** Claude, Claude Code, Codex, or Codex CLI: starts a new, empty
-  conversation with the meeting attached, so you write the prompt there.
-  Claude gets `transcript.md` as an attachment; Codex opens the meeting folder;
-  the two CLIs start in Terminal in the meeting folder.
+- **Open in** Claude app, Claude Code, Codex app, or Codex CLI: starts a new,
+  empty conversation with the meeting attached, so you write the prompt there.
+  The Claude app gets `transcript.md` as an attachment; the Codex app opens the
+  meeting folder; the two CLIs start in Terminal in the meeting folder.
 - Retry or resume unfinished transcriptions, one at a time or all together.
 - Export bundles with screenshots, screen text, and a timeline for use with
   other tools.
