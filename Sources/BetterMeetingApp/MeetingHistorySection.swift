@@ -233,7 +233,7 @@ struct MeetingHistorySection: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel("More actions for \(item.title)")
-            .help("Open, copy, rename, re-transcribe, export, or move to Trash")
+            .help("Open, copy, open in an AI app, rename, re-transcribe, export, or move to Trash")
         }
         .padding(.horizontal, Self.hoverInset)
         .frame(minHeight: 42)
@@ -273,6 +273,12 @@ struct MeetingHistorySection: View {
         Divider()
         Button("Copy Transcript") {
             AppModel.copyTranscriptOrAlert(in: item.folderURL)
+        }
+        .disabled(item.recoveryFolder != nil || !item.hasTranscript)
+        Menu("Open in") {
+            ForEach(AssistantHandoff.allCases) { assistant in
+                Button(assistant.title) { assistant.openOrAlert(item.folderURL) }
+            }
         }
         .disabled(item.recoveryFolder != nil || !item.hasTranscript)
         Button("Rename…") { model.renameMeeting(item) }

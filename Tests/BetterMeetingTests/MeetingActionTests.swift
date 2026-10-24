@@ -344,6 +344,30 @@ final class MeetingActionTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), text)
     }
 
+    func testOpenInKeepsUnusualFolderNamesIntact() throws {
+        let folder = URL(fileURLWithPath: "/tmp/2026-10-24 10.00.00 — Q&A it's Ревю #1 50%+")
+        let links = [
+            (AssistantHandoff.claude, "file", folder.path + "/transcript.md"),
+            (AssistantHandoff.codex, "path", folder.path),
+        ]
+        for (assistant, name, path) in links {
+            let url = try XCTUnwrap(assistant.url(for: folder), assistant.title)
+            let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+            XCTAssertEqual(items.filter { $0.name == name }.map(\.value), [path], assistant.title)
+            XCTAssertFalse(items.contains { $0.name == "prompt" || $0.name == "q" }, "Opening must not send a prompt")
+        }
+
+        let shell = Process()
+        let output = Pipe()
+        shell.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        shell.arguments = ["-fc", "print -rn -- \(AssistantHandoff.shellQuoted(folder.path))"]
+        shell.standardOutput = output
+        try shell.run()
+        shell.waitUntilExit()
+        XCTAssertEqual(String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8), folder.path)
+        XCTAssertNotNil(AssistantHandoff.claudeCode.script(for: folder)?.range(of: "cd \(AssistantHandoff.shellQuoted(folder.path)) "))
+    }
+
     @MainActor
     func testMoveToTrashRemovesTheMeetingFromTheList() async throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingTrash")
