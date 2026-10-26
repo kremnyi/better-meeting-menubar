@@ -8,7 +8,7 @@ cask "better-meeting" do
   homepage "https://kremnyi.github.io/better-meeting-menubar/"
 
   auto_updates true
-
+  conflicts_with cask: "better-meeting@beta"
   depends_on arch: :arm64
   depends_on macos: :sequoia
 

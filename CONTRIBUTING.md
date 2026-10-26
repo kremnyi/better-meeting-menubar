@@ -222,12 +222,12 @@ Then it follows the steps below:
 
 1. Sets the version and the next `CFBundleVersion` in `App/Info.plist`.
 2. Runs `swift test` and `package-release.sh`.
-3. Checks the archive checksum, feed items, and archive signature against `SUPublicEDKey` without reading a private key. For a stable release, it also updates and checks the cask.
+3. Checks the archive checksum, feed items, and archive signature against `SUPublicEDKey` without reading a private key. Then it updates and checks the casks: `Casks/better-meeting@beta.rb` for every release, and `Casks/better-meeting.rb` for a stable release.
 4. Commits, then asks `Publish v<version> to GitHub and push main? [y/N]`. Pass `--yes` to skip the question.
 5. Pushes the tag. For a stable release, it waits for CI on the tag first.
 6. Publishes the GitHub release, marked as a pre-release for betas, and checks the download.
 7. Pushes `main` and checks that the public feed lists the new version.
-8. For a stable release, runs `brew fetch` for the cask.
+8. Runs `brew fetch` for each updated cask. Trust the beta cask once on the release Mac with `brew trust --cask kremnyi/better-meeting/better-meeting@beta`.
 9. Waits for **Build and check** to pass on `main`, and for a beta, on the tag. Website deployment does not count as an app check.
 
 If a step fails, the script names the step and what state it left:
@@ -250,15 +250,17 @@ The script performs these steps; use them to finish a release it could not compl
    the script prunes `dist/`: it keeps the new version, the versions listed in
    `appcast.xml` (for crash symbolication), and all stable ZIPs, and deletes
    older dSYMs, beta ZIPs and feed leftovers. Release notes are never deleted.
-3. Set the cask's `version` and `sha256` to match that archive. Run
-   `ruby -c Casks/better-meeting.rb` and commit the version, cask, and feed together.
+3. Set `version` and `sha256` in `Casks/better-meeting@beta.rb`, and for a stable
+   release also in `Casks/better-meeting.rb`, to match that archive. Run `ruby -c`
+   on each changed cask and commit the version, casks, and feed together.
 4. Tag that commit as `v<version>` and push the tag. Wait for GitHub Actions
    to pass the tests and app-bundle build.
 5. Publish the matching GitHub release with the ZIP and checksum from step 2,
    then push the commit to `main`. The download must be available before the
    updated cask and Sparkle feed reach users.
 6. Run `brew update`, then
-   `brew fetch --cask kremnyi/better-meeting/better-meeting` to verify the public
+   `brew fetch --cask` for each changed cask (`kremnyi/better-meeting/better-meeting`,
+   `kremnyi/better-meeting/better-meeting@beta`) to verify the public
    download and its checksum. Check that the public `appcast.xml` points to the
    same archive. When changing the updater or signing, also test installation
    between two signed bundles and rejection of a modified archive.
@@ -285,7 +287,8 @@ Opted-in users receive beta cuts through Sparkle like any other update.
 
 Publish betas with `scripts/release.sh beta <version> --notes <file>` (see
 [Release script](#release-script)). Use a `b<number>` suffix on the upcoming version
-(for example `0.3.42b1`). Keep `Casks/better-meeting.rb` on the stable release. The
+(for example `0.3.42b1`). Keep `Casks/better-meeting.rb` on the stable release;
+`Casks/better-meeting@beta.rb` follows each beta and the stable release that ends the series. The
 stable release that ends the series needs a higher `CFBundleVersion` than every beta
 in it, so beta users move on to it. The feed pairs the beta with the current stable
 archive from `dist/` or `.build/sparkle-release/`; packaging stops when that ZIP is missing.

@@ -46,6 +46,20 @@ open -a "Better Meeting"
 The cask downloads the app from [GitHub Releases](https://github.com/kremnyi/better-meeting-menubar/releases)
 and verifies its SHA-256 checksum.
 
+For beta builds, install `better-meeting@beta` instead. It follows each beta and
+the stable release that ends a beta series. The two casks install the same app,
+so uninstall one before you install the other. Homebrew asks you to trust a
+cask from a third-party tap once:
+
+```bash
+brew trust --cask kremnyi/better-meeting/better-meeting@beta
+brew install --cask kremnyi/better-meeting/better-meeting@beta
+```
+
+The stable cask follows stable releases only. If you installed it and then
+updated to a beta in the app, `brew upgrade --greedy` or `brew reinstall` puts
+the stable release back.
+
 ### Direct download
 
 Download the ZIP from [GitHub Releases](https://github.com/kremnyi/better-meeting-menubar/releases),
@@ -198,6 +212,8 @@ With Homebrew, finish any recording, quit the app, and run:
 brew update
 brew upgrade --cask kremnyi/better-meeting/better-meeting
 ```
+
+For the beta cask, use `kremnyi/better-meeting/better-meeting@beta`.
 
 ## Uninstall
 

@@ -6,8 +6,8 @@ cd "${0:A:h:h}"
 
 usage() {
     print -u2 "Usage: scripts/release.sh beta|stable <version> --notes <file> [--dry-run] [--yes]"
-    print -u2 "  beta 0.4.0b2   pre-release for Include beta releases; the cask stays on stable"
-    print -u2 "  stable 0.4.0   release for everyone; also updates Casks/better-meeting.rb"
+    print -u2 "  beta 0.4.0b2   pre-release for Include beta releases; updates Casks/better-meeting@beta.rb"
+    print -u2 "  stable 0.4.0   release for everyone; updates both casks"
     exit 2
 }
 
@@ -31,6 +31,7 @@ done
 repo=kremnyi/better-meeting-menubar
 plist=App/Info.plist
 cask=Casks/better-meeting.rb
+beta_cask=Casks/better-meeting@beta.rb
 tag="v$version"
 archive="Better-Meeting-$version-arm64.zip"
 step="checking prerequisites"
@@ -53,7 +54,7 @@ on_exit() {
     elif $committed; then
         print -u2 "Nothing was pushed. Undo the local release with: git tag -d $tag 2>/dev/null; git reset --hard HEAD~1"
     elif $changed; then
-        print -u2 "Nothing was committed. Discard the version bump with: git checkout -- $plist appcast.xml $cask"
+        print -u2 "Nothing was committed. Discard the version bump with: git checkout -- $plist appcast.xml $cask $beta_cask"
     fi
 }
 trap on_exit EXIT
@@ -99,9 +100,8 @@ if [[ $channel == beta ]]; then
     stable_archives=(dist/Better-Meeting-*-arm64.zip(N) .build/sparkle-release/*/Better-Meeting-*-arm64.zip(N))
     stable_archives=(${stable_archives:#*/Better-Meeting-*b[0-9]*-arm64.zip})
     (( ${#stable_archives} )) || problem "Put the current stable ZIP in dist/; the beta feed keeps it for stable users."
-else
-    command -v ruby >/dev/null || problem "Install Ruby to check the cask syntax."
 fi
+command -v ruby >/dev/null || problem "Install Ruby to check the cask syntax."
 
 if (( ${#problems} )); then
     print -u2 "release.sh: can't release $tag yet:"
@@ -111,14 +111,14 @@ fi
 
 print "Release plan for $tag ($channel), build $current_build → $build:"
 print "  1. Set $plist to $version ($build), run swift test, and package with scripts/package-release.sh $channel"
-print "  2. Check the archive checksum and appcast.xml$([[ $channel == stable ]] && print ', then update and check the cask')"
+print "  2. Check the archive checksum and appcast.xml, then update and check $([[ $channel == stable ]] && print 'both casks' || print 'the beta cask')"
 print "  3. Commit, then ask before publishing"
 if [[ $channel == stable ]]; then
     print "  4. Push $tag and wait for CI, publish the GitHub release, push main"
     print "  5. Verify the download, the public feed, brew fetch, and CI on main"
 else
     print "  4. Push $tag, publish the GitHub pre-release, push main"
-    print "  5. Verify the download, the public feed, and CI on the tag and main"
+    print "  5. Verify the download, the public feed, brew fetch, and CI on the tag and main"
 fi
 if $dry_run; then
     print "Dry run: all checks passed; nothing was changed."
@@ -180,16 +180,21 @@ PY
 
 files=($plist appcast.xml)
 message="Release $version on the beta channel"
+# The beta cask follows every release: betas, and the stable release that ends a series.
+casks=($beta_cask)
 if [[ $channel == stable ]]; then
-    step="updating the cask"
-    print "\n==> Updating the cask"
-    checksum=$(cut -d ' ' -f 1 "dist/$archive.sha256")
-    sed -i '' -E "s/^  version \".*\"$/  version \"$version\"/; s/^  sha256 \".*\"$/  sha256 \"$checksum\"/" $cask
-    grep -q "version \"$version\"" $cask && grep -q "sha256 \"$checksum\"" $cask || fail "couldn't update $cask."
-    ruby -c $cask >/dev/null
-    files+=($cask)
+    casks+=($cask)
     message="Release $version on the stable channel"
 fi
+step="updating the casks"
+print "\n==> Updating $casks"
+checksum=$(cut -d ' ' -f 1 "dist/$archive.sha256")
+for c in $casks; do
+    sed -i '' -E "s/^  version \".*\"$/  version \"$version\"/; s/^  sha256 \".*\"$/  sha256 \"$checksum\"/" $c
+    grep -q "version \"$version\"" $c && grep -q "sha256 \"$checksum\"" $c || fail "couldn't update $c."
+    ruby -c $c >/dev/null
+done
+files+=($casks)
 
 step="committing"
 git add $files
@@ -242,15 +247,16 @@ for attempt in {1..18}; do
 done
 $feed_ok && print "The public feed lists $version." || print -u2 "warning: the public feed doesn't list $version yet; GitHub's cache can lag a few minutes."
 
-if [[ $channel == stable ]]; then
-    step="checking the cask download"
-    if command -v brew >/dev/null; then
-        brew update --quiet
-        brew fetch --cask kremnyi/better-meeting/better-meeting
-    else
-        print -u2 "warning: Homebrew isn't installed; skipped brew fetch."
-    fi
+step="checking the cask download"
+if command -v brew >/dev/null; then
+    brew update --quiet
+    for c in $casks; do
+        brew fetch --cask "kremnyi/better-meeting/${c:t:r}"
+    done
 else
+    print -u2 "warning: Homebrew isn't installed; skipped brew fetch."
+fi
+if [[ $channel == beta ]]; then
     step="waiting for CI on $tag"
     wait_for_ci $tag
 fi
