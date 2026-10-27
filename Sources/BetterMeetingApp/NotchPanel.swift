@@ -135,8 +135,10 @@ final class NotchController: ObservableObject {
         guard let panel, !expanded else { return }
         expanded = true
         panel.hasShadow = true
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        // Key without activating the app, as a menu bar extra opens: the app in front keeps focus, so
+        // closing never has to hand activation back. Activation requests could land after a quick reopen
+        // and leave the menu without key, which draws every control grey.
+        panel.makeKey()
         // Clicks in other apps; clicks in the app's own popovers and sheets keep the menu open.
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.collapse() }
@@ -149,7 +151,12 @@ final class NotchController: ObservableObject {
         panel?.hasShadow = false
         clickMonitor.map(NSEvent.removeMonitor)
         clickMonitor = nil
-        // Return the keyboard to the previous app, as closing a menu does.
+        // Ordering the panel out returns key to the app in front; the collapsed notch then shows again.
+        if let panel, panel.isKeyWindow {
+            panel.orderOut(nil)
+            panel.orderFrontRegardless()
+        }
+        // An alert or open panel activates the app; Esc or a click on the notch must still hand the keyboard back.
         if NSApp.isActive { NSApp.deactivate() }
     }
 }
