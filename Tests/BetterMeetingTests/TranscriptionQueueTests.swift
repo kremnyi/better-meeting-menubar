@@ -23,11 +23,13 @@ final class TranscriptionQueueTests: XCTestCase {
         model.recording.didStart(at: date)
         let stopping = expectation(description: "capture stop requested")
         var finishStop: CheckedContinuation<Void, Never>?
+        var finishFile: CheckedContinuation<Void, Never>?
         model.recording.stopCapture = {
             await withCheckedContinuation { continuation in
                 finishStop = continuation
                 stopping.fulfill()
             }
+            return Task { await withCheckedContinuation { finishFile = $0 } }
         }
         model.primaryAction()
         XCTAssertEqual(model.state, .stopping)
@@ -42,11 +44,34 @@ final class TranscriptionQueueTests: XCTestCase {
                        "Transcription must wait until capture finishes")
         XCTAssertFalse(model.processing.canCancel, "Saving capture must finish before processing can be cancelled")
         try XCTUnwrap(finishStop).resume()
+        for _ in 0..<100 where finishFile == nil { await Task.yield() }
+        XCTAssertEqual(model.state, .idle, "The next recording can start while ScreenCaptureKit finishes the file")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path),
+                       "Transcription must wait until the file is complete")
+        try XCTUnwrap(finishFile).resume()
         await processing.value
         XCTAssertEqual(model.state, .idle)
         XCTAssertFalse(model.processing.isProcessing)
         XCTAssertEqual(try Data(contentsOf: recording), bytes)
         XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meeting(in: folder)).needsTranscription)
+    }
+
+    func testRecordingFileThatNeverFinishesFailsOnlyThatMeeting() async throws {
+        // A new recording may already run when the file wait fails, so the failure must not take the capture state.
+        let (defaults, suite, root) = try makeTempDefaults("BetterMeetingFileTimeout")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let folder = try MeetingArtifacts.createDirectory(in: root, title: "Never saved", recordedAt: Date())
+        let model = makeModel(defaults)
+        model.transcriptionLanguages = ["en"]
+        model.recording.activeFolder = folder
+        model.recording.didStart(at: Date())
+        model.recording.stopCapture = { Task { throw RecorderError.stopTimedOut } }
+        model.primaryAction()
+        await model.processing.task?.value
+        XCTAssertEqual(model.state, .idle)
+        XCTAssertNil(model.lastError, "A file failure is not a capture failure")
+        XCTAssertEqual(model.transcriptionError as? RecorderError, .stopTimedOut)
+        XCTAssertEqual(model.failedTranscriptionFolders, [folder.standardizedFileURL], "The meeting stays marked for Retry")
     }
 
     private func withMeetings(
@@ -311,7 +336,7 @@ final class TranscriptionQueueTests: XCTestCase {
             model.recording.activeFolder = recording
             model.recording.didStart(at: Date())
             var finishStop: CheckedContinuation<Void, Never>?
-            model.recording.stopCapture = { await withCheckedContinuation { finishStop = $0 } }
+            model.recording.stopCapture = { await withCheckedContinuation { finishStop = $0 }; return Task {} }
             model.primaryAction()
             XCTAssertEqual(model.processing.folder, batchFolder, "Stopping a recording must not take the running meeting's marker")
             XCTAssertEqual(model.processing.queuedFolders.last, recording, "The stopped recording waits behind the batch")

@@ -5,7 +5,11 @@ extension AppModel {
         (lastError ?? transcriptionError).map { $0.localizedDescription }
     }
     var errorDetails: String? {
-        (lastError ?? transcriptionError).map { error in let ns = error as NSError; return "\(ns.domain) \(ns.code)" }
+        // The app's own errors name their case; a bridged NSError would show only a module-qualified type and an index.
+        (lastError ?? transcriptionError).map { error in
+            let ns = error as NSError
+            return ns.domain.hasPrefix("BetterMeetingApp.") ? "\(type(of: error)).\(error)" : "\(ns.domain) \(ns.code)"
+        }
     }
     var failedTranscriptionMeeting: MeetingHistoryItem? {
         transcriptionError == nil ? nil : retryableMeeting

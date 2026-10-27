@@ -6,34 +6,32 @@ struct ErrorPanel: View {
     var details: String?
 
     var body: some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
+        // The icon sits on the first line's baseline, so it stays beside the title when the text wraps.
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 4) {
                 if let title {
                     Text(title)
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
                 }
                 Text(message)
                     .foregroundStyle(title == nil ? .primary : .secondary)
                     .textSelection(.enabled)
                 if let details {
-                    DisclosureGroup("Details") {
-                        Text(details)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                    .font(.caption)
-                    .tint(.secondary)
+                    Text(details)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                        .padding(.top, 2)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
         }
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.red.opacity(0.15)))
     }
 }

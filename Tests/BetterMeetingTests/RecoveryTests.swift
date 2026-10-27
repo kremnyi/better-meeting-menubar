@@ -400,13 +400,13 @@ final class RecoveryTests: XCTestCase {
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         _ = NSApplication.shared
         let model = makeModel(defaults)
-        for (error, permission, title): (RecorderError, PrivacyPermission, String) in [
-            (.screenPermissionDenied, .screenRecording, "Restart Better Meeting"),
-            (.microphonePermissionDenied, .microphone, "Try again")
+        for (error, permission, title, details): (RecorderError, PrivacyPermission, String, String) in [
+            (.screenPermissionDenied, .screenRecording, "Restart Better Meeting", "RecorderError.screenPermissionDenied"),
+            (.microphonePermissionDenied, .microphone, "Try again", "RecorderError.microphonePermissionDenied")
         ] {
             model.fail(error)
             XCTAssertEqual(model.state, .failed)
-            XCTAssertNotNil(model.errorDetails, "Failures keep the error domain for the Details disclosure")
+            XCTAssertEqual(model.errorDetails, details, "Details name the error case, not a bridged domain and index")
             XCTAssertEqual(model.primaryButtonSymbol, "arrow.clockwise", "A recovery action never shows the record dot")
             XCTAssertEqual(model.privacyPermission, permission)
             XCTAssertFalse(model.captureAccessNotice.isSecondary, "Blocked access must not look like quiet ready status")
@@ -796,7 +796,7 @@ final class RecoveryTests: XCTestCase {
         await fulfillment(of: [externallyStopped], timeout: 5)
         XCTAssertNil(recorder.recordingOutput)
         do {
-            try await recorder.stop()
+            try await recorder.stop().value
             XCTFail("A stream stopped by macOS must no longer be recording")
         } catch RecorderError.notRecording {}
 
@@ -987,7 +987,7 @@ final class RecoveryTests: XCTestCase {
         var announcements: [String] = []
         model.accessibilityAnnouncement = { announcements.append($0) }
         var stops = 0
-        model.recording.stopCapture = { stops += 1 }
+        model.recording.stopCapture = { stops += 1; return Task {} }
         model.recording.activeFolder = folder
         model.recording.didStart(at: date)
         model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 250_000_000))

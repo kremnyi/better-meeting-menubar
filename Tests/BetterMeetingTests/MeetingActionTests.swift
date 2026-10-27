@@ -410,6 +410,7 @@ final class MeetingActionTests: XCTestCase {
                 finishStop = continuation
                 stopping.fulfill()
             }
+            return Task {}
         }
         var trashed: [URL] = []
         let done = expectation(description: "trashed")

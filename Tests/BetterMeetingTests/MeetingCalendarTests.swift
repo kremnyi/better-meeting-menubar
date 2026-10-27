@@ -272,6 +272,7 @@ final class MeetingCalendarTests: XCTestCase {
                 finishStop = continuation
                 stopping.fulfill()
             }
+            return Task {}
         }
         XCTAssertEqual(active.terminationReply(confirm: { _ in
             active.recording.didStart(at: date)

@@ -26,7 +26,8 @@ final class RecordingSession: ObservableObject {
     private var lastDiskCheck = Date.distantPast
     private var startTask: Task<Void, Never>?
     private let recorder = MeetingRecorder()
-    lazy var stopCapture: () async throws -> Void = { [recorder] in try await recorder.stop() }
+    /// Returns once capture stops; the returned task ends when the recording file is complete.
+    lazy var stopCapture: () async throws -> Task<Void, Error> = { [recorder] in try await recorder.stop() }
     lazy var requestCapturePermissions: () async throws -> Void = { [recorder] in try await recorder.requestPermissions() }
     lazy var startCapture: (URL, CaptureMode) async throws -> Void = { [recorder, model] url, mode in
         try await recorder.start(
@@ -114,7 +115,8 @@ final class RecordingSession: ObservableObject {
         statusText = "Stopping the recording before moving it to the Trash…"
         Task { [model] in
             do {
-                try await stopCapture()
+                // The file must be complete before its folder moves to the Trash.
+                try await stopCapture().value
                 guard let folder else { throw AppError.missingRecording }
                 try trash(folder)
                 activeFolder = nil
@@ -164,11 +166,19 @@ final class RecordingSession: ObservableObject {
         if stopCapture {
             let folder = run.folder
             run.stopTask = Task { [model] in
+                let file: Task<Void, Error>
                 do {
-                    try await self.stopCapture()
+                    file = try await self.stopCapture()
                     if state == .stopping { state = .idle }
                 } catch {
                     model.fail(error, folder: folder)
+                    throw error
+                }
+                // The next recording can start while the file finishes, so a failure here fails only this meeting.
+                do {
+                    try await file.value
+                } catch {
+                    model.transcriptionFailed(in: folder, error: error)
                     throw error
                 }
             }

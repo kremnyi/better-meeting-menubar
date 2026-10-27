@@ -46,19 +46,26 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private var finalizingAudio = false
     private var microphone: AVCaptureDevice?
     private var startContinuation: CheckedContinuation<Void, Error>?
-    private var stopContinuation: CheckedContinuation<Void, Error>?
+    private var stopContinuation: CheckedContinuation<Task<Void, Error>, Error>?
     private var startCaptureTask: Task<Void, Never>?
     private var startTimeoutTask: Task<Void, Never>?
-    private var stopTimeoutTask: Task<Void, Never>?
+    // Screen recordings whose capture has stopped while ScreenCaptureKit still finishes the file.
+    private var savingFiles: [ObjectIdentifier: (output: SCRecordingOutput, done: AsyncThrowingStream<Void, Error>.Continuation)] = [:]
     private var starting = false
     private var captureStopped = false
+    private var recordingStarted: ContinuousClock.Instant?
     // A call with no keyboard or mouse input must not let the Mac idle-sleep mid-recording.
     private var sleepActivity: NSObjectProtocol?
     var startCapture: (SCStream) async throws -> Void = { try await $0.startCapture() }
     var stopCapture: (SCStream) async throws -> Void = { try await $0.stopCapture() }
-    // ScreenCaptureKit normally reports a recording output within a second; finalizing a long MP4 on a slow drive can take
-    // several seconds. A minute is far beyond both, so only a callback that will never come ends the wait.
+    // ScreenCaptureKit normally reports a recording output within a second. A minute is far beyond that, so only a callback
+    // that will never come ends the wait.
     var callbackTimeout: Duration = .seconds(60)
+    // ScreenCaptureKit finishes the MP4 only after capture stops, and the time grows with its length: a 23-minute recording
+    // took 82 seconds. The file wait adds a quarter of the recorded time to callbackTimeout.
+    private var stopTimeout: Duration {
+        callbackTimeout + (recordingStarted.map { $0.duration(to: .now) } ?? .zero) / 4
+    }
     // Audio buffers stay on audioQueue so the main thread is not woken for each one.
     private nonisolated let meter = OSAllocatedUnfairLock(initialState: MeterState())
     nonisolated let audioQueue = DispatchQueue(label: "com.kremnyi.bettermeeting.audio-levels", qos: .userInitiated)
@@ -218,11 +225,12 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         return configuration
     }
 
-    func stop() async throws {
+    /// Returns once capture stops and the next recording can start. The returned task ends when the file is complete.
+    func stop() async throws -> Task<Void, Error> {
         // A second stop while one is pending would overwrite, and leak, the first continuation.
         guard let stream, stopContinuation == nil else { throw RecorderError.notRecording }
 
-        try await withCheckedThrowingContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             stopContinuation = continuation
             Task {
                 do {
@@ -230,14 +238,10 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                     try await stopCapture(stream)
                     if audioRecording.withLock({ $0 != nil }) {
                         finalizeAudio(error: nil)
-                    } else if stopContinuation != nil, stream === self.stream {
-                        // The output's finish callback ends the stop. The stream is already stopped, so a missing
-                        // callback fails the stop without touching the file; the recording stays in its folder.
-                        stopTimeoutTask = Task {
-                            try? await Task.sleep(for: callbackTimeout)
-                            guard !Task.isCancelled else { return }
-                            finishStop(with: .failure(RecorderError.stopTimedOut))
-                        }
+                    } else if stopContinuation != nil, stream === self.stream, let output = recordingOutput {
+                        // The stream is already stopped, so the next recording can start while ScreenCaptureKit finishes
+                        // this file. A missing finish callback fails only the file wait; the recording stays in its folder.
+                        finishStop(with: .success(()), file: savingFile(of: output))
                     }
                 } catch {
                     // Clean-up may still need to stop a capture that failed to stop here.
@@ -337,8 +341,11 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
 
     nonisolated func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
         Task { @MainActor in
-            guard recordingOutput === self.recordingOutput else { return }
-            settleStop(with: nil)
+            if recordingOutput === self.recordingOutput {
+                settleStop(with: nil)
+            } else {
+                settleFile(of: recordingOutput, with: nil)
+            }
         }
     }
 
@@ -347,8 +354,11 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         didFailWithError error: any Error
     ) {
         Task { @MainActor in
-            guard recordingOutput === self.recordingOutput else { return }
-            finish(failing: error)
+            if recordingOutput === self.recordingOutput {
+                finish(failing: error)
+            } else {
+                settleFile(of: recordingOutput, with: error)
+            }
         }
     }
 
@@ -412,7 +422,7 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
                 do { try await recording.finish(); result = .success(()) } catch { result = .failure(error) }
                 outcome.withLock { $0 = result }
             }
-            await Self.wait(for: finishTask, atMost: callbackTimeout)
+            await Self.wait(for: finishTask, atMost: stopTimeout)
             var failure = error
             switch outcome.withLock({ $0 }) {
             case .success: break
@@ -431,17 +441,37 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
         startContinuation = nil
         startTimeoutTask?.cancel()
         startTimeoutTask = nil
-        if case .failure = result {
-            cleanUp()
+        switch result {
+        case .success: recordingStarted = .now
+        case .failure: cleanUp()
         }
         continuation.resume(with: result)
     }
 
-    private func finishStop(with result: Result<Void, Error>) {
+    private func finishStop(with result: Result<Void, Error>, file: Task<Void, Error> = Task {}) {
         guard let continuation = stopContinuation else { return }
         stopContinuation = nil
         cleanUp()
-        continuation.resume(with: result)
+        continuation.resume(with: result.map { file })
+    }
+
+    private func savingFile(of output: SCRecordingOutput) -> Task<Void, Error> {
+        let (finished, done) = AsyncThrowingStream<Void, Error>.makeStream()
+        savingFiles[ObjectIdentifier(output)] = (output, done)
+        let limit = stopTimeout
+        let timeout = Task { [weak self] in
+            try? await Task.sleep(for: limit)
+            guard !Task.isCancelled else { return }
+            self?.settleFile(of: output, with: RecorderError.stopTimedOut)
+        }
+        return Task {
+            defer { timeout.cancel() }
+            for try await _ in finished {}
+        }
+    }
+
+    private func settleFile(of output: SCRecordingOutput, with error: Error?) {
+        savingFiles.removeValue(forKey: ObjectIdentifier(output))?.done.finish(throwing: error)
     }
 
     private func finishUnexpectedStop(with error: Error?) {
@@ -453,10 +483,9 @@ final class MeetingRecorder: NSObject, SCRecordingOutputDelegate, SCStreamDelega
     private func cleanUp() {
         let previousStream = captureStopped ? nil : stream
         captureStopped = false
+        recordingStarted = nil
         startTimeoutTask?.cancel()
         startTimeoutTask = nil
-        stopTimeoutTask?.cancel()
-        stopTimeoutTask = nil
         stream = nil
         recordingOutput = nil
         microphone = nil

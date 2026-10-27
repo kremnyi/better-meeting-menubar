@@ -491,12 +491,13 @@ struct MenuBarControlView: View {
 
     @ViewBuilder
     private var failureSecondaryActions: some View {
+        // Equal widths line the row up with the full-width primary button above it.
         if model.privacyPermission != nil || model.showsRecordingOptionsAction {
-            Button(model.primaryButtonTitle, action: model.primaryAction)
+            Button { model.primaryAction() } label: { Text(model.primaryButtonTitle).frame(maxWidth: .infinity) }
         } else if let folder = model.completedFolder {
-            Button("Show saved files") { NSWorkspace.shared.open(folder) }
+            Button { NSWorkspace.shared.open(folder) } label: { Text("Show saved files").frame(maxWidth: .infinity) }
         }
-        Button("Back to meetings", action: model.dismissFailure)
+        Button(action: model.dismissFailure) { Text("Back to meetings").frame(maxWidth: .infinity) }
     }
 
     private var primaryActionButton: some View {
