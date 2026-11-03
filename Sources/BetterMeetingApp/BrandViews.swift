@@ -80,10 +80,10 @@ struct MenuBarStatusIcon: View {
         .frame(width: 18, height: 18)
         .opacity(state == .recording ? breath : 1)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(statusDescription)
+        .accessibilityLabel(accessibilityLabel)
     }
 
-    var statusDescription: String {
+    private var accessibilityLabel: String {
         if processing, state == .idle { return "Better Meeting, processing recording" }
         if attention, state == .idle { return "Better Meeting, needs attention" }
         return switch state {
@@ -182,18 +182,14 @@ struct MenuBarStatusLabel: View {
         }
     }
 
-    static func previewEvent(calendar: CalendarIntegration, state: AppState, processing: Bool) -> CalendarEvent? {
+    private var previewEvent: CalendarEvent? {
         guard state == .idle,
               !processing,
               calendar.menuBarPreview,
               calendar.enabled,
               calendar.authorization == .fullAccess
         else { return nil }
-        return actionablePreviewEvent(from: calendar.events, at: Date())
-    }
-
-    private var previewEvent: CalendarEvent? {
-        Self.previewEvent(calendar: calendar, state: state, processing: processing)
+        return Self.actionablePreviewEvent(from: calendar.events, at: Date())
     }
 }
 

@@ -102,9 +102,6 @@ final class AppModel: ObservableObject {
     @Published var menuBarRecordingTime: Bool {
         didSet { defaults.set(menuBarRecordingTime, forKey: "menuBarRecordingTime") }
     }
-    @Published var statusPlacement: StatusPlacement {
-        didSet { defaults.set(statusPlacement.rawValue, forKey: "statusPlacement") }
-    }
     @Published var detectsMeetings: Bool {
         didSet {
             defaults.set(detectsMeetings, forKey: "detectMeetings")
@@ -199,7 +196,6 @@ final class AppModel: ObservableObject {
         automaticUpdateChecks = defaults.bool(forKey: "checkUpdatesOnLaunch")
         betaUpdates = defaults.bool(forKey: "betaUpdates")
         menuBarRecordingTime = defaults.object(forKey: "menuBarRecordingTime") as? Bool ?? true
-        statusPlacement = StatusPlacement(rawValue: defaults.string(forKey: "statusPlacement") ?? "") ?? .menuBar
         detectsMeetings = defaults.bool(forKey: "detectMeetings")
         speechSettings = defaults.data(forKey: "speechSettings")
             .flatMap { try? JSONDecoder().decode(SpeechSettings.self, from: $0) } ?? SpeechSettings()
