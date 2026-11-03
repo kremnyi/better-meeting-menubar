@@ -3,8 +3,6 @@ name: Build and check
 on:
   push:
   pull_request:
-  schedule:
-    - cron: "0 6 * * 1"
 
 permissions:
   contents: read
