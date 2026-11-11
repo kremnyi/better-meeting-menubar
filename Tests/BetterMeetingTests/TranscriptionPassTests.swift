@@ -37,6 +37,22 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertEqual(TranscriptionPasses.merge([
             segment(0, 5, "en", -0.2), segment(4, 12, "uk", -0.3)
         ]).map(\.lang), ["en", "uk"])
+        // A copy that ends 0.5 s later reaches less than 1 s past the cursor, so the pause after it does not bring it back.
+        XCTAssertEqual(TranscriptionPasses.merge([
+            segment(3, 9.5, "en", -0.2), segment(3, 10, "uk", -0.25), segment(12, 16, "ru", -0.3)
+        ]).map(\.lang), ["en", "ru"])
+    }
+
+    func testMergeKeepsSpeechOnlyACrossingLineCovers() {
+        // Nothing but the 10 s line covers 6-10 s, so it stays although it adds less than half its length.
+        let covered = TranscriptionPasses.merge([segment(0, 10, "uk", -0.3), segment(0, 6, "en", -0.2)])
+        XCTAssertEqual(covered.map(\.lang), ["en", "uk"])
+        // The next line of another pass starts 2 s past the cursor and would skip 6-8 s; the crossing line competes and wins.
+        let late = TranscriptionPasses.merge([
+            segment(0, 10, "uk", -0.3), segment(0, 6, "en", -0.2), segment(8, 12, "en", -0.4)
+        ])
+        XCTAssertEqual(late.map(\.lang), ["en", "uk", "en"])
+        XCTAssertEqual(late.map(\.start), [0, 0, 8])
     }
 
     func testMergeKeepsShortLinesBeforeALongerLineInAnotherLanguage() {
@@ -54,6 +70,12 @@ final class TranscriptionPassTests: XCTestCase {
         // A short tail of another pass that crosses the cursor repeats the line before it.
         let tail = TranscriptionPasses.merge([segment(0, 10, "en", -0.2), segment(9.9, 10.15, "uk", -0.1)])
         XCTAssertEqual(tail.map(\.start), [0])
+        // A sentence that lost to two shorter lines of another pass still comes after them; only 0.7 s of it lies past the cursor, but 3.4 s of it are uncovered.
+        let sentence = TranscriptionPasses.merge([
+            segment(0, 4, "en", -0.5), segment(2, 2.3, "uk", -0.2), segment(3, 3.3, "uk", -0.3)
+        ])
+        XCTAssertEqual(sentence.map(\.lang), ["uk", "uk", "en"])
+        XCTAssertEqual(sentence.map(\.start), [2, 3, 0])
     }
 
     func testLongAudioGetsADetectionWindowEveryFiveMinutes() {

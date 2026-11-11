@@ -128,7 +128,8 @@ enum TranscriptionPasses {
         segments.filter { !($0.nospeech > noSpeechThreshold && $0.score < logProbThreshold) }
     }
 
-    // Port of GivenFLY/better-meeting asr.py _merge at e9b524d; unlike upstream, a candidate must add half its length past the cursor, or sentences repeat.
+    // Port of GivenFLY/better-meeting merge_passes as in its PR #7 (4b4e1bc); a pass is a language, and the segments are one flat list.
+    // A line crossing the cursor must reach past it and be half uncovered, or sentences repeat; one that fails stays in reserve.
     static func merge(
         _ passes: [ScoredSegment],
         noSpeechThreshold: Float = SpeechSettings().noSpeechThreshold,
@@ -150,17 +151,19 @@ enum TranscriptionPasses {
             // A line crossing the cursor must reach well past it, or tails repeat; a short line starting after it is kept.
             // Every pick ends past the cursor, so it moves forward and each line is picked at most once.
             open.removeAll { !(segments[$0].end > cursor + 0.2 || (segments[$0].start >= cursor && segments[$0].end > cursor)) }
-            // Keep the first candidate on ties, matching Python's max().
-            var best: ScoredSegment?
+            var candidates: [ScoredSegment] = []
+            var reserve: [ScoredSegment] = []
             // Only a language's next line competes; its later lines would otherwise win and skip the next one.
             var seen = Set<String>()
             for index in open {
                 let segment = segments[index]
-                guard segment.end - max(segment.start, cursor) >= (segment.end - segment.start) / 2 else { continue }
-                guard seen.insert(segment.lang).inserted else { continue }
-                if let current = best, !(current.score < segment.score) { continue }
-                best = segment
+                if segment.start < cursor, segment.end - cursor >= 1 { reserve.append(segment) }
+                guard addsSpeech(segment, cursor: cursor, taken: merged), seen.insert(segment.lang).inserted else { continue }
+                candidates.append(segment)
             }
+            // A winner 1 s or more past the cursor would leave a gap, so crossing lines compete too.
+            var best = mostConfident(candidates)
+            if (best?.start ?? .infinity) >= cursor + 1 { best = mostConfident(reserve + candidates) }
             while following < segments.count, segments[following].start <= cursor { following += 1 }
             if let best {
                 merged.append(best)
@@ -172,6 +175,38 @@ enum TranscriptionPasses {
             }
         }
         return merged
+    }
+
+    // A line starting at the cursor adds speech if it ends past it; a crossing line must reach 0.2 s past it and be half uncovered.
+    private static func addsSpeech(_ segment: ScoredSegment, cursor: Double, taken: [ScoredSegment]) -> Bool {
+        if segment.start >= cursor { return segment.end > cursor }
+        return segment.end > cursor + 0.2 && uncovered(segment, taken: taken) >= (segment.end - segment.start) / 2
+    }
+
+    // Seconds of the line that no taken line covers; taken lines are in order of end time.
+    private static func uncovered(_ segment: ScoredSegment, taken: [ScoredSegment]) -> Double {
+        var spans: [(Double, Double)] = []
+        for line in taken.reversed() {
+            if line.end <= segment.start { break }
+            spans.append((max(line.start, segment.start), min(line.end, segment.end)))
+        }
+        var covered = 0.0, reach = segment.start
+        for (from, to) in spans.sorted(by: { $0.0 < $1.0 || ($0.0 == $1.0 && $0.1 < $1.1) }) {
+            let from = max(from, reach)
+            if to > from {
+                covered += to - from
+                reach = to
+            }
+        }
+        return segment.end - segment.start - covered
+    }
+
+    // The most confident line wins; on equal scores the earlier one, then the first listed, matching Python's max().
+    private static func mostConfident(_ segments: [ScoredSegment]) -> ScoredSegment? {
+        segments.reduce(nil as ScoredSegment?) { best, segment in
+            guard let best else { return segment }
+            return segment.score > best.score || (segment.score == best.score && segment.start < best.start) ? segment : best
+        }
     }
 }
 
