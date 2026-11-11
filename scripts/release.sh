@@ -125,23 +125,34 @@ if $dry_run; then
     exit 0
 fi
 
+# The tag is already public when this runs, so a GitHub API error must not stop the release: each gh call is tried again.
 wait_for_ci() {
-    local ref=$1 sha ids conclusions
+    local ref=$1 sha ids conclusion conclusions
     sha=$(git rev-parse HEAD)
     ids=()
     for attempt in {1..30}; do
-        ids=(${(f)"$(gh run list --repo $repo --workflow build.yml --commit $sha --json databaseId,headBranch --jq ".[] | select(.headBranch == \"$ref\") | .databaseId")"})
+        ids=(${(f)"$(gh run list --repo $repo --workflow build.yml --commit $sha --json databaseId,headBranch --jq ".[] | select(.headBranch == \"$ref\") | .databaseId" || true)"})
         (( ${#ids} )) && break
         sleep 10
     done
     (( ${#ids} )) || fail "no CI run started for $ref."
     print "Waiting for CI on $ref…"
+    conclusions=""
     for id in $ids; do
-        gh run watch $id --repo $repo >/dev/null 2>&1 || true
+        conclusion=""
+        # gh run watch returns early on a network error, so ask until GitHub reports the run as completed.
+        for attempt in {1..60}; do
+            gh run watch $id --repo $repo >/dev/null 2>&1 || true
+            conclusion=$(gh run view $id --repo $repo --json status,conclusion --jq 'select(.status == "completed") | .conclusion' 2>/dev/null || true)
+            [[ -n $conclusion ]] && break
+            (( attempt > 1 )) || print -u2 "GitHub gave no result for run $id; asking again every 30 seconds."
+            sleep 30
+        done
+        conclusions+="${conclusion:-unknown} "
     done
     # A push can start duplicate build runs and cancel one; a successful build run counts.
-    conclusions=$(for id in $ids; do gh run view $id --repo $repo --json conclusion --jq .conclusion; done)
-    [[ $conclusions == *success* ]] || fail "CI did not pass for $ref: $(gh run list --repo $repo --workflow build.yml --commit $sha --json url --jq '.[0].url')"
+    # "unknown" means GitHub did not answer, not that a check failed.
+    [[ $conclusions == *success* ]] || fail "CI did not pass for $ref (results: ${conclusions% }): $(gh run list --repo $repo --workflow build.yml --commit $sha --json url --jq '.[0].url')"
     print "CI passed for $ref."
 }
 

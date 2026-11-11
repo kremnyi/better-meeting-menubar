@@ -227,8 +227,8 @@ Then it follows the steps below:
 5. Pushes the tag. For a stable release, it waits for CI on the tag first.
 6. Publishes the GitHub release, marked as a pre-release for betas, and checks the download.
 7. Pushes `main` and checks that the public feed lists the new version.
-8. Runs `brew fetch` for each updated cask. Trust the beta cask once on the release Mac with `brew trust --cask kremnyi/better-meeting/better-meeting@beta`.
-9. Waits for **Build and check** to pass on `main`, and for a beta, on the tag. Website deployment does not count as an app check.
+8. Runs `brew fetch` for each updated cask. `brew fetch` loads only trusted casks, so trust both once on the release Mac with `brew trust --cask kremnyi/better-meeting/better-meeting kremnyi/better-meeting/better-meeting@beta`.
+9. Waits for **Build and check** to pass on `main`, and for a beta, on the tag. If a GitHub API call fails during a CI wait, the script tries again. Website deployment does not count as an app check.
 
 If a step fails, the script names the step and what state it left:
 
