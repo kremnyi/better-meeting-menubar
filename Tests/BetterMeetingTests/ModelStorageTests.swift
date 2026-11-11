@@ -30,7 +30,7 @@ final class ModelStorageTests: XCTestCase {
             atPath: destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3/model.bin").path
         ))
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("parakeet-tdt-0.6b-v3").path))
-        XCTAssertEqual(try String(contentsOf: legacy.appendingPathComponent("other/file.txt")), "keep")
+        XCTAssertEqual(try String(contentsOf: legacy.appendingPathComponent("other/file.txt"), encoding: .utf8), "keep")
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("other/file.txt").path))
     }
 
@@ -54,12 +54,12 @@ final class ModelStorageTests: XCTestCase {
         LocalTranscriber.prepareModelStorage(legacy: legacy, destination: destination)
 
         let tokenizer = destination.appendingPathComponent("models/openai/tokenizer.json")
-        XCTAssertEqual(try String(contentsOf: tokenizer), "new")
-        XCTAssertEqual(try String(contentsOf: legacy.appendingPathComponent("models/openai/tokenizer.json")), "old",
+        XCTAssertEqual(try String(contentsOf: tokenizer, encoding: .utf8), "new")
+        XCTAssertEqual(try String(contentsOf: legacy.appendingPathComponent("models/openai/tokenizer.json"), encoding: .utf8), "old",
                        "An unverified conflicting file must survive migration")
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("models/openai/duplicate.json").path))
-        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent(small)), "small")
-        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent(large)), "large",
+        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent(small), encoding: .utf8), "small")
+        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent(large), encoding: .utf8), "large",
                        "A partial destination must not discard another installed model")
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("models/argmaxinc/whisperkit-coreml").path))
     }
@@ -82,7 +82,7 @@ final class ModelStorageTests: XCTestCase {
         try write("late", to: legacyModel)
         try write("stray", to: destination.appendingPathComponent("parakeet-tdt-0.6b-v3/other.bin"))
         LocalTranscriber.prepareModelStorage(legacy: root.appendingPathComponent("legacy"), destination: destination)
-        XCTAssertEqual(try String(contentsOf: legacyModel), "late")
+        XCTAssertEqual(try String(contentsOf: legacyModel, encoding: .utf8), "late")
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("models/openai").path))
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3/other.bin").path
@@ -143,7 +143,7 @@ final class ModelStorageTests: XCTestCase {
         try await transcriber.deleteStoredModel(at: folder)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
-        XCTAssertEqual(try String(contentsOf: other), "keep", "Deleting one model must leave the others")
+        XCTAssertEqual(try String(contentsOf: other, encoding: .utf8), "keep", "Deleting one model must leave the others")
 
         let locked = folder.appendingPathComponent("locked.bin")
         try write("keep until deletion succeeds", to: locked)

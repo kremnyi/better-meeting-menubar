@@ -80,7 +80,7 @@ final class MeetingActionTests: XCTestCase {
             XCTAssertFalse(item.needsTranscription)
             if committed {
                 XCTAssertEqual(item.duration, 20)
-                XCTAssertTrue(try String(contentsOf: folder.appendingPathComponent("transcript.md")).contains("New result"))
+                XCTAssertTrue(try String(contentsOf: folder.appendingPathComponent("transcript.md"), encoding: .utf8).contains("New result"))
             } else {
                 XCTAssertEqual(try names.map { try Data(contentsOf: folder.appendingPathComponent($0)) }, originals,
                                "Recovery must restore the whole saved set, including manual edits")

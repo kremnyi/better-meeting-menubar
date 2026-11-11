@@ -27,4 +27,5 @@ xcuserdata/
 # Claude Code session state and local review output
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+.claude/launch.json
 .impeccable/
