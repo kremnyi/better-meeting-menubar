@@ -14,6 +14,8 @@ struct ProcessingRun {
     let settings: SpeechSettings
     var stopTask: Task<Void, Error>?
     var folderTitle: String?
+    /// How long the capture ran; it sets how long the queue waits for ScreenCaptureKit to finish the file.
+    var captureLength: TimeInterval = 0
 }
 
 private enum QueuedJob {
@@ -319,11 +321,18 @@ final class ProcessingQueue: ObservableObject {
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
                 return false
             }
-            model.transcriptionFailed(in: folder, error: error)
-            model.accessibilityAnnouncement("Transcription failed for \(run.title). Open Better Meeting to retry.")
-            await MeetingNotifications.post(title: run.title, folder: folder, failed: true)
+            await reportFailure(error, title: run.title, folder: folder)
             return false
         }
+    }
+
+    /// Marks the meeting for Retry and tells the user, who can have the menu closed or a new recording on screen.
+    func reportFailure(_ error: Error, title: String, folder: URL) async {
+        model.transcriptionFailed(in: folder, error: error)
+        // A meeting with no typed name has no title until its transcript exists.
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "this recording" : title
+        model.accessibilityAnnouncement("Transcription failed for \(name). Open Better Meeting to retry.")
+        await MeetingNotifications.post(title: title, folder: folder, failed: true)
     }
 
     /// Starts the m4a export when it is missing; the returned audio can be transcribed before the export ends.
@@ -335,7 +344,8 @@ final class ProcessingQueue: ObservableObject {
         // Only a capture that just ended (folderTitle set) can still be finishing its MP4.
         if needsAudio, run.folderTitle != nil {
             setPhase(.finalizingRecording)
-            try await AudioExtractor.waitUntilReadable(recordingURL)
+            try await AudioExtractor.waitUntilReadable(
+                recordingURL, timeout: AudioExtractor.readableTimeout(recorded: run.captureLength))
         }
         setPhase(.preparingAudio, fraction: 0)
         guard needsAudio else { return (MeetingAudio(url: audioURL), try Self.audioDuration(audioURL), nil) }

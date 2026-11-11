@@ -4,7 +4,7 @@ import Foundation
 enum AudioExtractor {
     /// ScreenCaptureKit can report a recording finished before the MP4 index is written, notably after a stop from the screen-sharing menu.
     static func waitUntilReadable(
-        _ recordingURL: URL, timeout: Duration = .seconds(300), interval: Duration = .seconds(1)
+        _ recordingURL: URL, timeout: Duration, interval: Duration = .seconds(1)
     ) async throws {
         let deadline = ContinuousClock.now + timeout
         while true {
@@ -17,6 +17,12 @@ enum AudioExtractor {
                 try await Task.sleep(for: interval)
             }
         }
+    }
+
+    /// ScreenCaptureKit finishes a longer MP4 later (82 seconds for 23 minutes), and a stop from the screen-sharing menu
+    /// has no finish callback to wait for. The limit grows by a quarter of the recorded time, as MeetingRecorder's does.
+    static func readableTimeout(recorded: TimeInterval) -> Duration {
+        .seconds(300 + max(0, recorded) / 4)
     }
 
     /// MeetingAudio decodes with the same mix.

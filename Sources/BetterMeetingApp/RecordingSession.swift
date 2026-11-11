@@ -164,7 +164,7 @@ final class RecordingSession: ObservableObject {
         model.accessibilityAnnouncement("Recording stopped. Transcription started.")
         model.processing.showFinalizing(run.folder)
         if stopCapture {
-            let folder = run.folder
+            let (folder, title) = (run.folder, run.title)
             run.stopTask = Task { [model] in
                 let file: Task<Void, Error>
                 do {
@@ -178,7 +178,7 @@ final class RecordingSession: ObservableObject {
                 do {
                     try await file.value
                 } catch {
-                    model.transcriptionFailed(in: folder, error: error)
+                    await model.processing.reportFailure(error, title: title, folder: folder)
                     throw error
                 }
             }
@@ -201,7 +201,8 @@ final class RecordingSession: ObservableObject {
             languages: model.transcriptionLanguages,
             hints: model.transcriptionHints,
             settings: model.speechSettings.withResolvedEngine,
-            folderTitle: folderTitle
+            folderTitle: folderTitle,
+            captureLength: Date().timeIntervalSince(recordedAt)
         )
     }
 

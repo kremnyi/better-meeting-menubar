@@ -109,6 +109,10 @@ final class RecoveryTests: XCTestCase {
         let recordingURL = root.appendingPathComponent("recording.mp4")
         try unfinished.write(to: recordingURL)
 
+        // A stop from the screen-sharing menu has no finish callback, and a 23-minute MP4 took 82 seconds to finish.
+        // At that rate a 3-hour recording needs 641 seconds, so a fixed five-minute wait fails it.
+        XCTAssertGreaterThan(AudioExtractor.readableTimeout(recorded: 3 * 3600), .seconds(3 * 3600 * 82 / (23 * 60)))
+
         do {
             try await AudioExtractor.waitUntilReadable(recordingURL, timeout: .milliseconds(300), interval: .milliseconds(50))
             XCTFail("A recording that never finishes must still fail")

@@ -61,14 +61,21 @@ final class TranscriptionQueueTests: XCTestCase {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingFileTimeout")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Never saved", recordedAt: Date())
+        // The capture leaves its file in the folder; the history scan drops a failed folder that has no recording.
+        try Data([1, 2, 3]).write(to: folder.appendingPathComponent("recording.mp4"))
         let model = makeModel(defaults)
         model.transcriptionLanguages = ["en"]
         model.recording.activeFolder = folder
         model.recording.didStart(at: Date())
         model.recording.stopCapture = { Task { throw RecorderError.stopTimedOut } }
+        var announcements: [String] = []
+        model.accessibilityAnnouncement = { announcements.append($0) }
         model.primaryAction()
         await model.processing.task?.value
         XCTAssertEqual(model.state, .idle)
+        // No name was typed, so the meeting has no title yet; the announcement must not leave a gap for it.
+        XCTAssertTrue(announcements.contains("Transcription failed for this recording. Open Better Meeting to retry."),
+                      "The menu can be closed, so a file failure is announced like other transcription failures")
         XCTAssertNil(model.lastError, "A file failure is not a capture failure")
         XCTAssertEqual(model.transcriptionError as? RecorderError, .stopTimedOut)
         XCTAssertEqual(model.failedTranscriptionFolders, [folder.standardizedFileURL], "The meeting stays marked for Retry")
