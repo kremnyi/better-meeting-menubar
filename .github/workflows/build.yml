@@ -11,22 +11,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Each matrix entry runs on its own runner, so the tests and the app bundle
-# run in parallel and a push finishes in the longer of the two, not their sum.
+# One job: GitHub is sometimes short of macOS runners, so the tests and the app bundle ask for one runner, not two.
 jobs:
   check:
-    name: ${{ matrix.name }}
     runs-on: macos-15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: tests
-            run: |
-              swift test
-              xcrun swift scripts/test-update-signature.swift
-          - name: bundle
-            run: ./scripts/build-app.sh
     steps:
       - uses: actions/checkout@v7
       - name: Cache SwiftPM dependencies
@@ -37,12 +25,18 @@ jobs:
             .build/artifacts
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
-      - name: Run ${{ matrix.name }}
-        run: ${{ matrix.run }}
+      - name: Run the tests
+        run: |
+          swift test
+          xcrun swift scripts/test-update-signature.swift
+      # This step also runs after a test failure, so one run reports both results.
+      - name: Build the app bundle
+        if: ${{ !cancelled() }}
+        run: ./scripts/build-app.sh
       - name: Save crash reports if a check fails
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.name }}-crash-reports
+          name: crash-reports
           path: ~/Library/Logs/DiagnosticReports/*
           if-no-files-found: ignore

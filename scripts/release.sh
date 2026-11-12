@@ -84,6 +84,9 @@ elif ! gh auth status >/dev/null 2>&1; then
 fi
 [[ $(git branch --show-current) == main ]] || problem "Release from the main branch."
 git diff --quiet && git diff --cached --quiet || problem "Commit or stash tracked changes first."
+# The app is built from the files on disk. An untracked source file would be in the app but not in the release commit.
+untracked=(${(f)"$(git ls-files --others --exclude-standard)"})
+(( ${#untracked} == 0 )) || problem "Commit, remove, or ignore untracked files first (${#untracked} found, such as ${untracked[1]}). The app is built from the files on disk, not from the commit."
 if git fetch --quiet origin main --tags; then
     [[ $(git rev-list --count HEAD..origin/main) == 0 ]] || problem "main is behind origin/main; pull first."
 else
@@ -118,7 +121,7 @@ if [[ $channel == stable ]]; then
     print "  5. Verify the download, the public feed, brew fetch, and CI on main"
 else
     print "  4. Push $tag, publish the GitHub pre-release, push main"
-    print "  5. Verify the download, the public feed, brew fetch, and CI on the tag and main"
+    print "  5. Verify the download, the public feed, and brew fetch, then print the CI state without a wait"
 fi
 if $dry_run; then
     print "Dry run: all checks passed; nothing was changed."
@@ -354,12 +357,21 @@ if command -v brew >/dev/null; then
 else
     print -u2 "warning: Homebrew isn't installed; skipped brew fetch."
 fi
-if [[ $channel == beta ]]; then
-    step="waiting for CI on $tag"
-    wait_for_ci $tag
+if [[ $channel == stable ]]; then
+    step="waiting for CI on main"
+    wait_for_ci main
+else
+    # The script publishes a beta without a CI gate, so a wait at this point protects nothing.
+    # GitHub is sometimes without a macOS runner for a long time. The script prints the state and ends.
+    step="reading the CI state"
+    sha=$(git rev-parse HEAD)
+    print "\nThe script does not wait for CI on a beta. Build and check on commit ${sha[1,7]} now:"
+    if state=$(gh run list --repo $repo --workflow build.yml --commit $sha --json headBranch,status,conclusion,url --jq '.[] | "  \(.headBranch): \(if (.conclusion // "") == "" then .status else .conclusion end) \(.url)"' 2>/dev/null); then
+        print -r -- "${state:-  GitHub lists no run yet.}"
+    else
+        print -u2 "warning: could not read the CI state from GitHub."
+    fi
+    print "Read the result later with: gh run list --repo $repo --workflow build.yml --commit $sha"
 fi
-
-step="waiting for CI on main"
-wait_for_ci main
 
 print "\nPublished $tag: https://github.com/$repo/releases/tag/$tag"
