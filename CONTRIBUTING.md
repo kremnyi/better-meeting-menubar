@@ -228,7 +228,15 @@ Then it follows the steps below:
 6. Publishes the GitHub release, marked as a pre-release for betas, and checks the download.
 7. Pushes `main` and checks that the public feed lists the new version.
 8. Runs `brew fetch` for each updated cask. `brew fetch` loads only trusted casks, so trust both once on the release Mac with `brew trust --cask kremnyi/better-meeting/better-meeting kremnyi/better-meeting/better-meeting@beta`.
-9. Waits for **Build and check** to pass on `main`, and for a beta, on the tag. If a GitHub API call fails during a CI wait, the script tries again. Website deployment does not count as an app check.
+9. Waits for **Build and check** on `main`, and for a beta, on the tag. The wait in step 5 uses the same rules:
+   - The script reads each **Build and check** run of the release commit, on any ref (the tag, `main`, or another branch). It waits until GitHub reports each run as completed.
+   - A job passes if it passed in any attempt of any of these runs.
+   - If a job ends the last attempt of a run in a state other than success, skipped, or cancelled, the script stops. It stops even if the job passed in another run.
+   - GitHub cancels a job when no runner takes it in 15 minutes. If such a job of the tag run passed in no run, the script runs the failed jobs of the tag run again. It does this up to eight times in one wait. It does not run the jobs of `main` or of another branch again, because that can cancel the run of a newer commit.
+   - If a job was cancelled in the last attempt of a run and passed in another run or attempt, the script continues. That run stays red on GitHub. The script prints a note when the run is for the ref that it waits for.
+   - If a job passed in no run, the script stops.
+   - If a GitHub API call fails, the script tries again. It stops if GitHub does not report a run as completed, or does not give a complete job list, after 60 tries.
+   - Website deployment does not count as an app check.
 
 If a step fails, the script names the step and what state it left:
 

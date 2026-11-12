@@ -125,35 +125,122 @@ if $dry_run; then
     exit 0
 fi
 
-# The tag is already public when this runs, so a GitHub API error must not stop the release: each gh call is tried again.
+# The tag is already public when this runs, so a GitHub API error alone must not stop the release: each gh call is tried again.
+# The release commit passes when each build job passed on it, in any attempt of any run of the commit (for the tag, main, or another ref).
+# GitHub cancels a job that no runner takes in 15 minutes. If such a job of the tag run passed in no run,
+# the failed jobs of the tag run are run again, up to ci_reruns times in one wait.
+# A run for another ref is not run again: build.yml cancels a run in progress on the same ref, which can be the run of a newer commit.
+# A job that failed in the last attempt of a run stops the release, also when it passed in another run.
+ci_reruns=8
 wait_for_ci() {
-    local ref=$1 sha ids conclusion conclusions
+    local ref=$1 sha run id branch job name last now state attempt url tries=0
+    local -a runs mine jobs f failed again rerun missing
+    local -aU names passed idle
+    local -A stuck started
     sha=$(git rev-parse HEAD)
-    ids=()
+    runs=()
     for attempt in {1..30}; do
-        ids=(${(f)"$(gh run list --repo $repo --workflow build.yml --commit $sha --json databaseId,headBranch --jq ".[] | select(.headBranch == \"$ref\") | .databaseId" || true)"})
-        (( ${#ids} )) && break
+        runs=(${(f)"$(gh run list --repo $repo --workflow build.yml --commit $sha --json databaseId,headBranch --jq '.[] | "\(.databaseId) \(.headBranch)"' || true)"})
+        mine=(${(M)runs:#* $ref})
+        (( ${#mine} )) && break
         sleep 10
     done
-    (( ${#ids} )) || fail "no CI run started for $ref."
+    (( ${#mine} )) || fail "GitHub listed no CI run for $ref after 30 tries."
+    url="https://github.com/$repo/actions/runs/${mine[1]%% *}"
     print "Waiting for CI on $ref…"
-    conclusions=""
-    for id in $ids; do
-        conclusion=""
-        # gh run watch returns early on a network error, so ask until GitHub reports the run as completed.
-        for attempt in {1..60}; do
-            gh run watch $id --repo $repo >/dev/null 2>&1 || true
-            conclusion=$(gh run view $id --repo $repo --json status,conclusion --jq 'select(.status == "completed") | .conclusion' 2>/dev/null || true)
-            [[ -n $conclusion ]] && break
-            (( attempt > 1 )) || print -u2 "GitHub gave no result for run $id; asking again every 30 seconds."
-            sleep 30
+    while true; do
+        names=() passed=() failed=() idle=() stuck=()
+        for run in $runs; do
+            id=${run%% *} branch=${run#* }
+            # gh run watch returns early on a network error, so ask until GitHub reports the run as completed.
+            # After a rerun, an answer about the attempt before it does not count.
+            state=""
+            for attempt in {1..60}; do
+                gh run watch $id --repo $repo --interval 10 >/dev/null 2>&1 || true
+                state=$(gh run view $id --repo $repo --json status,attempt --jq '"\(.status) \(.attempt)"' 2>/dev/null || true)
+                if [[ $state == completed\ <-> ]] && (( ${state#* } >= ${started[$id]:-0} )); then break; fi
+                state=""
+                (( attempt > 1 )) || print -u2 "GitHub did not report run $id as completed yet; asking again every 30 seconds."
+                sleep 30
+            done
+            [[ -n $state ]] || fail "GitHub did not report run $id as completed. See https://github.com/$repo/actions/runs/$id"
+            # One line for each job of each attempt: attempt, conclusion, number of steps, name.
+            last=0
+            for attempt in {1..60}; do
+                jobs=(${(f)"$(gh api --paginate "repos/$repo/actions/runs/$id/jobs?filter=all&per_page=100" --jq '.jobs[] | "\(.run_attempt) \(.conclusion // "unfinished") \(.steps // [] | length) \(.name)"' 2>/dev/null || true)"})
+                jobs=(${(M)jobs:#<-> *})
+                for job in $jobs; do
+                    if (( ${job%% *} > last )); then last=${job%% *}; fi
+                done
+                # A job of the last attempt without a conclusion: the job list is behind the run, so ask again.
+                if (( last && last >= ${started[$id]:-0} )) && [[ -z ${(M)jobs:#$last unfinished *} ]]; then break; fi
+                last=0
+                sleep 30
+            done
+            (( last )) || fail "GitHub gave no complete job list for run $id. See https://github.com/$repo/actions/runs/$id"
+            for job in $jobs; do
+                f=(${(s: :)job})
+                name="${f[4,-1]}"
+                if [[ $f[2] == success ]]; then
+                    names+=($name)
+                    passed+=($name)
+                elif [[ $f[2] != skipped ]]; then
+                    names+=($name)
+                    if (( f[1] == last )); then
+                        if [[ $f[2] != cancelled ]]; then
+                            failed+=("$name ($f[2]) for $branch")
+                        else
+                            if [[ $branch == $ref ]]; then idle+=($name); fi
+                            # No step ran: usually no runner took the job. Only such a job of the tag run is run again.
+                            if [[ $f[3] == 0 && $branch == $tag ]]; then stuck[$name]="$id $last"; fi
+                        fi
+                    fi
+                fi
+            done
         done
-        conclusions+="${conclusion:-unknown} "
+        if (( ${#failed} )); then
+            fail "CI did not pass for $ref: ${(j:, :)failed}. See $url"
+        fi
+        if (( ${#names} == 0 )); then
+            fail "GitHub gave no CI result for $ref. See $url"
+        fi
+        missing=(${names:|passed})
+        if (( ${#missing} == 0 )); then
+            print "CI passed for $ref: ${(j:, :)names} passed on commit ${sha[1,7]}."
+            if (( ${#idle} )); then
+                print "The run for $ref has a cancelled job (${(j:, :)idle}), so that run stays red on GitHub. Each job passed on this commit in another run or attempt."
+            fi
+            return 0
+        fi
+        rerun=() again=()
+        for name in $missing; do
+            if [[ -n ${stuck[$name]:-} ]]; then
+                rerun+=($stuck[$name])
+                again+=($name)
+            fi
+        done
+        if (( ${#rerun} == 0 )); then
+            fail "CI did not pass for $ref: ${(j:, :)missing} passed in no run. See $url"
+        fi
+        if (( tries >= ci_reruns )); then
+            fail "CI did not pass for $ref: after $tries reruns, GitHub still cancelled ${(j:, :)again} for $tag before a step ran. See $url"
+        fi
+        (( tries += 1 ))
+        print "GitHub cancelled ${(j:, :)again} for $tag before a step ran, usually because no runner took the job. Running the failed jobs again (try $tries of $ci_reruns)…"
+        for run in ${(u)rerun}; do
+            id=${run%% *}
+            now=""
+            for attempt in {1..20}; do
+                gh run rerun $id --failed --repo $repo >/dev/null 2>&1 || true
+                sleep 15
+                now=$(gh run view $id --repo $repo --json attempt --jq .attempt 2>/dev/null || true)
+                if [[ $now == <-> ]] && (( now > ${run#* } )); then break; fi
+                now=""
+            done
+            [[ -n $now ]] || fail "GitHub did not start the jobs of run $id again. See https://github.com/$repo/actions/runs/$id"
+            started[$id]=$now
+        done
     done
-    # A push can start duplicate build runs and cancel one; a successful build run counts.
-    # "unknown" means GitHub did not answer, not that a check failed.
-    [[ $conclusions == *success* ]] || fail "CI did not pass for $ref (results: ${conclusions% }): $(gh run list --repo $repo --workflow build.yml --commit $sha --json url --jq '.[0].url')"
-    print "CI passed for $ref."
 }
 
 step="setting $plist to $version ($build)"
