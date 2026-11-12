@@ -56,8 +56,18 @@ final class SpeechSettingsTests: XCTestCase {
         let folder = makeTempRoot()
         defer { removeTempRoot(folder) }
         try MeetingArtifacts.writeMetadata(title: "Old", recordedAt: Date(), duration: 60, speechSettings: settings, to: folder)
-        XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder)?.engine, .whisper,
+        XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder, preferences: SpeechSettings())?.engine, .whisper,
                        "Meetings saved without an engine were transcribed by Whisper")
+        // A Parakeet meeting that 0.4.9b9 or earlier saved holds every setting, with the Whisper model selected at that time.
+        let earlier = """
+        {"title":"Earlier","recordedAt":"2026-11-10T09:00:00Z","duration":60,"transcriptionComplete":true,"titleWasProvided":true,
+         "speechSettings":{"engine":"parakeet","model":"openai_whisper-large-v3-v20240930","temperature":0,"fallbackCount":5,
+         "fallbackIncrement":0.2,"noSpeechThreshold":0.6,"logProbThreshold":-1,"compressionRatioThreshold":2.4,"speakerLabels":false}}
+        """
+        try Data(earlier.utf8).write(to: folder.appendingPathComponent("metadata.json"))
+        XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder, preferences: SpeechSettings()),
+                       SpeechSettings(engine: .parakeet, speakerLabels: false),
+                       "A Parakeet meeting saved with every setting still reads as Parakeet")
     }
 
     @MainActor
@@ -100,14 +110,26 @@ final class SpeechSettingsTests: XCTestCase {
         defaults.set(saved, forKey: "speechSettings")
         let date = Date()
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Options", recordedAt: date)
-        XCTAssertNil(MeetingArtifacts.speechSettings(in: folder))
+        XCTAssertNil(MeetingArtifacts.speechSettings(in: folder, preferences: model.speechSettings))
         try MeetingArtifacts.write(title: "Options", recordedAt: date, duration: 1, segments: [], speechSettings: model.speechSettings, to: folder)
-        XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder), model.speechSettings)
+        // Parakeet uses no Whisper setting, so its meeting names the Parakeet model and holds no Whisper model or decoding option.
+        let metadata = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("metadata.json"))) as? [String: Any])
+        let recorded = try XCTUnwrap(metadata["speechSettings"] as? [String: Any])
+        XCTAssertEqual(recorded["engine"] as? String, "parakeet")
+        XCTAssertEqual(recorded["model"] as? String, "parakeet-tdt-0.6b-v3")
+        XCTAssertEqual(recorded["speakerLabels"] as? Bool, false)
+        XCTAssertEqual(Set(recorded.keys), ["engine", "model", "speakerLabels"], "A Parakeet meeting must not hold Whisper settings")
+        // The Re-transcribe page starts from these settings. The Whisper options come from Options, because the meeting holds none.
+        let preferences = SpeechSettings(model: .small, noSpeechThreshold: 0.5, speakerLabels: true)
+        XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder, preferences: preferences),
+                       SpeechSettings(engine: .parakeet, model: .small, noSpeechThreshold: 0.5, speakerLabels: false),
+                       "A Parakeet meeting keeps its engine and speaker-label choice and takes the Whisper options from Options")
         let meeting = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
         var changed = model.speechSettings
-        changed.model = .small
+        changed.engine = .whisper
+        changed.model = .turbo
         try MeetingArtifacts.replaceTranscript(for: meeting, duration: 1, segments: [], speechSettings: changed)
-        XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder), changed)
+        XCTAssertEqual(MeetingArtifacts.speechSettings(in: folder, preferences: preferences), changed, "A Whisper meeting keeps every setting")
         changed.temperature = .nan
         XCTAssertThrowsError(try changed.validate())
         changed.temperature = .infinity

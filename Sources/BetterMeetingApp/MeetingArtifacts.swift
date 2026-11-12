@@ -19,7 +19,45 @@ struct MeetingManifest: Codable {
     let duration: TimeInterval
     var transcriptionComplete: Bool? = nil
     var titleWasProvided: Bool? = nil
-    var speechSettings: SpeechSettings? = nil
+    var speechSettings: MeetingSpeechSettings? = nil
+}
+
+/// The speech settings that `metadata.json` keeps for a meeting.
+/// A Whisper meeting keeps every setting. A Parakeet meeting keeps the engine, the Parakeet model, and the speaker-label choice:
+/// Parakeet uses no Whisper setting, and a Whisper model in the file would look like the model that made the transcript.
+struct MeetingSpeechSettings: Codable {
+    static let parakeetModel = "parakeet-tdt-0.6b-v3"
+
+    let settings: SpeechSettings
+
+    init(_ settings: SpeechSettings) { self.settings = settings }
+
+    private struct Parakeet: Codable {
+        var engine = TranscriptionEngine.parakeet
+        var model = MeetingSpeechSettings.parakeetModel
+        var speakerLabels: Bool?
+    }
+
+    init(from decoder: Decoder) throws {
+        // Whisper meetings hold every setting. So do Parakeet meetings that 0.4.9b9 or earlier saved.
+        if let settings = try? SpeechSettings(from: decoder) {
+            self.settings = settings
+            return
+        }
+        let saved = try Parakeet(from: decoder)
+        guard saved.engine == .parakeet else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Whisper settings are incomplete."))
+        }
+        settings = SpeechSettings(engine: .parakeet, speakerLabels: saved.speakerLabels)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        if settings.engine == .parakeet {
+            try Parakeet(speakerLabels: settings.speakerLabels).encode(to: encoder)
+        } else {
+            try settings.encode(to: encoder)
+        }
+    }
 }
 
 struct MeetingHistoryItem: Identifiable, Equatable, Sendable {
@@ -183,7 +221,7 @@ enum MeetingArtifacts {
             duration: duration,
             transcriptionComplete: transcriptionComplete,
             titleWasProvided: titleWasProvided ?? !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            speechSettings: speechSettings
+            speechSettings: speechSettings.map { MeetingSpeechSettings($0) }
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -280,11 +318,17 @@ enum MeetingArtifacts {
         }
     }
 
-    static func speechSettings(in folder: URL) -> SpeechSettings? {
-        guard var settings = manifest(in: folder)?.speechSettings else { return nil }
+    /// The speech settings saved with the meeting, for a new run of it.
+    /// A Parakeet meeting holds no Whisper setting, so those come from `preferences`.
+    static func speechSettings(in folder: URL, preferences: SpeechSettings) -> SpeechSettings? {
+        guard var settings = manifest(in: folder)?.speechSettings?.settings else { return nil }
         // Meetings saved before Parakeet became the default recorded no engine; Whisper transcribed them.
         settings.engine = settings.engine ?? .whisper
-        return settings
+        guard settings.engine == .parakeet else { return settings }
+        var merged = preferences
+        merged.engine = .parakeet
+        merged.speakerLabels = settings.speakerLabels
+        return merged
     }
 
     static func hasMedia(in folder: URL) -> Bool {

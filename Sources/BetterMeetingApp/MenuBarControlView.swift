@@ -60,7 +60,7 @@ struct MenuBarControlView: View {
         .sheet(item: $retranscribingMeeting) { meeting in
             RetranscriptionView(
                 meeting: meeting, languages: model.transcriptionLanguages, hints: model.transcriptionHints,
-                settings: MeetingArtifacts.speechSettings(in: meeting.folderURL) ?? model.speechSettings,
+                settings: MeetingArtifacts.speechSettings(in: meeting.folderURL, preferences: model.speechSettings) ?? model.speechSettings,
                 dismiss: { retranscribingMeeting = nil }
             ) { languages, hints, settings in
                 model.retryTranscription(meeting, languages: languages, hints: hints, settings: settings)

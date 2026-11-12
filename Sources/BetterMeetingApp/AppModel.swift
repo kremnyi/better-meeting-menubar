@@ -481,7 +481,7 @@ final class AppModel: ObservableObject {
             replacing: replacing,
             languages: languages ?? transcriptionLanguages,
             hints: hints ?? transcriptionHints,
-            settings: (settings ?? MeetingArtifacts.speechSettings(in: item.folderURL) ?? speechSettings).withResolvedEngine
+            settings: (settings ?? MeetingArtifacts.speechSettings(in: item.folderURL, preferences: speechSettings) ?? speechSettings).withResolvedEngine
         )
     }
 
