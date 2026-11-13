@@ -229,7 +229,23 @@ final class TranscriptionPassTests: XCTestCase {
             }
             XCTAssertEqual(calls, passes)
             XCTAssertEqual(reported.withLock { $0 }, reports, "Progress must count only the passes that run")
+            // A candidate detection did not choose has no pass; a re-run must not load the model to detect again.
+            let rerun = try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "ru", "en"], detectLanguages: {
+                XCTFail("Saved detection with cached passes must not detect again")
+                return []
+            }, progressHandler: { _ in }) { _, _ in
+                XCTFail("Cached passes must not invoke the model")
+                throw Interrupted.pass
+            }
+            XCTAssertEqual(rerun, [])
         }
+        // Other candidates were not part of that detection.
+        let detected = OSAllocatedUnfairLock(initialState: false)
+        _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "en"], detectLanguages: {
+            detected.withLock { $0 = true }
+            return []
+        }, progressHandler: { _ in }) { _, _ in [] }
+        XCTAssertTrue(detected.withLock { $0 }, "Changed candidates must detect again")
     }
 
     func testNoSpeechProbabilityMatchesOnHalfAndSinglePrecision() throws {

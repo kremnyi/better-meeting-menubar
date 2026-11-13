@@ -50,6 +50,17 @@ enum TranscriptionPasses {
         let segments: [ScoredSegment]
     }
 
+    /// The candidates detection chose; detection reads only the audio, so hints and decoding options are not part of the key.
+    private struct Detection: Codable {
+        let model: String
+        let backend: String
+        let threshold: Float
+        let audioSize: Int?
+        let audioModified: Date?
+        let candidates: [String]
+        let languages: [String]
+    }
+
     static let detectionThreshold: Float = 0.3
 
     static func run(
@@ -79,11 +90,24 @@ enum TranscriptionPasses {
             return cache.segments
         }
         var passes = languages
+        let detectionURL = cacheFolder.appendingPathComponent("pass_languages.json")
+        var detected: [String]?
         if languages.count > 1, let detectLanguages, try languages.contains(where: { try cachedPass($0) == nil }) {
-            let windows = try await detectLanguages()
-            try Task.checkCancellation()
-            let detected = languages.filter { language in windows.contains { $0[language] ?? 0 >= detectionThreshold } }
-            passes = detected.isEmpty ? [languages[0]] : detected
+            // A candidate detection did not choose has no pass, so reuse the saved choice while its passes are cached.
+            if let stamp, let data = try? Data(contentsOf: detectionURL),
+               let saved = try? JSONDecoder().decode(Detection.self, from: data),
+               saved.model == settings.model.rawValue, saved.backend == backend, saved.threshold == detectionThreshold,
+               saved.audioSize == stamp.size, saved.audioModified == stamp.modified, saved.candidates == languages,
+               !saved.languages.isEmpty, saved.languages == languages.filter(saved.languages.contains),
+               try saved.languages.allSatisfy({ try cachedPass($0) != nil }) {
+                passes = saved.languages
+            } else {
+                let windows = try await detectLanguages()
+                try Task.checkCancellation()
+                let found = languages.filter { language in windows.contains { $0[language] ?? 0 >= detectionThreshold } }
+                passes = found.isEmpty ? [languages[0]] : found
+                detected = passes
+            }
         }
         let total = passes.count
         var segments: [ScoredSegment] = []
@@ -114,6 +138,13 @@ enum TranscriptionPasses {
             }
             segments.append(contentsOf: pass)
             report(1)
+        }
+        // Saved only after every chosen pass is cached; a failed write costs one more detection, not the transcript.
+        if let detected, let stamp {
+            try? encoder.encode(Detection(
+                model: settings.model.rawValue, backend: backend, threshold: detectionThreshold,
+                audioSize: stamp.size, audioModified: stamp.modified, candidates: languages, languages: detected
+            )).write(to: detectionURL, options: .atomic)
         }
         let noSpeechThreshold = settings.noSpeechThreshold, logProbThreshold = settings.logProbThreshold
         // One pass has nothing to choose between; merge's cursor rules could drop its short or overlapping lines.
