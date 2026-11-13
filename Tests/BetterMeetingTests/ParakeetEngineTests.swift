@@ -88,6 +88,8 @@ final class ParakeetEngineTests: XCTestCase {
         XCTAssertEqual(ParakeetLanguage.tag("Що це таке"), "uk")
         XCTAssertEqual(ParakeetLanguage.tag("Привет, как дела?"), "ru")
         XCTAssertEqual(ParakeetLanguage.tag("Что это такое"), "ru")
+        // "ъ" is common in Bulgarian, so it must not make a Bulgarian line Russian.
+        XCTAssertNil(ParakeetLanguage.tag("Събранието в България започва утре"))
         XCTAssertEqual(ParakeetLanguage.tag("We should ship this today"), "en")
         XCTAssertNil(ParakeetLanguage.tag("Ок"))
         XCTAssertNil(ParakeetLanguage.tag("Так"))

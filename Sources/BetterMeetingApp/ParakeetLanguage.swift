@@ -7,7 +7,8 @@ enum ParakeetLanguage {
         let words = text.lowercased().split { !$0.isLetter && $0 != "'" && $0 != "’" }
         if text.unicodeScalars.contains(where: { (0x0400...0x04FF).contains($0.value) }) {
             let ukrainian = score(words, markers: "іїєґ", vocabulary: ukrainianWords)
-            let russian = score(words, markers: "ыэъё", vocabulary: russianWords)
+            // Bulgarian uses "ъ" often ("България"), so only letters Bulgarian lacks mark Russian.
+            let russian = score(words, markers: "ыэё", vocabulary: russianWords)
             guard ukrainian != russian else { return nil }
             return ukrainian > russian ? "uk" : "ru"
         }
