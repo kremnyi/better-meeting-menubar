@@ -48,7 +48,9 @@ final class ProcessingQueue: ObservableObject {
     @Published private(set) var batchIndex = 0
     private(set) var task: Task<Void, Never>?
     private var pendingJobs: [QueuedJob] = [] { didSet { queuedFolders = pendingJobs.map(\.folder) } }
-    private(set) var lastOptions: (languages: [String], hints: String, settings: SpeechSettings)?
+    /// The options of the last failed job, with its folder as it was when the job failed.
+    private(set) var lastOptions: (folder: URL, languages: [String], hints: String, settings: SpeechSettings)?
+    var trash = FileManager.moveToTrash
     unowned let model: AppModel
 
     init(model: AppModel) { self.model = model }
@@ -157,6 +159,8 @@ final class ProcessingQueue: ObservableObject {
             case .recording(let run):
                 folder = run.folder
                 title = run.title
+                // Replace the previous job's step while this capture's file finishes.
+                if run.stopTask != nil { setPhase(.finalizingRecording) }
                 do { try await run.stopTask?.value } catch { succeeded = false }
                 if succeeded {
                     succeeded = await finishRecording(run)
@@ -197,7 +201,6 @@ final class ProcessingQueue: ObservableObject {
     }
 
     func finishRecording(_ run: ProcessingRun, inBatch: Bool = false) async -> Bool {
-        lastOptions = (run.languages, run.hints, run.settings)
         var folder = run.folder
         var replacing = run.replacing
         var export: Task<Void, Error>?
@@ -273,6 +276,16 @@ final class ProcessingQueue: ObservableObject {
             if let replacing {
                 try MeetingArtifacts.replaceTranscript(for: replacing, duration: duration, segments: segments, speechSettings: run.settings)
             } else {
+                // Without metadata.json or transcript.json a meeting needs transcription, but its transcript.md can hold edits.
+                let markdown = folder.appendingPathComponent("transcript.md")
+                if FileManager.default.fileExists(atPath: markdown.path) {
+                    do { try trash(markdown) } catch {
+                        // A drive without a Trash keeps the old file next to the new one.
+                        let previous = folder.appendingPathComponent("transcript-previous.md")
+                        try? FileManager.default.removeItem(at: previous)
+                        try FileManager.default.moveItem(at: markdown, to: previous)
+                    }
+                }
                 try MeetingArtifacts.write(
                     title: title,
                     recordedAt: recordedAt,
@@ -321,6 +334,7 @@ final class ProcessingQueue: ObservableObject {
                     : "Re-transcription cancelled. Your existing transcript is unchanged."
                 return false
             }
+            lastOptions = (folder, run.languages, run.hints, run.settings)
             await reportFailure(error, title: run.title, folder: folder)
             return false
         }
@@ -390,11 +404,11 @@ final class ProcessingQueue: ObservableObject {
                && ($0.selectedEngine != .whisper || $0.model == settings.model) }) ?? true {
             setPhase(.preparingModel, fraction: model.modelSetupFraction)
             statusText = model.modelSetupStatus
-            try await withTaskCancellationHandler {
-                try await preparation.value
-            } onCancel: {
-                preparation.cancel()
+            // Poll, not await: the download is shared, so cancel must end only the wait.
+            while model.modelPreparationTask == preparation {
+                try await Task.sleep(for: .milliseconds(250))
             }
+            try await preparation.value
             try Task.checkCancellation()
         }
         // Poll, not await: an Options download would race this job into the same folder, and cancel must end only the wait.

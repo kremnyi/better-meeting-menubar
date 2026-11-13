@@ -130,6 +130,10 @@ extension AppModel {
         if state == .preparing {
             alert.messageText = "Setup is still running"
             alert.informativeText = "Quit now to stop setup. A recording that already started is saved when possible."
+            // Waiting is not offered: a cancelled setup can still start capture, and only a quit stops it.
+            if processing.isProcessing {
+                alert.informativeText += processing.isExportingBundle ? " The running export also stops." : " The running transcription also stops."
+            }
             alert.addButton(withTitle: "Keep open")
             alert.addButton(withTitle: "Quit Anyway")
             guard confirm(alert) == .alertSecondButtonReturn else { return .terminateCancel }

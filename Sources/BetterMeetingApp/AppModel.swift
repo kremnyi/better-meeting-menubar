@@ -127,14 +127,6 @@ final class AppModel: ObservableObject {
 
     func speechModelChanged() {
         modelReady = Self.modelIsCached(speechSettings)
-        if modelReady, modelPreparationTask != nil {
-            // The cached model is ready; a still-running download of the old one must not report on it.
-            modelPreparationTask?.cancel()
-            modelPreparationTask = nil
-            modelPreparationSettings = nil
-            modelPreparationToken += 1
-            return
-        }
         prepareSpeechModel()
     }
 
@@ -185,12 +177,7 @@ final class AppModel: ObservableObject {
         selectedMicrophoneID = defaults.string(forKey: "microphoneID") ?? ""
         captureResolution = CaptureResolution(rawValue: defaults.integer(forKey: "captureResolution")) ?? .pixels1440
         captureQuality = CaptureQuality(rawValue: defaults.integer(forKey: "captureQuality")) ?? .standard
-        let previousLanguage = TranscriptionLanguage(rawValue: defaults.string(forKey: "transcriptionLanguage") ?? "")
-        transcriptionLanguages = TranscriptionLanguage.candidates(from:
-            defaults.stringArray(forKey: "transcriptionLanguages")
-                ?? previousLanguage.map { [$0.rawValue] }
-                ?? defaults.stringArray(forKey: "candidateLanguages") ?? []
-        )
+        transcriptionLanguages = TranscriptionLanguage.candidates(from: defaults.stringArray(forKey: "transcriptionLanguages") ?? [])
         transcriptionHints = defaults.string(forKey: "transcriptionHints") ?? ""
         exportAfterRecording = defaults.bool(forKey: "exportAfterRecording")
         automaticUpdateChecks = defaults.bool(forKey: "checkUpdatesOnLaunch")
@@ -428,10 +415,12 @@ final class AppModel: ObservableObject {
         ))
     }
 
-    /// Uses the last job's options only for an inline transcription failure; a capture failure never ran a job.
+    /// Reuses the options of a job that failed in this meeting's folder; a capture or recording-file failure never ran one.
     func retryFailedTranscription() {
         guard let item = retryableMeeting else { return }
-        let options = transcriptionError != nil ? processing.lastOptions : nil
+        let options = processing.lastOptions.flatMap {
+            $0.folder.standardizedFileURL == item.folderURL.standardizedFileURL ? $0 : nil
+        }
         retryTranscription(item, languages: options?.languages, hints: options?.hints, settings: options?.settings)
     }
 
@@ -607,7 +596,7 @@ final class AppModel: ObservableObject {
 
     func moveMeetingToTrash(
         _ meeting: MeetingHistoryItem,
-        trash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+        trash: (URL) throws -> Void = FileManager.moveToTrash
     ) {
         guard state == .idle, !processing.isProcessing else { return }
         do {

@@ -70,6 +70,13 @@ final class TranscriptionQueueTests: XCTestCase {
         try Data([1, 2, 3]).write(to: folder.appendingPathComponent("recording.mp4"))
         let model = makeModel(defaults)
         model.transcriptionLanguages = ["en"]
+        // An earlier meeting fails with its own options; Retry of this meeting must not reuse them.
+        let earlier = try MeetingArtifacts.createDirectory(in: root, title: "Earlier meeting", recordedAt: Date())
+        try Data([1]).write(to: earlier.appendingPathComponent("audio.m4a"))
+        model.processing.enqueue(ProcessingRun(folder: earlier, recordedAt: Date(), title: "Earlier meeting", titleWasProvided: true,
+                                               replacing: nil, languages: ["uk"], hints: "Earlier vocabulary",
+                                               settings: SpeechSettings(engine: .whisper, speakerLabels: false)))
+        await model.processing.task?.value
         model.recording.activeFolder = folder
         model.recording.didStart(at: Date())
         model.recording.stopCapture = { Task { throw RecorderError.stopTimedOut } }
@@ -83,7 +90,17 @@ final class TranscriptionQueueTests: XCTestCase {
                       "The menu can be closed, so a file failure is announced like other transcription failures")
         XCTAssertNil(model.lastError, "A file failure is not a capture failure")
         XCTAssertEqual(model.transcriptionError as? RecorderError, .stopTimedOut)
-        XCTAssertEqual(model.failedTranscriptionFolders, [folder.standardizedFileURL], "The meeting stays marked for Retry")
+        XCTAssertEqual(model.failedTranscriptionFolders, [earlier.standardizedFileURL, folder.standardizedFileURL],
+                       "The meeting stays marked for Retry")
+
+        // The unreadable file fails the retry too, and the failed job records the options it ran with.
+        model.retryFailedTranscription()
+        await model.processing.task?.value
+        let retried = try XCTUnwrap(model.processing.lastOptions)
+        XCTAssertEqual(retried.folder.standardizedFileURL, folder.standardizedFileURL)
+        XCTAssertEqual(retried.languages, ["en"], "Retry must not use the earlier meeting's languages")
+        XCTAssertEqual(retried.hints, "", "Retry must not use the earlier meeting's vocabulary")
+        XCTAssertEqual(retried.settings.speakerLabels, true, "Retry must not use the earlier meeting's settings")
     }
 
     private func withMeetings(
@@ -266,6 +283,8 @@ final class TranscriptionQueueTests: XCTestCase {
         // A real filesystem error occurs only after the second job has renamed its folder.
         try FileManager.default.createDirectory(at: second.appendingPathComponent("transcript.json"), withIntermediateDirectories: false)
         let model = makeModel(defaults)
+        var trashed: [String] = []
+        model.processing.trash = { trashed.append(try String(contentsOf: $0, encoding: .utf8)); try FileManager.default.removeItem(at: $0) }
         await model.historyRefreshTask?.value
         model.processing.enqueue(ProcessingRun(folder: first, recordedAt: date, title: "First meeting", titleWasProvided: true,
                                     replacing: nil, languages: ["en"], hints: "", settings: settings))
@@ -288,6 +307,9 @@ final class TranscriptionQueueTests: XCTestCase {
         try FileManager.default.removeItem(at: renamed.appendingPathComponent("transcript.json"))
         try MeetingArtifacts.writeMetadata(title: "Renamed meeting", recordedAt: date, duration: 0.1,
                                            titleWasProvided: false, speechSettings: settings, to: renamed)
+        // Without transcript.json the meeting needs transcription, but its transcript.md holds the user's edits.
+        try "Edited notes".write(to: renamed.appendingPathComponent("transcript.md"), atomically: true, encoding: .utf8)
+        trashed = []
         model.transcriptionLanguages = ["en"]
         model.refreshHistory()
         await model.historyRefreshTask?.value
@@ -297,6 +319,9 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: renamed.path), "The unnamed meeting must receive an automatic title")
         let finished = try XCTUnwrap(model.transcriptionHistory.first { $0.folderURL.standardizedFileURL != first.standardizedFileURL })
         XCTAssertFalse(finished.needsTranscription)
+        XCTAssertEqual(trashed, ["Edited notes"], "Transcribe must move the edited transcript.md to the Trash, not overwrite it")
+        XCTAssertTrue(try String(contentsOf: finished.folderURL.appendingPathComponent("transcript.md"), encoding: .utf8)
+            .contains("Microsoft discussed the product launch."))
         XCTAssertEqual(model.completedFolder?.standardizedFileURL, finished.folderURL.standardizedFileURL)
     }
 
@@ -323,6 +348,9 @@ final class TranscriptionQueueTests: XCTestCase {
         for _ in 0..<100 where model.processing.folder != queued { await Task.yield() }
         XCTAssertEqual(model.processing.folder, queued, "The recording behind the failed job must still run")
         XCTAssertEqual(model.processing.title, "Budget review", "The menu must not show the failed job's title while capture stops")
+        XCTAssertEqual(model.processing.phase, .finalizingRecording, "The menu must not show the failed job's step while capture stops")
+        XCTAssertEqual(model.processing.statusText, ProcessingPhase.finalizingRecording.statusText)
+        XCTAssertNil(model.processing.fraction)
         XCTAssertEqual(model.failedTranscriptionMeeting?.folderURL.standardizedFileURL, failing.standardizedFileURL)
         XCTAssertFalse(model.quitWhenFinished, "Wait and quit must not quit once a job has failed")
         model.quitWhenFinished = false // A regression must not quit the test runner.
@@ -337,7 +365,7 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertEqual(model.failedTranscriptionFolders, [failing.standardizedFileURL], "The failed meeting stays marked on its row")
     }
 
-    func testRecordingStoppedDuringACancelledBatchRunsAsItsOwnCancellableJob() async throws {
+    func testRecordingStoppedDuringACancelledBatchRunsAsItsOwnJob() async throws {
         try await withMeetings { model in
             let batchFolder = try XCTUnwrap(model.unfinishedRecordings.first).folderURL
             var release: CheckedContinuation<Bool, Never>?
@@ -358,16 +386,19 @@ final class TranscriptionQueueTests: XCTestCase {
             await batch.value
             let queue = try XCTUnwrap(model.processing.task, "The stopped recording still runs after the batch is cancelled")
             XCTAssertFalse(model.processing.cancelling, "The batch's cancellation must not carry over to the next job")
-            XCTAssertTrue(model.processing.canCancel)
-            XCTAssertNotEqual(model.processing.statusText, "Cancelling transcription…")
+            for _ in 0..<100 where model.processing.phase != .finalizingRecording { await Task.yield() }
+            XCTAssertEqual(model.processing.phase, .finalizingRecording)
+            XCTAssertEqual(model.processing.statusText, ProcessingPhase.finalizingRecording.statusText)
+            XCTAssertFalse(model.processing.canCancel, "Like the first job, saving capture must finish before processing can be cancelled")
 
-            model.cancelTranscription()
             for _ in 0..<100 where finishStop == nil { await Task.yield() }
             try XCTUnwrap(finishStop).resume()
             await queue.value
             XCTAssertEqual(model.state, .idle)
             XCTAssertFalse(model.processing.isProcessing)
-            XCTAssertEqual(model.completedFolder, recording, "Only the second cancellation stops the recording's job")
+            XCTAssertEqual(model.completedFolder, recording)
+            // The fixture has no media, so the job fails; a carried-over cancellation would clear the error instead.
+            XCTAssertNotNil(model.transcriptionError, "The recording's job must run, not inherit the batch's cancellation")
             XCTAssertTrue(FileManager.default.fileExists(atPath: recording.path))
         }
     }
@@ -443,7 +474,7 @@ final class TranscriptionQueueTests: XCTestCase {
         XCTAssertEqual(saved?.needsTranscription, false)
     }
 
-    func testTranscriptionWaitsForAnOptionsDownloadOfItsModel() async throws {
+    func testTranscriptionWaitsForADownloadOfItsModel() async throws {
         let (defaults, suite, root) = try makeTempDefaults("SameModelDownload")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         let date = Date()
@@ -486,6 +517,29 @@ final class TranscriptionQueueTests: XCTestCase {
         await queue.value
         XCTAssertNil(model.modelDownloadError, "Cancelling the transcription must not cancel the download")
         XCTAssertEqual(MeetingArtifacts.meeting(in: folder)?.needsTranscription, false)
+
+        // The menu's model setup is shared the same way: cancel ends only this job's wait for it.
+        model.speechSettings = whisper
+        var finishSetup: CheckedContinuation<Void, Never>?
+        model.prepareSpeechModel { _ in
+            await withCheckedContinuation { finishSetup = $0 }
+            try Task.checkCancellation()
+        }
+        let setup = try XCTUnwrap(model.modelPreparationTask)
+        let preparing = expectation(description: "transcription waits for the model setup")
+        preparing.assertForOverFulfill = false
+        let setupObservation = model.processing.$phase.sink { if $0 == .preparingModel { preparing.fulfill() } }
+        defer { setupObservation.cancel() }
+        model.processing.enqueue(run)
+        let setupJob = try XCTUnwrap(model.processing.task)
+        await fulfillment(of: [preparing], timeout: 10)
+        model.cancelTranscription()
+        for _ in 0..<100 where finishSetup == nil { await Task.yield() }
+        try XCTUnwrap(finishSetup).resume()
+        _ = await setup.result
+        await setupJob.value
+        XCTAssertTrue(model.modelReady, "Cancelling the transcription must not cancel the model setup")
+        XCTAssertEqual(model.completionMessage, "Re-transcription cancelled. Your existing transcript is unchanged.")
     }
 
     func testRetrySetupDoesNotStartASecondDownloadWhileOptionsDownloads() async throws {
