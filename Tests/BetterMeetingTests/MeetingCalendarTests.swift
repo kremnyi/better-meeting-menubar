@@ -129,6 +129,9 @@ final class MeetingCalendarTests: XCTestCase {
         let ongoing = try calendarEventFixture(id: "ongoing", date: now.addingTimeInterval(-600))
         XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [ongoing, soon], at: now), ongoing,
                        "An in-progress meeting outranks the next one")
+        let next = try calendarEventFixture(id: "next", date: now.addingTimeInterval(120))
+        XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [ongoing, next], at: now), next,
+                       "A meeting about to start outranks one under way, as on the record button")
         XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [tomorrow], at: now.addingTimeInterval(19 * 3600)), tomorrow,
                        "Tomorrow's meeting appears only in its final hour")
     }
