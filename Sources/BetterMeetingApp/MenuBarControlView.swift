@@ -561,11 +561,8 @@ private struct StartRecordingButton: View {
 
     static func imminentEvent(in calendar: CalendarIntegration, title: String, at now: Date) -> CalendarEvent? {
         guard title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              calendar.enabled, calendar.authorization == .fullAccess,
-              let event = UpcomingMeetingLayout.make(events: calendar.events, now: now).primary,
-              event.scheduledEnd > now,
-              event.scheduledStart.timeIntervalSince(now) <= UpcomingMeetingView.prominentRecordLeadTime else { return nil }
-        return event
+              calendar.enabled, calendar.authorization == .fullAccess else { return nil }
+        return CalendarEvent.imminent(in: calendar.events, at: now)
     }
 
     var body: some View {

@@ -366,18 +366,33 @@ extension CalendarEvent {
         }
     }
 
+    /// The event the large record button names: the earliest one starting within the lead time,
+    /// so a call wins over a long block already under way, and tomorrow's first meeting counts
+    /// near midnight. Otherwise the running event that started last.
+    static func imminent(in events: [CalendarEvent], at now: Date) -> CalendarEvent? {
+        let events = withoutDuplicates(events)
+        let starting = events.filter {
+            $0.scheduledStart > now
+                && $0.scheduledStart.timeIntervalSince(now) <= UpcomingMeetingView.prominentRecordLeadTime
+        }
+        if let next = starting.min(by: { $0.scheduledStart < $1.scheduledStart }) { return next }
+        return events
+            .filter { $0.scheduledStart <= now && now < $0.scheduledEnd }
+            .max { $0.scheduledStart < $1.scheduledStart }
+    }
+
     func relativeStart(at now: Date, calendar: Calendar = .current, compact: Bool = false) -> String {
         if scheduledEnd <= now { return "Ended" }
         if scheduledStart <= now { return compact ? "until " + scheduledEnd.formatted(date: .omitted, time: .shortened) : "Now" }
+        let minutes = Int(ceil(scheduledStart.timeIntervalSince(now) / 60))
+        // The menu bar shows only the final hour, so a meeting just after midnight still reads as a countdown.
+        if compact, minutes < 60 { return "in \(minutes)m" }
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
                                            to: calendar.startOfDay(for: scheduledStart)).day
         if days == 1 { return "Tomorrow " + scheduledStart.formatted(date: .omitted, time: .shortened) }
         if days != 0 { return scheduledStart.formatted(date: .abbreviated, time: .omitted) }
-        let minutes = Int(ceil(scheduledStart.timeIntervalSince(now) / 60))
         let remainder = minutes % 60
-        if compact {
-            return minutes < 60 ? "in \(minutes)m" : "in \(minutes / 60)h" + (remainder == 0 ? "" : "\(remainder)m")
-        }
+        if compact { return "in \(minutes / 60)h" + (remainder == 0 ? "" : "\(remainder)m") }
         if minutes < 60 { return "Starts in \(minutes) min" }
         return "Starts in \(minutes / 60) hr" + (remainder == 0 ? "" : " \(remainder) min")
     }

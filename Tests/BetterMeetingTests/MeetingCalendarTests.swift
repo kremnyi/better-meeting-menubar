@@ -100,6 +100,10 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(event.relativeStart(at: event.scheduledEnd, calendar: calendar), "Ended")
         let tomorrowText = event.relativeStart(at: now.addingTimeInterval(-86400), calendar: calendar)
         XCTAssertTrue(tomorrowText.hasPrefix("Tomorrow "), "Tomorrow should include the start time")
+        let midnight = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-10T00:00:00Z"))
+        let afterMidnight = try calendarEventFixture(date: midnight)
+        XCTAssertEqual(afterMidnight.relativeStart(at: midnight.addingTimeInterval(-300), calendar: calendar, compact: true), "in 5m",
+                       "The menu bar counts down to a meeting just after midnight")
     }
 
     func testMeetingEndingAtMidnightShowsTimeRangeWithoutDate() throws {
@@ -127,6 +131,24 @@ final class MeetingCalendarTests: XCTestCase {
                        "An in-progress meeting outranks the next one")
         XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [tomorrow], at: now.addingTimeInterval(19 * 3600)), tomorrow,
                        "Tomorrow's meeting appears only in its final hour")
+    }
+
+    func testRecordButtonNamesTheMeetingAboutToStart() throws {
+        let calendar = Calendar.current
+        func at(day: Int = 11, _ hour: Int, _ minute: Int = 0) throws -> Date {
+            try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: day, hour: hour, minute: minute)))
+        }
+        let block = try calendarEventFixture(id: "block", date: at(9), title: "Working block", duration: 8 * 3600)
+        let call = try calendarEventFixture(id: "call", date: at(14), title: "Client call")
+        XCTAssertEqual(CalendarEvent.imminent(in: [block, call], at: try at(13, 58))?.id, "call",
+                       "A call about to start wins over a long block already under way")
+        XCTAssertEqual(CalendarEvent.imminent(in: [block, call], at: try at(13, 30))?.id, "block",
+                       "With no meeting about to start, the running block is recorded")
+        XCTAssertEqual(CalendarEvent.imminent(in: [block, call], at: try at(14, 2))?.id, "call",
+                       "Once both run, the meeting that started last is recorded")
+        let afterMidnight = try calendarEventFixture(id: "midnight", date: at(day: 12, 0))
+        XCTAssertEqual(CalendarEvent.imminent(in: [afterMidnight], at: try at(23, 55))?.id, "midnight",
+                       "A meeting just after midnight is recorded from the button before it starts")
     }
 
     @MainActor
@@ -660,12 +682,13 @@ final class CalendarReaderFixture: CalendarReading {
     }
 }
 
-func calendarEventFixture(id: String = "occurrence", date: Date = Date().addingTimeInterval(600), title: String = "Portfolio review with Alex") throws -> CalendarEvent {
+func calendarEventFixture(id: String = "occurrence", date: Date = Date().addingTimeInterval(600), title: String = "Portfolio review with Alex",
+                          duration: TimeInterval = 1800) throws -> CalendarEvent {
     let iso = ISO8601DateFormatter()
     let json = """
     {"calendarKey":"eventkit:fixture","providerCalendarId":"fixture-calendar","providerEventId":"item",
      "externalIdentifier":"external","calendarTitle":"Work","title":"\(title)",
-     "scheduledStart":"\(iso.string(from: date))","scheduledEnd":"\(iso.string(from: date.addingTimeInterval(1800)))",
+     "scheduledStart":"\(iso.string(from: date))","scheduledEnd":"\(iso.string(from: date.addingTimeInterval(duration)))",
      "recurrenceId":"\(iso.string(from: date))","timeZone":"Europe/Warsaw","sourceUpdatedAt":null,
      "attendees":[{"name":"Alex Example","email":"Alex@example.com","normalizedEmail":"alex@example.com","responseStatus":"accepted"}],
      "organizer":null,"eventId":"event","occurrenceId":"\(id)"}
