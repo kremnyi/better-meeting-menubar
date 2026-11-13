@@ -42,7 +42,21 @@ final class MeetingBundleTests: XCTestCase {
         markdown += "\nManual correction: release on Tuesday.\n"
         try markdown.write(to: markdownURL, atomically: true, encoding: .utf8)
         let meeting = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
+        // A force quit skips the staging folder's defer; the next export removes the leftover.
+        let fm = FileManager.default
+        let leftover = folder.appendingPathComponent(".artifacts-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: leftover.appendingPathComponent("screens"), withIntermediateDirectories: true)
+        try Data([1]).write(to: leftover.appendingPathComponent("screens/001.jpg"))
+        let outside = makeTempRoot("BundleLinkTarget")
+        defer { removeTempRoot(outside) }
+        try Data([1]).write(to: outside.appendingPathComponent("keep"))
+        let link = folder.appendingPathComponent(".artifacts-link")
+        try fm.createSymbolicLink(at: link, withDestinationURL: outside)
         let bundle = try await MeetingBundle.build(for: meeting) { _ in }
+        XCTAssertFalse(fm.fileExists(atPath: leftover.path), "A staging folder left by a force quit is removed")
+        XCTAssertNotNil(try? fm.destinationOfSymbolicLink(atPath: link.path), "A symbolic link is not staging and stays")
+        XCTAssertTrue(fm.fileExists(atPath: outside.appendingPathComponent("keep").path))
+        try fm.removeItem(at: link)
         for file in ["transcript.md", "transcript.json", "timeline.md", "screens_index.md", "screen.json", "languages.json", "HOW-TO.md", "PROMPT.md"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent(file).path), file)
         }

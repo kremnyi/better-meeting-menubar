@@ -15,6 +15,7 @@ enum MeetingBundle {
         try Task.checkCancellation()
         let fm = FileManager.default
         let folder = meeting.folderURL
+        removeStaleStaging(in: folder)
         let transcriptData = try Data(contentsOf: folder.appendingPathComponent("transcript.json"))
         let segments = try JSONDecoder().decode([TranscriptSegment].self, from: transcriptData)
         guard segments.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0
@@ -129,6 +130,19 @@ enum MeetingBundle {
             try fm.moveItem(at: staging, to: destination)
         }
         return destination
+    }
+
+    /// The staging folder's `defer` does not run after a force quit or crash. Only one export runs
+    /// at a time (ProcessingQueue refuses a new job while one is active), so every leftover is stale.
+    private static func removeStaleStaging(in folder: URL) {
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
+        guard let entries = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys) else { return }
+        for entry in entries where entry.lastPathComponent.hasPrefix(".artifacts-") {
+            guard let values = try? entry.resourceValues(forKeys: Set(keys)),
+                  values.isDirectory == true, values.isSymbolicLink != true else { continue }
+            try? fm.removeItem(at: entry)
+        }
     }
 
     static func languageShares(_ segments: [TranscriptSegment]) -> [LanguageShare] {
