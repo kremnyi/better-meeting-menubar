@@ -93,13 +93,12 @@ enum TranscriptionPasses {
         let detectionURL = cacheFolder.appendingPathComponent("pass_languages.json")
         var detected: [String]?
         if languages.count > 1, let detectLanguages, try languages.contains(where: { try cachedPass($0) == nil }) {
-            // A candidate detection did not choose has no pass, so reuse the saved choice while its passes are cached.
+            // A candidate detection did not choose has no pass, so reuse the saved choice; detection reads only the audio.
             if let stamp, let data = try? Data(contentsOf: detectionURL),
                let saved = try? JSONDecoder().decode(Detection.self, from: data),
                saved.model == settings.model.rawValue, saved.backend == backend, saved.threshold == detectionThreshold,
                saved.audioSize == stamp.size, saved.audioModified == stamp.modified, saved.candidates == languages,
-               !saved.languages.isEmpty, saved.languages == languages.filter(saved.languages.contains),
-               try saved.languages.allSatisfy({ try cachedPass($0) != nil }) {
+               !saved.languages.isEmpty, saved.languages == languages.filter(saved.languages.contains) {
                 passes = saved.languages
             } else {
                 let windows = try await detectLanguages()

@@ -215,8 +215,8 @@ final class TranscriptionPassTests: XCTestCase {
             ([], ["uk"], ["uk 1/1"]),
         ]
         for (windows, passes, reports) in cases {
-            for language in ["uk", "ru", "en"] {
-                try? FileManager.default.removeItem(at: root.appendingPathComponent("pass_\(language).json"))
+            for name in ["uk", "ru", "en", "languages"] {
+                try? FileManager.default.removeItem(at: root.appendingPathComponent("pass_\(name).json"))
             }
             let reported = OSAllocatedUnfairLock<[String]>(initialState: [])
             var calls: [String] = []
@@ -238,6 +238,16 @@ final class TranscriptionPassTests: XCTestCase {
                 throw Interrupted.pass
             }
             XCTAssertEqual(rerun, [])
+            // New hints need new passes, but detection reads only the audio, so its saved choice still holds.
+            var hinted: [String] = []
+            _ = try await TranscriptionPasses.run(audioURL: audio, languages: ["uk", "ru", "en"], hints: "Kremnyi", detectLanguages: {
+                XCTFail("Changed hints must not detect again")
+                return []
+            }, progressHandler: { _ in }) { options, _ in
+                hinted.append(try XCTUnwrap(options.language))
+                return []
+            }
+            XCTAssertEqual(hinted, passes)
         }
         // Other candidates were not part of that detection.
         let detected = OSAllocatedUnfairLock(initialState: false)
