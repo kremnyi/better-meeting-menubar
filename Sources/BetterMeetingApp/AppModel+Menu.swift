@@ -217,6 +217,14 @@ extension AppModel {
     }
 
     private func restartApplication() {
+        // Quitting waits for processing, so a copy opened now would run beside this one.
+        guard !processing.isProcessing else {
+            let alert = NSAlert()
+            alert.messageText = "Transcription is still running"
+            alert.informativeText = "Restart Better Meeting when processing finishes to use the new Screen Recording access."
+            alert.runActive()
+            return
+        }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         configuration.createsNewApplicationInstance = true
