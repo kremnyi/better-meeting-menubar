@@ -46,14 +46,19 @@ final class TranscriptionQueueTests: XCTestCase {
         try XCTUnwrap(finishStop).resume()
         for _ in 0..<100 where finishFile == nil { await Task.yield() }
         XCTAssertEqual(model.state, .idle, "The next recording can start while ScreenCaptureKit finishes the file")
+        XCTAssertEqual(model.meetingTitle, "", "The stopped meeting's name must not carry into the next recording")
+        model.meetingTitle = "Next meeting"
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("transcript.md").path),
                        "Transcription must wait until the file is complete")
         try XCTUnwrap(finishFile).resume()
         await processing.value
         XCTAssertEqual(model.state, .idle)
         XCTAssertFalse(model.processing.isProcessing)
+        XCTAssertEqual(model.meetingTitle, "Next meeting", "Finishing the earlier meeting must keep the name typed for the next one")
         XCTAssertEqual(try Data(contentsOf: recording), bytes)
-        XCTAssertFalse(try XCTUnwrap(MeetingArtifacts.meeting(in: folder)).needsTranscription)
+        let meeting = try XCTUnwrap(MeetingArtifacts.meeting(in: folder))
+        XCTAssertFalse(meeting.needsTranscription)
+        XCTAssertEqual(meeting.title, "Still saving", "The stopped meeting keeps the name it had when it stopped")
     }
 
     func testRecordingFileThatNeverFinishesFailsOnlyThatMeeting() async throws {

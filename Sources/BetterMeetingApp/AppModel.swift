@@ -658,8 +658,6 @@ final class AppModel: ObservableObject {
     func processingDidFinish() {
         guard !isCapturing else { return }
         elapsed = 0
-        meetingTitle = ""
-        recording.titleWasProvided = true
         if state == .idle {
             lastError = nil
             privacyPermission = nil

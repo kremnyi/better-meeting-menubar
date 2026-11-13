@@ -159,6 +159,9 @@ final class RecordingSession: ObservableObject {
             model.fail(AppError.missingRecording, folder: activeFolder)
             return
         }
+        // The run keeps this meeting's name; from here on the field names the next recording.
+        model.meetingTitle = ""
+        titleWasProvided = true
         state = stopCapture ? .stopping : .idle
         if stopCapture { statusText = "Stopping the recording…" }
         model.accessibilityAnnouncement("Recording stopped. Transcription started.")
