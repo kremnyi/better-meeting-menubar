@@ -4,13 +4,16 @@ struct RecordingDiskSpace {
     let availableBytes: Int64
 
     var isLow: Bool { availableBytes < 2_000_000_000 }
-    /// Below this a recording does not start, and a running one stops before a full drive breaks its video.
-    var isTooLowToRecord: Bool { availableBytes < 250_000_000 }
+    /// Below this a recording does not start, and a running one stops before a full drive breaks its video. A running one
+    /// also keeps room for the audio.m4a export after the stop, about 2 MB per recorded minute.
+    func isTooLow(recordedFor elapsed: TimeInterval = 0) -> Bool {
+        availableBytes < 250_000_000 + Int64(max(0, elapsed) / 60) * 2_000_000
+    }
     var available: String { ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .file) }
     var warning: String { "\(available) available. Free space or stop recording soon." }
 
     func preflight() throws {
-        guard !isTooLowToRecord else { throw InsufficientSpace(available: available) }
+        guard !isTooLow() else { throw InsufficientSpace(available: available) }
     }
 
     static func read(at destination: URL) -> Self? {

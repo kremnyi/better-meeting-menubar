@@ -99,7 +99,7 @@ final class RecordingSession: ObservableObject {
 
     func cancel(
         confirm: @MainActor (NSAlert) -> NSApplication.ModalResponse = { $0.runActive() },
-        trash: @escaping (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+        trash: @escaping (URL) throws -> Void = FileManager.moveToTrash
     ) {
         guard state == .recording else { return }
         let alert = NSAlert()
@@ -286,7 +286,7 @@ final class RecordingSession: ObservableObject {
     func checkDiskSpace(_ space: RecordingDiskSpace?) {
         guard state == .recording || state == .preparing else { return }
         // A screen recording that hits a full drive cannot be opened, so stop while it can still be finished.
-        if state == .recording, let space, space.isTooLowToRecord {
+        if state == .recording, let space, space.isTooLow(recordedFor: recordedAt.map { Date().timeIntervalSince($0) } ?? 0) {
             let recordingID = id
             let message = "Recording stopped with \(space.available) left on the recording drive. Free space before the next recording."
             finish(stoppingCapture: true)

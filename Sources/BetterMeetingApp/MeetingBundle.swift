@@ -15,7 +15,9 @@ enum MeetingBundle {
         try Task.checkCancellation()
         let fm = FileManager.default
         let folder = meeting.folderURL
-        removeStaleStaging(in: folder)
+        // The staging folder's `defer` does not run after a force quit or crash. Only one export runs
+        // at a time (ProcessingQueue refuses a new job while one is active), so every leftover is stale.
+        for stale in (try? fm.stagingFolders(in: folder, prefix: ".artifacts-")) ?? [] { try? fm.removeItem(at: stale) }
         let transcriptData = try Data(contentsOf: folder.appendingPathComponent("transcript.json"))
         let segments = try JSONDecoder().decode([TranscriptSegment].self, from: transcriptData)
         guard segments.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0
@@ -132,19 +134,6 @@ enum MeetingBundle {
         return destination
     }
 
-    /// The staging folder's `defer` does not run after a force quit or crash. Only one export runs
-    /// at a time (ProcessingQueue refuses a new job while one is active), so every leftover is stale.
-    private static func removeStaleStaging(in folder: URL) {
-        let fm = FileManager.default
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
-        guard let entries = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys) else { return }
-        for entry in entries where entry.lastPathComponent.hasPrefix(".artifacts-") {
-            guard let values = try? entry.resourceValues(forKeys: Set(keys)),
-                  values.isDirectory == true, values.isSymbolicLink != true else { continue }
-            try? fm.removeItem(at: entry)
-        }
-    }
-
     static func languageShares(_ segments: [TranscriptSegment]) -> [LanguageShare] {
         var seconds: [String: Double] = [:]
         for segment in segments where segment.start.isFinite && segment.end.isFinite && segment.end > segment.start {
@@ -176,5 +165,18 @@ enum MeetingBundle {
         let lines = entries.sorted { $0.time < $1.time }
             .map { "[\(Timecode.string($0.time))] \($0.text)" }
         return (["# Meeting timeline", "", "Screen entries contain newly recognized text. Gaps are inferred from transcript timestamps.", ""] + lines).joined(separator: "\n\n") + "\n"
+    }
+}
+
+extension FileManager {
+    static let moveToTrash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+
+    /// Staging folders left in a meeting folder. A symbolic link is never one, so its target is never touched.
+    func stagingFolders(in folder: URL, prefix: String) throws -> [URL] {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey]
+        return try contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys)).filter {
+            let values = try? $0.resourceValues(forKeys: keys)
+            return $0.lastPathComponent.hasPrefix(prefix) && values?.isDirectory == true && values?.isSymbolicLink != true
+        }
     }
 }

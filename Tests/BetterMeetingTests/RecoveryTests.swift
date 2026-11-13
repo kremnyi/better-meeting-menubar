@@ -980,7 +980,7 @@ final class RecoveryTests: XCTestCase {
     func testRecordingStopsBeforeTheDriveFills() async throws {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingDiskStop")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let date = Date()
+        let date = Date().addingTimeInterval(-150 * 60)
         let settings = SpeechSettings(engine: .whisper, speakerLabels: false)
         let folder = try MeetingArtifacts.createDirectory(in: root, title: "Long meeting", recordedAt: date)
         try await cacheEnglishTranscript(in: folder, settings: settings, text: "We kept talking.")
@@ -993,11 +993,15 @@ final class RecoveryTests: XCTestCase {
         var stops = 0
         model.recording.stopCapture = { stops += 1; return Task {} }
         model.recording.activeFolder = folder
-        model.recording.didStart(at: date)
+        model.recording.didStart(at: Date())
         model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 250_000_000))
         XCTAssertEqual(model.state, .recording, "Low space only warns while a recording can still start")
-        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 249_999_999))
-        XCTAssertEqual(model.state, .stopping)
+        // After 150 minutes the stop must also leave room for the audio export: 250 MB plus 2 MB per minute.
+        model.recording.didStart(at: date)
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 550_000_000))
+        XCTAssertEqual(model.state, .recording)
+        model.recording.checkDiskSpace(RecordingDiskSpace(availableBytes: 549_999_999))
+        XCTAssertEqual(model.state, .stopping, "A long recording must stop while its audio export still fits")
         XCTAssertEqual(announcements.last?.hasPrefix("Recording stopped with"), true)
         await model.processing.task?.value
         XCTAssertEqual(stops, 1)

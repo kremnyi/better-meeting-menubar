@@ -12,6 +12,8 @@ final class AudioOnlyRecording: @unchecked Sendable {
     private let inputs: [SCStreamOutputType: AVAssetWriterInput]
     private let queue: DispatchQueue
     private var pending: [SCStreamOutputType: [QueuedSample]] = [:]
+    private var ends: [SCStreamOutputType: CMTime] = [:]
+    private var progressed: [SCStreamOutputType: ContinuousClock.Instant] = [:]
     private var finishedInputs: Set<SCStreamOutputType> = []
     private var retryScheduled = false
     private var started = false
@@ -58,8 +60,45 @@ final class AudioOnlyRecording: @unchecked Sendable {
             writer.startSession(atSourceTime: sample.presentationTimeStamp)
             started = true
         }
+        // AAC packs a track's buffers back to back, so a source that drops out needs silence to keep its later audio in place.
+        let start = sample.presentationTimeStamp
+        if let end = ends[type], end.isNumeric, start - end > CMTime(value: 1, timescale: 20) {
+            for silence in Self.silence(from: end, to: start, like: sample) {
+                pending[type, default: []].append(QueuedSample(buffer: silence, receivedAt: .now))
+            }
+        }
+        ends[type] = start + sample.duration
         pending[type, default: []].append(QueuedSample(buffer: sample, receivedAt: .now))
         drain()
+    }
+
+    /// Pieces of at most one second share one zeroed block, so a long gap does not allocate its full length.
+    private static func silence(from start: CMTime, to end: CMTime, like sample: CMSampleBuffer) -> [CMSampleBuffer] {
+        guard let format = sample.formatDescription, let description = format.audioStreamBasicDescription,
+              description.mFormatID == kAudioFormatLinearPCM else { return [] }
+        let rate = Int(description.mSampleRate)
+        let buffers = description.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0 ? Int(description.mChannelsPerFrame) : 1
+        let frameBytes = Int(description.mBytesPerFrame) * buffers
+        func zeros(_ frames: Int) -> CMBlockBuffer? {
+            guard let block = try? CMBlockBuffer(length: frames * frameBytes, flags: .assureMemoryNow),
+                  (try? block.fillDataBytes(with: 0)) != nil else { return nil }
+            return block
+        }
+        guard rate > 0, frameBytes > 0, let second = zeros(rate) else { return [] }
+        let total = Int(((end - start).seconds * Double(rate)).rounded())
+        var pieces: [CMSampleBuffer] = []
+        var done = 0
+        while done < total {
+            let frames = min(rate, total - done)
+            guard let data = frames == rate ? second : zeros(frames),
+                  let piece = try? CMSampleBuffer(
+                      dataBuffer: data, formatDescription: format, numSamples: frames,
+                      presentationTimeStamp: start + CMTime(value: CMTimeValue(done), timescale: CMTimeScale(rate)),
+                      packetDescriptions: []) else { break }
+            pieces.append(piece)
+            done += frames
+        }
+        return pieces
     }
 
     /// Encoder back-pressure is not a write failure: keep original timestamps and retry without blocking the queue or dropping samples.
@@ -75,7 +114,8 @@ final class AudioOnlyRecording: @unchecked Sendable {
             var error: Error?
             for item in pending[type] ?? [] {
                 guard isReady(input) else {
-                    if item.receivedAt.duration(to: .now) >= stallLimit { error = BackpressureError() }
+                    // Silence for a long gap queues at once, so the limit counts from the track's last append, not the item's age.
+                    if max(item.receivedAt, progressed[type] ?? item.receivedAt).duration(to: .now) >= stallLimit { error = BackpressureError() }
                     break
                 }
                 guard input.append(item.buffer) else {
@@ -84,7 +124,10 @@ final class AudioOnlyRecording: @unchecked Sendable {
                 }
                 appended += 1
             }
-            if appended > 0 { pending[type]?.removeFirst(appended) }
+            if appended > 0 {
+                pending[type]?.removeFirst(appended)
+                progressed[type] = .now
+            }
             if let error {
                 recordFailure(error)
                 return

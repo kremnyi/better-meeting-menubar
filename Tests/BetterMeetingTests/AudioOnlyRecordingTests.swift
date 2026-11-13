@@ -19,9 +19,10 @@ final class AudioOnlyRecordingTests: XCTestCase {
         let writer = try AudioOnlyRecording(to: recording, queue: capture,
             isReady: { ContinuousClock.now >= readyAt && $0.isReadyForMoreMediaData }) { _ in }
         // Bursts at start and stop stress the encoder; the middle runs at capture cadence, system sound before the mic.
+        // System sound sends nothing from 0.4 to 0.6 s, as a source does when it drops out.
         for index in 0..<75 {
             let time = Double(index) * 0.02
-            if index < 60 { let buffer = try sample(at: time, frequency: 440, channels: 2); capture.sync { writer.append(buffer, type: .audio) } }
+            if index < 60, !(20..<30).contains(index) { let buffer = try sample(at: time, frequency: 440, channels: 2); capture.sync { writer.append(buffer, type: .audio) } }
             if index >= 15 { let buffer = try sample(at: time, frequency: 880, channels: 1, rate: 44_100); capture.sync { writer.append(buffer, type: .microphone) } }
             if (35..<60).contains(index) { try await Task.sleep(for: .milliseconds(20)) }
         }
@@ -63,6 +64,10 @@ final class AudioOnlyRecordingTests: XCTestCase {
                              "Export must mix the microphone instead of selecting only system audio")
         XCTAssertLessThan(amplitude(samples, rate: rate, frequency: 880, from: 0.1, to: 0.2), 0.02,
                           "A late microphone must keep its original time offset")
+        XCTAssertLessThan(amplitude(samples, rate: rate, frequency: 440, from: 0.42, to: 0.58), 0.02,
+                          "A source that drops out must stay silent for the gap")
+        XCTAssertGreaterThan(amplitude(samples, rate: rate, frequency: 440, from: 1, to: 1.18), 0.07,
+                             "Audio after a dropout must keep its original time")
         let segments = [TranscriptSegment(start: 0, end: 1.5, text: "Audio meeting", language: "en")]
         try MeetingArtifacts.write(title: "Audio meeting", recordedAt: date, duration: 1.5, segments: segments, to: folder)
         var meeting = try XCTUnwrap(MeetingLibrary().meetings(in: root).first)
@@ -122,27 +127,50 @@ final class AudioOnlyRecordingTests: XCTestCase {
         struct StopFailure: Error {}
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
-        let url = root.appendingPathComponent("recording.mov")
         let recorder = MeetingRecorder()
         recorder.startCapture = { _ in }
         recorder.stopCapture = { _ in throw StopFailure() }
-        let stream = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
-        try await recorder.begin(stream, to: url, microphone: nil, mode: .audioOnly)
-        for index in 0..<25 {
-            let buffer = try sample(at: Double(index) * 0.02, frequency: 440, channels: 2)
-            recorder.audioQueue.sync { recorder.stream(stream, didOutputSampleBuffer: buffer, of: .audio) }
-            try await Task.sleep(for: .milliseconds(20))
+        func record(to url: URL) async throws -> SCStream {
+            let stream = SCStream(filter: SCContentFilter(), configuration: SCStreamConfiguration(), delegate: nil)
+            try await recorder.begin(stream, to: url, microphone: nil, mode: .audioOnly)
+            for index in 0..<25 {
+                let buffer = try sample(at: Double(index) * 0.02, frequency: 440, channels: 2)
+                recorder.audioQueue.sync { recorder.stream(stream, didOutputSampleBuffer: buffer, of: .audio) }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            return stream
         }
+        func assertKept(_ url: URL, _ message: String) async throws {
+            // A cancelled writer deletes its file on the capture queue.
+            recorder.audioQueue.sync {}
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), message)
+            let audioURL = url.deletingPathExtension().appendingPathExtension("m4a")
+            try await AudioExtractor.extract(from: url, to: audioURL) { _ in }
+            let audio = try AVAudioFile(forReading: audioURL)
+            XCTAssertEqual(Double(audio.length) / audio.processingFormat.sampleRate, 0.5, accuracy: 0.06, message)
+        }
+        let url = root.appendingPathComponent("recording.mov")
+        _ = try await record(to: url)
         do {
             try await recorder.stop().value
             XCTFail("A failed stop must be reported")
         } catch is StopFailure {}
-        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "A failed stop must not delete the recording")
-        let audioURL = root.appendingPathComponent("recording.m4a")
-        try await AudioExtractor.extract(from: url, to: audioURL) { _ in }
-        let audio = try AVAudioFile(forReading: audioURL)
-        XCTAssertEqual(Double(audio.length) / audio.processingFormat.sampleRate, 0.5, accuracy: 0.06,
-                       "The audio recorded before a failed stop must be kept")
+        try await assertKept(url, "The audio recorded before a failed stop must be kept")
+        // Capture can also stop by itself: from the screen-sharing menu, or with an error. The writer must finish
+        // before clean-up, which cancels it and deletes an unfinished file.
+        for (name, stopError) in [("menu", SCStreamError(.userStopped)), ("error", StopFailure())] as [(String, Error)] {
+            let url = root.appendingPathComponent("\(name).mov")
+            let stream = try await record(to: url)
+            let stopped = expectation(description: "the \(name) stop is reported")
+            recorder.onUnexpectedStop = { error in
+                XCTAssertEqual(error is StopFailure, name == "error", "\(String(describing: error))")
+                XCTAssertEqual(error == nil, name == "menu")
+                stopped.fulfill()
+            }
+            recorder.stream(stream, didStopWithError: stopError)
+            await fulfillment(of: [stopped], timeout: 5)
+            try await assertKept(url, "The audio recorded before the \(name) stop must be kept")
+        }
     }
 
     @MainActor

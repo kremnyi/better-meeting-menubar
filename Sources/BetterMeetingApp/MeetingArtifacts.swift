@@ -280,12 +280,7 @@ enum MeetingArtifacts {
         transcriptLock.lock()
         defer { transcriptLock.unlock() }
         let fm = FileManager.default
-        let stages = try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-            .filter {
-                let values = try? $0.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-                return $0.lastPathComponent.hasPrefix(".transcript-")
-                    && values?.isDirectory == true && values?.isSymbolicLink != true
-            }
+        let stages = try fm.stagingFolders(in: folder, prefix: ".transcript-")
         // Destinations change only after every backup is written, so a stage missing any backup holds nothing to restore.
         let pending = stages.filter { staging in
             !fm.fileExists(atPath: staging.appendingPathComponent("committed").path)
