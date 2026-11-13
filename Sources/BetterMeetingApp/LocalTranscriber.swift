@@ -491,9 +491,11 @@ actor LocalTranscriber {
         audio: MeetingAudio,
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
-        let manager = try await prepareParakeet(progressHandler: progressHandler)
         let samples = try await audio.load()
         try Task.checkCancellation()
+        // FluidAudio rejects audio this short with an error, so a recording stopped at once gets an empty transcript and no model load.
+        guard samples.count >= ASRConstants.minimumRequiredSamples(forSampleRate: ASRConfig.default.sampleRate) else { return [] }
+        let manager = try await prepareParakeet(progressHandler: progressHandler)
         progressHandler(.engineTranscribing(nil))
         let progressTask = Task {
             do {

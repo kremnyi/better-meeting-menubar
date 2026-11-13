@@ -35,6 +35,24 @@ final class ParakeetEngineTests: XCTestCase {
         }
     }
 
+    func testTooShortAudioGivesAnEmptyTranscriptWithoutTheModel() async throws {
+        let root = makeTempRoot("ParakeetShortAudio")
+        defer { removeTempRoot(root) }
+        // A folder where the vocabulary belongs makes any model access fail at once instead of downloading.
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("models/parakeet-tdt-0.6b-v3/parakeet_vocab.json"), withIntermediateDirectories: true
+        )
+        let transcriber = LocalTranscriber(downloadBase: root)
+        // A recording stopped at once: no samples, or 0.1 s, which FluidAudio rejects as invalid audio.
+        for samples in [[Float](), [Float](repeating: 0, count: 1_600)] {
+            let audio = MeetingAudio(url: root.appendingPathComponent("audio.m4a")) { _ in samples }
+            let segments = try await transcriber.transcribe(
+                audioURL: audio.url, audio: audio, settings: SpeechSettings(engine: .parakeet), progressHandler: { _ in }
+            )
+            XCTAssertEqual(segments, [])
+        }
+    }
+
     func testSegmentsSplitOnSentencesAndPauses() throws {
         let timings = [
             TokenTiming(token: "Hello", tokenId: 1, startTime: 0, endTime: 0.5, confidence: 0),
