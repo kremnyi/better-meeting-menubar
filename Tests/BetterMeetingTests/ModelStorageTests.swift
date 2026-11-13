@@ -171,6 +171,16 @@ final class ModelStorageTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path), "Only a CoreML load failure removes the model")
         }
 
+        // A temporary CoreML failure must not cost a multi-GB download.
+        var attempts = 0
+        let loaded = try await LocalTranscriber.removingDamagedModel(at: folder) {
+            attempts += 1
+            if attempts == 1 { throw NSError(domain: MLModelErrorDomain, code: 0) }
+            return "model"
+        }
+        XCTAssertEqual(loaded, "model")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path), "A model that loads on retry must stay")
+
         do {
             _ = try await LocalTranscriber.removingDamagedModel(at: folder) {
                 throw NSError(domain: MLModelErrorDomain, code: 0)

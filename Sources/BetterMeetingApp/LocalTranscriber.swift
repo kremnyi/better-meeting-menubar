@@ -288,7 +288,14 @@ actor LocalTranscriber {
     }
 
     /// The downloader reuses existing files, even when their contents are damaged, so a CoreML load failure removes the folder.
+    /// A CoreML error can also be temporary, so the folder goes only when a second load fails too.
     static func removingDamagedModel<T>(at folder: URL, _ load: () async throws -> T) async throws -> T {
+        do {
+            return try await load()
+        } catch {
+            try Task.checkCancellation()
+            guard (error as NSError).domain == MLModelErrorDomain else { throw error }
+        }
         do {
             return try await load()
         } catch {
