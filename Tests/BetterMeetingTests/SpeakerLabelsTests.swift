@@ -65,10 +65,16 @@ final class SpeakerLabelsTests: XCTestCase {
             XCTFail("Changed audio must rerun detection")
         } catch Failure.detection {}
         XCTAssertEqual(try Data(contentsOf: cache), originalCache)
+        // One malformed turn must not drop the valid labels, and what is saved must be reusable.
         let updated = try await SpeakerLabels.run(audioURL: audio, segments: segments, enabled: true) {
-            [.init(start: 0, end: 2, speaker: 1)]
+            [.init(start: .nan, end: 1, speaker: 0), .init(start: 0, end: 2, speaker: 1), .init(start: 2, end: 1, speaker: 0)]
         }
         XCTAssertEqual(updated.first?.speaker, 1)
+        let reused = try await SpeakerLabels.run(audioURL: audio, segments: segments, enabled: true) {
+            XCTFail("Saved valid turns must be reused")
+            throw Failure.detection
+        }
+        XCTAssertEqual(reused, updated)
         try Data("broken cache".utf8).write(to: cache)
         let repaired = try await SpeakerLabels.run(audioURL: audio, segments: segments, enabled: true) { turns }
         XCTAssertEqual(repaired, first)

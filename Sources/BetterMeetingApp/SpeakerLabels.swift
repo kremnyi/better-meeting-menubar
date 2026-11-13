@@ -36,9 +36,9 @@ enum SpeakerLabels {
            cache.audioModified == stamp.modified, cache.turns.allSatisfy(\.isValid) {
             turns = cache.turns
         } else {
-            turns = try await detect()
+            // One malformed turn must not cost every label; only valid turns are kept, so the cache passes its own check.
+            turns = try await detect().filter(\.isValid)
             try Task.checkCancellation()
-            guard turns.allSatisfy(\.isValid) else { throw MeetingActionError.invalidMeeting }
             try await audioReady?()
             let written = try stamp ?? AudioStamp(of: audioURL)
             let encoder = JSONEncoder()
