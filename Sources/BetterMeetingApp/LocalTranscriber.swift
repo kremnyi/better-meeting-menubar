@@ -54,63 +54,6 @@ actor LocalTranscriber {
     static let defaultDownloadBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("BetterMeeting", isDirectory: true)
 
-    static let legacyDownloadBase = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("huggingface", isDirectory: true)
-
-    /// Present once Documents holds nothing left to migrate, so later launches don't touch that folder.
-    static let legacyMigrationMarker = ".legacy-models-migrated"
-
-    static func prepareModelStorage(legacy: URL = legacyDownloadBase, destination: URL = defaultDownloadBase) {
-        let fm = FileManager.default
-        try? fm.createDirectory(at: destination, withIntermediateDirectories: true)
-        // Earlier builds kept Parakeet beside models/; the original copy sits at the legacy root.
-        let parakeet = destination.appendingPathComponent("models/parakeet-tdt-0.6b-v3")
-        move(destination.appendingPathComponent("parakeet-tdt-0.6b-v3"), to: parakeet)
-
-        let marker = destination.appendingPathComponent(legacyMigrationMarker)
-        guard !fm.fileExists(atPath: marker.path) else { return }
-        let legacyPaths = [
-            "models/argmaxinc/whisperkit-coreml",
-            "models/argmaxinc/speakerkit-coreml",
-            "models/openai",
-        ].map { (legacy.appendingPathComponent($0), destination.appendingPathComponent($0)) }
-            + [(legacy.appendingPathComponent("parakeet-tdt-0.6b-v3"), parakeet)]
-        if !isMissing(legacy) {
-            for (source, target) in legacyPaths { move(source, to: target) }
-        }
-        // Leftover conflicts keep the check running; a read error such as denied Documents access is not proof that nothing is left.
-        if isMissing(legacy) || legacyPaths.allSatisfy({ isMissing($0.0) }) {
-            fm.createFile(atPath: marker.path, contents: nil)
-        }
-    }
-
-    private static func isMissing(_ url: URL) -> Bool {
-        do {
-            return try !url.checkResourceIsReachable()
-        } catch {
-            return (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == NSFileReadNoSuchFileError
-        }
-    }
-
-    private static func move(_ source: URL, to target: URL) {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: source.path) else { return }
-        if !fm.fileExists(atPath: target.path) {
-            try? fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? fm.moveItem(at: source, to: target)
-        } else if (try? source.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true,
-                  (try? target.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
-            // Merge into partial destinations; conflicting files stay at the old location until a verified replacement exists.
-            guard let children = try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) else { return }
-            for child in children { move(child, to: target.appendingPathComponent(child.lastPathComponent)) }
-            if (try? fm.contentsOfDirectory(atPath: source.path))?.isEmpty == true {
-                try? fm.removeItem(at: source)
-            }
-        } else if fm.contentsEqual(atPath: source.path, andPath: target.path) {
-            try? fm.removeItem(at: source)
-        }
-    }
-
     init(downloadBase: URL = defaultDownloadBase) {
         self.downloadBase = downloadBase
     }

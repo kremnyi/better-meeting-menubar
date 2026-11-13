@@ -12,7 +12,6 @@ struct BetterMeetingApp: App {
     init() {
         AppLogger.minimumLevel = .warning
         AppLogger.mirrorsToConsole = false
-        LocalTranscriber.prepareModelStorage()
         let model = AppModel()
         _model = StateObject(wrappedValue: model)
         appDelegate.model = model
