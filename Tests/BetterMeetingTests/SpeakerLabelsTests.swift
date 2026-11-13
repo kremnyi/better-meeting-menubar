@@ -75,6 +75,16 @@ final class SpeakerLabelsTests: XCTestCase {
             throw Failure.detection
         }
         XCTAssertEqual(reused, updated)
+        // Detection with no usable turn is a failure the user is told about, not an empty result saved for re-runs.
+        let savedCache = try Data(contentsOf: cache)
+        try Data([1, 2, 3]).write(to: audio)
+        do {
+            _ = try await SpeakerLabels.run(audioURL: audio, segments: segments, enabled: true) {
+                [.init(start: .nan, end: 1, speaker: 0)]
+            }
+            XCTFail("Only invalid turns must fail detection")
+        } catch MeetingActionError.invalidMeeting {}
+        XCTAssertEqual(try Data(contentsOf: cache), savedCache)
         try Data("broken cache".utf8).write(to: cache)
         let repaired = try await SpeakerLabels.run(audioURL: audio, segments: segments, enabled: true) { turns }
         XCTAssertEqual(repaired, first)
