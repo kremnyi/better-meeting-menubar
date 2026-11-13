@@ -201,10 +201,14 @@ final class MeetingCalendarTests: XCTestCase {
         model.fail(AppError.missingRecording)
         await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
         XCTAssertEqual(starts, 2, "A failed recording must not block Start recording for the next meeting")
-        model.dismissFailure()
         reader.events = [try calendarEventFixture(date: Date().addingTimeInterval(1800))]
         await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
         XCTAssertEqual(starts, 2, "A moved event must not be recorded through its old alert")
+        XCTAssertEqual(model.state, .idle, "The failed view has no place for the reason, so the menu must leave it")
+        XCTAssertNotNil(model.completionMessage, "Start recording from a failed state must say why nothing started")
+        model.completionMessage = nil
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
+        XCTAssertEqual(starts, 2)
         XCTAssertNotNil(model.completionMessage)
         await calendar.setNotifyAtStart(false)
         await calendar.reminders.task?.value

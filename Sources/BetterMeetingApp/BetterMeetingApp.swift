@@ -139,6 +139,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 guard model.state == .idle || model.state == .failed else { return }
                 if let start { start(event) } else { model.startRecording(calendarEvent: event) }
             } catch {
+                // The failed view shows no completion message; leave it as Start recording would have.
+                if model.state == .failed { model.dismissFailure() }
                 if model.state == .idle {
                     model.completionMessage = "This meeting changed or is no longer available. Check the upcoming meeting, or start a manual recording."
                 }
