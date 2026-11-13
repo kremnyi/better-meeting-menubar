@@ -528,6 +528,8 @@ final class AppModel: ObservableObject {
         transcriptionHistory = []
         // Cancel now: a pending search over the old folder must not publish before the new scan.
         historySearchTask?.cancel()
+        // The cancelled search never reports back, and a failed scan of the new folder starts no new one.
+        searchingHistory = false
         refreshHistory()
     }
 
