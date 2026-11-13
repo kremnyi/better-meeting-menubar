@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 
 @MainActor
@@ -217,8 +218,12 @@ final class RecordingSession: ObservableObject {
         id = recordingID
         model.elapsed = 0
         state = .recording
-        // The microphone is live from here on, so its idle event always re-arms the detector.
-        if model.detectsMeetings { model.meetingDetector.ownRecordingStarted() }
+        // The detector watches only the default input; a recording on it ends with the idle event that re-arms it.
+        if model.detectsMeetings {
+            let microphone = model.selectedMicrophoneID
+            let onDefault = microphone.isEmpty || microphone == AVCaptureDevice.default(for: .audio)?.uniqueID
+            model.meetingDetector.ownRecordingStarted(onWatchedMicrophone: onDefault)
+        }
         statusText = captureMode == .audioOnly
             ? "Recording system audio and microphone. No screen video is saved."
             : "Recording the selected display, system audio, and microphone."

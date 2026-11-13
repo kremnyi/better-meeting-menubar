@@ -163,10 +163,11 @@ final class MeetingDetector {
     }
 
     /// Marked as suggested so the call is not offered again when the user's own recording ends mid-call.
-    func ownRecordingStarted() {
+    /// Only a recording on the watched default input ends with an idle event that clears the mark.
+    func ownRecordingStarted(onWatchedMicrophone: Bool) {
         guard enabled else { return }
         withdraw(stopping: false)
-        suggested = true
+        suggested = onWatchedMicrophone
     }
 
     private func suggest() async {

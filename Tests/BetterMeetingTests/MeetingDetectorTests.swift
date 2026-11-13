@@ -132,7 +132,7 @@ final class MeetingDetectorTests: XCTestCase {
         await fulfillment(of: [suggested], timeout: 2)
 
         busy = true
-        detector.ownRecordingStarted()
+        detector.ownRecordingStarted(onWatchedMicrophone: true)
         XCTAssertEqual(notifications.removed, [MicrophoneMeeting.requestID])
         let quiet = expectation(description: "no second suggestion")
         quiet.isInverted = true
@@ -146,6 +146,37 @@ final class MeetingDetectorTests: XCTestCase {
         let next = expectation(description: "next call suggested")
         notifications.onPost = { next.fulfill() }
         await fulfillment(of: [next], timeout: 2)
+    }
+
+    func testRecordingOnAnotherMicrophoneLeavesTheNextCallArmed() async throws {
+        let (defaults, suite, root) = try makeTempDefaults("DetectorMicrophone")
+        defer { removeTempDefaults(defaults, suite: suite, root: root) }
+        let model = makeModel(defaults)
+        let (detector, microphone, notifications) = makeDetector(busy: { [unowned model] in model.isCapturing })
+        model.meetingDetector = detector
+        model.detectsMeetings = true
+        defer { model.detectsMeetings = false }
+
+        // A recording on the watched default input goes idle there when it ends, so its call is not offered again.
+        model.selectedMicrophoneID = ""
+        model.recording.didStart(at: Date())
+        model.fail(AppError.missingRecording) // Stop the synthetic recording timer; no capture was started.
+        let quiet = expectation(description: "the recorded call is not suggested")
+        quiet.isInverted = true
+        notifications.onPost = { quiet.fulfill() }
+        microphone.send(true)
+        await fulfillment(of: [quiet], timeout: 0.3)
+        microphone.send(false)
+
+        // The default input never goes idle for a recording on another microphone, so the next call must still be offered.
+        model.selectedMicrophoneID = "not-the-default-microphone"
+        model.recording.didStart(at: Date())
+        model.fail(AppError.missingRecording)
+        let suggested = expectation(description: "next call suggested")
+        notifications.onPost = { suggested.fulfill() }
+        microphone.send(true)
+        await fulfillment(of: [suggested], timeout: 2)
+        XCTAssertEqual(notifications.posted.count, 1)
     }
 
     func testTurningDetectionOffStopsWatchingAndWithdraws() async throws {
