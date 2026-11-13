@@ -92,8 +92,6 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(event.relativeStart(at: event.scheduledStart.addingTimeInterval(-30), calendar: calendar), "Starts in 1 min")
         XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar), "Starts in 1 hr 18 min")
         XCTAssertEqual(event.relativeStart(at: now, calendar: calendar, compact: true), "in 18m")
-        XCTAssertEqual(event.relativeStart(at: now.addingTimeInterval(-3600), calendar: calendar, compact: true), "in 1h18m")
-        XCTAssertEqual(event.relativeStart(at: event.scheduledStart.addingTimeInterval(-3600), calendar: calendar, compact: true), "in 1h")
         // The caption already shows the time range, so only the compact menu-bar text names the end time.
         XCTAssertEqual(event.relativeStart(at: event.scheduledStart, calendar: calendar), "Now")
         XCTAssertTrue(event.relativeStart(at: event.scheduledStart, calendar: calendar, compact: true).hasPrefix("until "))
@@ -104,10 +102,13 @@ final class MeetingCalendarTests: XCTestCase {
         let afterMidnight = try calendarEventFixture(date: midnight)
         XCTAssertEqual(afterMidnight.relativeStart(at: midnight.addingTimeInterval(-300), calendar: calendar, compact: true), "in 5m",
                        "The menu bar counts down to a meeting just after midnight")
+        let halfPastMidnight = try calendarEventFixture(date: midnight.addingTimeInterval(1800))
+        XCTAssertEqual(halfPastMidnight.relativeStart(at: midnight.addingTimeInterval(-1800), calendar: calendar, compact: true), "in 60m",
+                       "The menu bar's first minute of a meeting an hour away is a countdown, also across midnight")
     }
 
     func testMeetingEndingAtMidnightShowsTimeRangeWithoutDate() throws {
-        let midnight = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86400)
+        let midnight = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())))
         let endsAtMidnight = try calendarEventFixture(date: midnight.addingTimeInterval(-1800))
         XCTAssertEqual(endsAtMidnight.timeRange,
                        endsAtMidnight.scheduledStart.formatted(date: .omitted, time: .shortened) + "–"
@@ -132,6 +133,10 @@ final class MeetingCalendarTests: XCTestCase {
         let next = try calendarEventFixture(id: "next", date: now.addingTimeInterval(120))
         XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [ongoing, next], at: now), next,
                        "A meeting about to start outranks one under way, as on the record button")
+        let block = try calendarEventFixture(id: "block", date: now.addingTimeInterval(-5 * 3600), duration: 8 * 3600)
+        let call = try calendarEventFixture(id: "call", date: now.addingTimeInterval(-600))
+        XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [block, call], at: now), call,
+                       "Of two meetings under way, the one that started last, as on the record button")
         XCTAssertEqual(MenuBarStatusLabel.actionablePreviewEvent(from: [tomorrow], at: now.addingTimeInterval(19 * 3600)), tomorrow,
                        "Tomorrow's meeting appears only in its final hour")
     }
@@ -200,10 +205,11 @@ final class MeetingCalendarTests: XCTestCase {
         let request = CalendarReminder.request(for: event)
         let presented = await delegate.shouldPresentCalendarReminder(request)
         XCTAssertTrue(presented)
-        var starts = 0
-        await delegate.handleCalendarReminder(request, action: UNNotificationDefaultActionIdentifier) { _ in starts += 1 }
-        await delegate.handleCalendarReminder(request, action: UNNotificationDismissActionIdentifier) { _ in starts += 1 }
-        XCTAssertEqual(starts, 0)
+        model.recording.requestCapturePermissions = {}
+        model.recording.startCapture = { _, _ in }
+        await delegate.handleCalendarReminder(request, action: UNNotificationDefaultActionIdentifier)
+        await delegate.handleCalendarReminder(request, action: UNNotificationDismissActionIdentifier)
+        XCTAssertEqual(model.state, .idle)
         // Start recording brings the app forward, and its activation refresh supersedes the action's own.
         var activated = false
         reader.beforeReturn = {
@@ -212,28 +218,28 @@ final class MeetingCalendarTests: XCTestCase {
             Task { await calendar.refresh() }
             await Task.yield()
         }
-        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { selected in
-            starts += 1
-            XCTAssertEqual(selected.id, event.id)
-        }
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID)
         reader.beforeReturn = nil
         XCTAssertTrue(activated)
-        XCTAssertEqual(starts, 1)
-        model.recording.didStart(at: Date())
-        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
-        XCTAssertEqual(starts, 1)
+        try await waitForStart(of: model)
         XCTAssertEqual(model.state, .recording)
+        let folder = try XCTUnwrap(model.recording.activeFolder)
+        XCTAssertEqual(try savedOccurrenceID(in: folder), event.id)
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID)
+        XCTAssertEqual(model.state, .recording)
+        XCTAssertEqual(model.recording.activeFolder, folder, "The action never interrupts an active recording")
         model.fail(AppError.missingRecording)
-        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
-        XCTAssertEqual(starts, 2, "A failed recording must not block Start recording for the next meeting")
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID)
+        try await waitForStart(of: model)
+        XCTAssertEqual(model.state, .recording, "A failed recording must not block Start recording for the next meeting")
+        model.fail(AppError.missingRecording)
         reader.events = [try calendarEventFixture(date: Date().addingTimeInterval(1800))]
-        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
-        XCTAssertEqual(starts, 2, "A moved event must not be recorded through its old alert")
-        XCTAssertEqual(model.state, .idle, "The failed view has no place for the reason, so the menu must leave it")
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID)
+        XCTAssertEqual(model.state, .idle, "A moved event must not be recorded through its old alert, and the failed view has no place for the reason")
         XCTAssertNotNil(model.completionMessage, "Start recording from a failed state must say why nothing started")
         model.completionMessage = nil
-        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID) { _ in starts += 1 }
-        XCTAssertEqual(starts, 2)
+        await delegate.handleCalendarReminder(request, action: CalendarReminder.startActionID)
+        XCTAssertEqual(model.state, .idle)
         XCTAssertNotNil(model.completionMessage)
         await calendar.setNotifyAtStart(false)
         await calendar.reminders.task?.value
@@ -258,11 +264,9 @@ final class MeetingCalendarTests: XCTestCase {
         model.recording.requestCapturePermissions = {}
         model.recording.startCapture = { _, _ in }
         model.startRecording(calendarEvent: event)
-        while model.state == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitForStart(of: model)
         XCTAssertEqual(model.state, .recording)
-        let folder = try XCTUnwrap(model.recording.activeFolder)
-        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("calendar.json"))) as? [String: Any])
-        XCTAssertEqual((saved["event"] as? [String: Any])?["occurrenceId"] as? String, "started-from-this")
+        XCTAssertEqual(try savedOccurrenceID(in: try XCTUnwrap(model.recording.activeFolder)), "started-from-this")
         model.recording.stopTimer()
     }
 
@@ -350,62 +354,6 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(calendar.events.count, 1)
     }
 
-    @MainActor
-    func testRefreshFailureKeepsLastGoodSnapshotAndReportsStaleState() async throws {
-        let (defaults, suite, root) = try makeTempDefaults("CalendarFailure")
-        defer { removeTempDefaults(defaults, suite: suite, root: root) }
-        let reader = CalendarReaderFixture()
-        reader.authorizationStatus = .fullAccess
-        let calendar = CalendarIntegration(defaults: defaults, reader: reader)
-        calendar.setEnabled(true)
-        calendar.select("fixture-calendar", enabled: true)
-        let firstRefresh = Date()
-        let error = NSError(domain: "CalendarFixture", code: 1)
-
-        reader.loadError = error
-        await calendar.refresh(now: firstRefresh)
-        XCTAssertTrue(calendar.events.isEmpty)
-        XCTAssertFalse(calendar.isStale)
-        XCTAssertNil(calendar.lastSuccessfulRefresh)
-        XCTAssertNotNil(calendar.errorMessage)
-
-        let firstEvent = try calendarEventFixture(id: "first")
-        reader.loadError = nil
-        reader.events = [firstEvent]
-        await calendar.refresh(now: firstRefresh.addingTimeInterval(60))
-        let firstSnapshot = calendar.events
-        let firstCalendars = calendar.calendars
-        let firstSuccessfulRefresh = try XCTUnwrap(calendar.lastSuccessfulRefresh)
-        XCTAssertEqual(firstSnapshot, [firstEvent])
-        XCTAssertFalse(calendar.isStale)
-        XCTAssertNil(calendar.errorMessage)
-
-        reader.loadError = error
-        await calendar.refresh(now: firstRefresh.addingTimeInterval(120))
-        XCTAssertEqual(calendar.events, firstSnapshot)
-        XCTAssertEqual(calendar.calendars, firstCalendars)
-        XCTAssertEqual(calendar.lastSuccessfulRefresh, firstSuccessfulRefresh)
-        XCTAssertTrue(calendar.isStale)
-        XCTAssertTrue(calendar.diagnosticSummary.contains("last refresh failed"))
-
-        do {
-            _ = try await calendar.eventForRecording(id: firstEvent.id)
-            XCTFail("A failed refresh must not attach a stale event to a recording")
-        } catch {
-            XCTAssertTrue(error is CalendarRecordingError)
-        }
-
-        reader.loadError = nil
-        let secondEvent = try calendarEventFixture(id: "second")
-        reader.events = [secondEvent]
-        let secondRefresh = firstRefresh.addingTimeInterval(180)
-        await calendar.refresh(now: secondRefresh)
-        XCTAssertEqual(calendar.events, [secondEvent])
-        XCTAssertEqual(calendar.lastSuccessfulRefresh, secondRefresh)
-        XCTAssertFalse(calendar.isStale)
-        XCTAssertNil(calendar.errorMessage)
-    }
-
     private let sidecar = """
     {"schemaVersion":1,"meetingId":"fixture","event":{
       "title":"Portfolio discussion","attendees":[
@@ -484,7 +432,6 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertTrue(calendar.events.isEmpty)
         XCTAssertFalse(calendar.hasLoaded)
         XCTAssertNil(calendar.lastSuccessfulRefresh)
-        XCTAssertFalse(calendar.isStale)
         XCTAssertTrue(calendar.diagnosticSummary.contains("access needed"))
         do { _ = try await calendar.eventForRecording(id: "occurrence"); XCTFail("Revoked access must fail") }
         catch { XCTAssertTrue(error is CalendarRecordingError) }
@@ -643,6 +590,13 @@ final class MeetingCalendarTests: XCTestCase {
         XCTAssertEqual(layout.compact.map(\.id), ["first", "second"])
         XCTAssertEqual(layout.extraTodayCount, 2, "A meeting on two calendars is counted once")
         XCTAssertNil(layout.tomorrowFirst, "Tomorrow appears only once today is done")
+
+        let block = try calendarEventFixture(id: "block", date: now.addingTimeInterval(-3 * 3600), duration: 8 * 3600)
+        let call = try calendarEventFixture(id: "call", date: now.addingTimeInterval(120))
+        let withCall = UpcomingMeetingLayout.make(events: [block, call, first], now: now)
+        XCTAssertEqual(withCall.primary?.id, "call", "The full row shows the call the record button names, not the block")
+        XCTAssertEqual(withCall.compact.map(\.id), ["block", "first"])
+        XCTAssertEqual(withCall.extraTodayCount, 0)
     }
 
     func testUpcomingLayoutFallsBackToTomorrowLineWhenTodayIsDone() throws {
@@ -666,23 +620,33 @@ final class CalendarReaderFixture: CalendarReading {
     var events: [CalendarEvent] = []
     var calendars = [CalendarChoice(id: "fixture-calendar", title: "Work", account: "Example account")]
     var beforeReturn: (() async -> Void)?
-    var loadError: Error?
 
     func requestAccess() async throws {
         requests += 1
         authorizationStatus = .fullAccess
     }
 
-    func load(selectedIDs: Set<String>, now: Date) async throws -> CalendarSnapshot {
+    func load(selectedIDs: Set<String>, now: Date) async -> CalendarSnapshot {
         loads += 1
         self.selectedIDs = selectedIDs
         await beforeReturn?()
-        if let loadError { throw loadError }
         return CalendarSnapshot(
             calendars: calendars,
             events: events.filter { selectedIDs.contains($0.providerCalendarId) }
         )
     }
+}
+
+/// Waits for a start with stubbed capture to leave Preparing, for at most five seconds.
+@MainActor
+func waitForStart(of model: AppModel) async throws {
+    for _ in 0..<500 where model.state == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+    XCTAssertNotEqual(model.state, .preparing, "The recording never finished starting")
+}
+
+func savedOccurrenceID(in folder: URL) throws -> String? {
+    let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("calendar.json"))) as? [String: Any]
+    return (saved?["event"] as? [String: Any])?["occurrenceId"] as? String
 }
 
 func calendarEventFixture(id: String = "occurrence", date: Date = Date().addingTimeInterval(600), title: String = "Portfolio review with Alex",

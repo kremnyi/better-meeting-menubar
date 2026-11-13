@@ -85,11 +85,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         model?.detectsMeetings == true && (model?.state == .idle || model?.state == .failed) && model?.processing.isProcessing == false
     }
 
-    func startMicrophoneRecording(action: String, start: (() -> Void)? = nil) {
+    func startMicrophoneRecording(action: String) {
         guard action == UNNotificationDefaultActionIdentifier || action == MicrophoneMeeting.startActionID else { return }
         MeetingNotifications.remove(MicrophoneMeeting.requestID)
         if action == MicrophoneMeeting.startActionID, let model, model.state == .idle || model.state == .failed {
-            if let start { start() } else { model.startRecording() }
+            model.startRecording()
         }
         showMenu()
     }
@@ -125,8 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    func handleCalendarReminder(_ request: UNNotificationRequest, action: String,
-                                start: ((CalendarEvent) -> Void)? = nil) async {
+    func handleCalendarReminder(_ request: UNNotificationRequest, action: String) async {
         guard action == UNNotificationDefaultActionIdentifier || action == CalendarReminder.startActionID,
               let model else { return }
         if action == CalendarReminder.startActionID, model.state == .idle || model.state == .failed {
@@ -136,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 let event = try await model.calendar.eventForRecording(id: id)
                 guard CalendarReminder.matches(request, event: event) else { throw CalendarRecordingError.eventUnavailable }
                 guard model.state == .idle || model.state == .failed else { return }
-                if let start { start(event) } else { model.startRecording(calendarEvent: event) }
+                model.startRecording(calendarEvent: event)
             } catch {
                 // The failed view shows no completion message; leave it as Start recording would have.
                 if model.state == .failed { model.dismissFailure() }

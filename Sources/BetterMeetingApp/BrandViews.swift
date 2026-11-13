@@ -176,11 +176,9 @@ struct MenuBarStatusLabel: View {
     }
 
     static func actionablePreviewEvent(from events: [CalendarEvent], at now: Date) -> CalendarEvent? {
-        // Agree with the record button: a meeting about to start wins over one under way.
-        if let next = CalendarEvent.imminent(in: events, at: now), next.scheduledStart > now { return next }
-        return events.first { event in
-            if event.scheduledStart <= now { return event.scheduledEnd > now }
-            return event.scheduledStart.timeIntervalSince(now) <= previewLeadTime
+        // Name the meeting the record button names; with none, the next one within the lead time.
+        CalendarEvent.imminent(in: events, at: now) ?? events.first {
+            $0.scheduledStart > now && $0.scheduledStart.timeIntervalSince(now) <= previewLeadTime
         }
     }
 

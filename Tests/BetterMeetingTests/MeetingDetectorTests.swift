@@ -205,12 +205,11 @@ final class MeetingDetectorTests: XCTestCase {
         XCTAssertFalse(model.detectsMeetings, "Detection is off until it is switched on")
         XCTAssertFalse(delegate.shouldPresentMicrophoneMeeting())
 
-        var starts = 0
-        delegate.startMicrophoneRecording(action: UNNotificationDefaultActionIdentifier) { starts += 1 }
-        delegate.startMicrophoneRecording(action: UNNotificationDismissActionIdentifier) { starts += 1 }
-        XCTAssertEqual(starts, 0, "Opening or dismissing the notification must not record")
-        delegate.startMicrophoneRecording(action: MicrophoneMeeting.startActionID) { starts += 1 }
-        XCTAssertEqual(starts, 1)
+        model.recording.requestCapturePermissions = {}
+        model.recording.startCapture = { _, _ in }
+        delegate.startMicrophoneRecording(action: UNNotificationDefaultActionIdentifier)
+        delegate.startMicrophoneRecording(action: UNNotificationDismissActionIdentifier)
+        XCTAssertEqual(model.state, .idle, "Opening or dismissing the notification must not record")
 
         XCTAssertEqual(MicrophoneMeeting.category.actions.first?.identifier, MicrophoneMeeting.startActionID)
         XCTAssertTrue(MicrophoneMeeting.category.actions[0].options.contains(.foreground))
@@ -219,7 +218,10 @@ final class MeetingDetectorTests: XCTestCase {
         model.detectsMeetings = true
         XCTAssertTrue(delegate.shouldPresentMicrophoneMeeting())
         XCTAssertTrue(makeModel(defaults).detectsMeetings, "The setting is remembered")
-        model.recording.didStart(at: Date())
+        delegate.startMicrophoneRecording(action: MicrophoneMeeting.startActionID)
+        try await waitForStart(of: model)
+        XCTAssertEqual(model.state, .recording, "Start recording records")
+        XCTAssertNotNil(model.recording.activeFolder)
         XCTAssertFalse(delegate.shouldPresentMicrophoneMeeting(), "A recording is already under way")
         model.recording.state = .failed
         XCTAssertTrue(delegate.shouldPresentMicrophoneMeeting(), "A failed recording must not hide the next call")

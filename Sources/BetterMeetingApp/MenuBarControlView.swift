@@ -179,15 +179,16 @@ struct MenuBarControlView: View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Meeting name (optional)", text: $model.meetingTitle)
                 .textFieldStyle(.roundedBorder)
-                .onSubmit { startFromMenu() }
+                .onSubmit {
+                    model.startRecording(calendarEvent: StartRecordingButton.imminentEvent(
+                        in: model.calendar, title: model.meetingTitle, at: Date()))
+                }
                 .help("Press Return to start recording")
-            StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle) { startFromMenu(mode: $0) }
+            // The button passes the event its label names, so a click near a start or end records that meeting.
+            StartRecordingButton(calendar: model.calendar, meetingTitle: model.meetingTitle) {
+                model.startRecording(calendarEvent: $0, mode: $1)
+            }
         }
-    }
-
-    private func startFromMenu(mode: CaptureMode = .screen) {
-        let event = StartRecordingButton.imminentEvent(in: model.calendar, title: model.meetingTitle, at: Date())
-        model.startRecording(calendarEvent: event, mode: mode)
     }
 
     @ViewBuilder
@@ -494,6 +495,8 @@ struct MenuBarControlView: View {
         // Equal widths line the row up with the full-width primary button above it.
         if model.privacyPermission != nil || model.showsRecordingOptionsAction {
             Button { model.primaryAction() } label: { Text(model.primaryButtonTitle).frame(maxWidth: .infinity) }
+                .disabled(retryWaitsForProcessing)
+                .help(retryWaitsForProcessing ? "Retry when the current transcription finishes." : "")
         } else if let folder = model.completedFolder {
             Button { NSWorkspace.shared.open(folder) } label: { Text("Show saved files").frame(maxWidth: .infinity) }
         }
@@ -515,6 +518,14 @@ struct MenuBarControlView: View {
         .controlSize(.large)
         .tint(.signalCoral)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: model.primaryButtonTitle)
+        .disabled(retryWaitsForProcessing)
+        .help(retryWaitsForProcessing ? "Retry when the current transcription finishes." : "")
+    }
+
+    /// Retry transcription does nothing while another job runs, so the failed view's retry waits for it.
+    private var retryWaitsForProcessing: Bool {
+        model.state == .failed && model.privacyPermission != .screenRecording && model.retryableMeeting != nil
+            && (model.processing.isProcessing || model.isTranscribingBatch)
     }
 
     private var captureSummary: some View {
@@ -542,7 +553,7 @@ struct MenuBarControlView: View {
 private struct StartRecordingButton: View {
     @ObservedObject var calendar: CalendarIntegration
     let meetingTitle: String
-    let start: (CaptureMode) -> Void
+    let start: (CalendarEvent?, CaptureMode) -> Void
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
@@ -568,7 +579,7 @@ private struct StartRecordingButton: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             let event = Self.imminentEvent(in: calendar, title: meetingTitle, at: context.date)
-            Button { start(.screen) } label: {
+            Button { start(event, .screen) } label: {
                 HStack(spacing: 0) {
                     Label {
                         Text(event.map { "Record “\($0.title)”" } ?? "Start recording")
@@ -598,7 +609,7 @@ private struct StartRecordingButton: View {
             .overlay(alignment: .trailing) {
                 // A sibling control: opening its menu must never trigger screen capture.
                 Menu {
-                    Button("Record audio-only") { start(.audioOnly) }
+                    Button("Record audio-only") { start(event, .audioOnly) }
                         .help("Record system audio and microphone without saving screen video")
                 } label: {
                     Image(nsImage: Self.menuChevron)
