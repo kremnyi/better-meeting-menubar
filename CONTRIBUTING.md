@@ -222,7 +222,7 @@ Then it follows the steps below:
 
 1. Sets the version and the next `CFBundleVersion` in `App/Info.plist`.
 2. Runs `swift test` and `package-release.sh`.
-3. Checks the archive checksum, feed items, and archive signature against `SUPublicEDKey` without reading a private key. Then it updates and checks the casks: `Casks/better-meeting@beta.rb` for every release, and `Casks/better-meeting.rb` for a stable release.
+3. Checks the feed items and the archive signature against `SUPublicEDKey` without reading a private key. It also checks that every other download in the feed is reachable, so that a stable ZIP left in `dist/` by a release that stopped before publishing cannot reach the feed. Then it updates and checks the casks: `Casks/better-meeting@beta.rb` for every release, and `Casks/better-meeting.rb` for a stable release.
 4. Commits, then asks `Publish v<version> to GitHub and push main? [y/N]`. Pass `--yes` to skip the question.
 5. Pushes the tag. For a stable release, it waits for CI on the tag first.
 6. Publishes the GitHub release, marked as a pre-release for betas, and checks the download.
@@ -243,8 +243,9 @@ Then it follows the steps below:
 If a step fails, the script names the step and what state it left:
 
 - **Before the commit:** it prints the command that discards the version bump.
-- **After the commit but before publishing:** it prints the command that undoes the local commit.
-- **After the tag is pushed:** the release is public. Finish the remaining steps below by hand, and never replace a published archive.
+- **After the commit but before the tag is pushed:** it prints the command that undoes the local commit.
+- **After the tag is pushed but before the GitHub release is published** (for example, CI failed on the tag): it prints the commands that delete the tag, undo the local commit, and remove the ZIP.
+- **After the GitHub release is published:** the release is public. Finish the remaining steps below by hand, and never replace a published archive.
 
 Write the release notes to a file first. Keep the Installing section about self-signing and first-launch approval from earlier releases.
 
@@ -255,7 +256,8 @@ The script performs these steps; use them to finish a release it could not compl
 1. Update `CFBundleShortVersionString` and increment `CFBundleVersion` in `App/Info.plist`.
 2. Run `swift test`, then `./scripts/package-release.sh`. This creates a
    self-signed ZIP and `.sha256` file in `dist/`, then signs the archive for
-   Sparkle and generates `appcast.xml`. The feed contains the latest full update;
+   Sparkle and generates `appcast.xml`. A version with a `b<number>` suffix gets
+   the beta channel. The feed contains the latest full update;
    no delta archives or separate hosting are needed. After the feed check passes,
    the script prunes `dist/`: it keeps the new version, the versions listed in
    `appcast.xml` (for crash symbolication), and all stable ZIPs, and deletes

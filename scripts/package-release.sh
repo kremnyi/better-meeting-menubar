@@ -11,12 +11,6 @@ if [[ $(uname -m) != arm64 ]]; then
     exit 1
 fi
 
-channel=${1:-stable}
-if [[ "$channel" != stable && "$channel" != beta ]]; then
-    echo "Usage: package-release.sh [stable|beta]" >&2
-    exit 1
-fi
-
 signing_identity=B7DD515B85782011633AF2ACC25BFBDA42576F6E
 BETTER_MEETING_SIGNING_IDENTITY="$signing_identity" ./scripts/build-app.sh
 app_dir="dist/Better Meeting.app"
@@ -33,7 +27,8 @@ feed_dir="$PWD/.build/sparkle-release/$version"
 mkdir -p "$feed_dir"
 ln -f "dist/$archive" "$feed_dir/$archive"
 channel_args=()
-if [[ "$channel" == beta ]]; then
+# A version such as 0.4.1b2 is a beta.
+if [[ $version == *b<-> ]]; then
     # Sparkle prunes per channel, so the feed keeps one stable item next to the new beta.
     channel_args=(--channel beta)
     stable_archives=(

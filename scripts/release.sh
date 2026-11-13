@@ -37,6 +37,7 @@ archive="Better-Meeting-$version-arm64.zip"
 step="checking prerequisites"
 changed=false
 committed=false
+pushed=false
 published=false
 
 fail() {
@@ -51,6 +52,9 @@ on_exit() {
     if $published; then
         print -u2 "$tag is already public. Finish the remaining steps from CONTRIBUTING.md by hand."
         print -u2 "Never replace a published archive; publish a new version instead."
+    elif $pushed; then
+        print -u2 "$tag is pushed, but nothing was published. Remove the tag, the release commit, and the ZIP (a later beta feed would list it) with:"
+        print -u2 "  git push origin :refs/tags/$tag; git tag -d $tag; git reset --hard HEAD~1; rm -f dist/$archive dist/$archive.sha256 .build/sparkle-release/$version/$archive"
     elif $committed; then
         print -u2 "Nothing was pushed. Undo the local release with: git tag -d $tag 2>/dev/null; git reset --hard HEAD~1"
     elif $changed; then
@@ -113,8 +117,8 @@ if (( ${#problems} )); then
 fi
 
 print "Release plan for $tag ($channel), build $current_build → $build:"
-print "  1. Set $plist to $version ($build), run swift test, and package with scripts/package-release.sh $channel"
-print "  2. Check the archive checksum and appcast.xml, then update and check $([[ $channel == stable ]] && print 'both casks' || print 'the beta cask')"
+print "  1. Set $plist to $version ($build), run swift test, and package with scripts/package-release.sh"
+print "  2. Check appcast.xml and the other downloads it lists, then update and check $([[ $channel == stable ]] && print 'both casks' || print 'the beta cask')"
 print "  3. Commit, then ask before publishing"
 if [[ $channel == stable ]]; then
     print "  4. Push $tag and wait for CI, publish the GitHub release, push main"
@@ -257,13 +261,10 @@ swift test
 
 step="packaging"
 print "\n==> Packaging"
-./scripts/package-release.sh $channel
+./scripts/package-release.sh
 
-step="checking the archive and feed"
-print "\n==> Checking the archive and feed"
-(cd dist && shasum -a 256 -c "$archive.sha256")
-grep -q "<sparkle:shortVersionString>$version</sparkle:shortVersionString>" appcast.xml || fail "appcast.xml has no $version item."
-grep -q "releases/download/$tag/$archive" appcast.xml || fail "appcast.xml doesn't point at the $tag download."
+step="checking the feed"
+print "\n==> Checking the feed"
 RELEASE_VERSION=$version RELEASE_CHANNEL=$channel python3 - <<'PY' || fail "appcast.xml doesn't match the $channel release."
 import os, sys
 import xml.etree.ElementTree as ET
@@ -278,6 +279,13 @@ if version not in channels or channels[version] != expected:
 if None not in channels.values():
     sys.exit("the feed has no stable item")
 PY
+# A stable ZIP of a release that stopped before publishing stays in dist/, and a beta feed would list its missing download.
+download="https://github.com/$repo/releases/download/$tag/$archive"
+urls=(${(f)"$(sed -n 's|.*<enclosure url="\([^"]*\)".*|\1|p' appcast.xml)"})
+(( ${urls[(Ie)$download]} )) || fail "appcast.xml doesn't point at the $tag download."
+for url in ${urls:#$download}; do
+    curl -sfIL --max-time 60 --retry 1 -o /dev/null "$url" || fail "appcast.xml lists $url, which isn't reachable. Remove that ZIP with: rm -f dist/${url:t} dist/${url:t}.sha256 .build/sparkle-release/*/${url:t}; then discard the version bump and run the release again."
+done
 
 files=($plist appcast.xml)
 message="Release $version on the beta channel"
@@ -315,7 +323,7 @@ step="pushing $tag"
 print "\n==> Pushing $tag"
 git tag $tag
 git push -q origin $tag
-published=true
+pushed=true
 
 if [[ $channel == stable ]]; then
     # The download must exist before the cask and feed on main point at it.
@@ -328,9 +336,9 @@ print "\n==> Publishing the GitHub release"
 release_args=(--repo $repo --title "$version" --notes-file "$notes")
 [[ $channel == beta ]] && release_args=(--repo $repo --title "$version (beta)" --prerelease --notes-file "$notes")
 gh release create $tag "dist/$archive" "dist/$archive.sha256" $release_args
+published=true
 
 step="checking the download"
-download="https://github.com/$repo/releases/download/$tag/$archive"
 curl -sfIL -o /dev/null "$download" || fail "$download isn't reachable."
 
 step="pushing main"

@@ -32,8 +32,9 @@ The app's menu, shown with fictional calendar events and meetings.
   470 MB. Whisper models are about 490 MB (Small), 1.6 GB (Large v3 Turbo,
   the Whisper default), or 3.1 GB (Large v3). Speaker labels add about 11 MB.
 - Free space for recordings. The app does not start a recording with less than
-  250 MB free and warns below 2 GB. If free space falls below 250 MB during a
-  recording, the app stops and saves it, then transcribes it.
+  250 MB free and warns below 2 GB. If free space falls below 250 MB plus
+  2 MB for each recorded minute during a recording, the app stops and saves it,
+  then transcribes it.
 
 ## Install with Homebrew
 
@@ -57,8 +58,7 @@ brew install --cask kremnyi/better-meeting/better-meeting@beta
 ```
 
 The stable cask follows stable releases only. If you installed it and then
-updated to a beta in the app, `brew upgrade --greedy` or `brew reinstall` puts
-the stable release back.
+updated to a beta in the app, `brew reinstall` puts the stable release back.
 
 ### Direct download
 
