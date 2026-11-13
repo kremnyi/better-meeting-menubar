@@ -47,7 +47,8 @@ final class ParakeetEngineTests: XCTestCase {
         for samples in [[Float](), [Float](repeating: 0, count: 1_600)] {
             let audio = MeetingAudio(url: root.appendingPathComponent("audio.m4a")) { _ in samples }
             let segments = try await transcriber.transcribe(
-                audioURL: audio.url, audio: audio, settings: SpeechSettings(engine: .parakeet), progressHandler: { _ in }
+                audioURL: audio.url, audio: audio, languages: ["en"], hints: "", settings: SpeechSettings(engine: .parakeet),
+                audioReady: nil, progressHandler: { _ in }
             )
             XCTAssertEqual(segments, [])
         }

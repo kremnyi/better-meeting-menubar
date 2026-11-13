@@ -1,8 +1,42 @@
 import CoreML
 import Foundation
+import os
 import WhisperKit
 
 final class MeetingWhisperKit: WhisperKit {
+    /// Bound per call, so a pass never sees another pass's failure on the shared instance.
+    @TaskLocal private static var chunkFailure: OSAllocatedUnfairLock<(any Error)?>?
+
+    /// WhisperKit 1.1.1 only logs a failed VAD chunk and returns the rest; fail the pass instead of saving a gap.
+    override func transcribe(
+        audioArray: [Float], decodeOptions: DecodingOptions? = nil,
+        callback: TranscriptionCallback? = nil, segmentCallback: SegmentDiscoveryCallback? = nil
+    ) async throws -> [TranscriptionResult] {
+        let failure = OSAllocatedUnfairLock<(any Error)?>(initialState: nil)
+        let results = try await Self.$chunkFailure.withValue(failure) {
+            try await super.transcribe(
+                audioArray: audioArray, decodeOptions: decodeOptions, callback: callback, segmentCallback: segmentCallback
+            )
+        }
+        if let error = failure.withLock({ $0 }) { throw error }
+        return results
+    }
+
+    override func transcribeWithOptions(
+        audioArrays: [[Float]], decodeOptionsArray: [DecodingOptions?] = [nil],
+        seekOffsets: [Int]? = nil, callback: TranscriptionCallback? = nil
+    ) async -> [Result<[TranscriptionResult], any Error>] {
+        let results = await super.transcribeWithOptions(
+            audioArrays: audioArrays, decodeOptionsArray: decodeOptionsArray, seekOffsets: seekOffsets, callback: callback
+        )
+        // Cancellation is checked by the caller; any other chunk error is kept.
+        for case .failure(let error) in results where !(error is CancellationError) {
+            Self.chunkFailure?.withLock { $0 = $0 ?? error }
+            break
+        }
+        return results
+    }
+
     override func setupTranscribeTask(
         currentTimings: TranscriptionTimings, progress: Progress,
         audioProcessor: any AudioProcessing, audioEncoder: any AudioEncoding,
@@ -118,10 +152,12 @@ final class SpeechProbabilityDecoder: TextDecoding {
             options: options, callback: callback
         )
         result.noSpeechProb = noSpeech
+        // WhisperKit calls a window silent on no-speech alone; OpenAI Whisper also needs low confidence, so a confident repeat is retried.
+        let silent = noSpeech > (options.noSpeechThreshold ?? 1) && result.avgLogProb < (options.logProbThreshold ?? -.infinity)
         result.fallback = DecodingFallback(
             options: options,
             isFirstTokenLogProbTooLow: result.fallback?.fallbackReason == "firstTokenLogProbThreshold",
-            noSpeechProb: noSpeech, compressionRatio: result.compressionRatio, avgLogProb: result.avgLogProb
+            noSpeechProb: silent ? noSpeech : 0, compressionRatio: result.compressionRatio, avgLogProb: result.avgLogProb
         )
         return result
     }

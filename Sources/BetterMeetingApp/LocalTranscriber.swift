@@ -65,22 +65,7 @@ actor LocalTranscriber {
 
     static func cachedParakeetModels(in downloadBase: URL = defaultDownloadBase) -> Bool {
         AsrModels.modelsExist(at: parakeetDirectory(in: downloadBase), version: parakeetVersion)
-            && vocabularyIsValid(at: parakeetVocabulary(in: downloadBase))
-    }
-
-    private static let vocabularyCheck =
-        OSAllocatedUnfairLock<(path: String, size: Int, modified: Date, valid: Bool)?>(initialState: nil)
-
-    private static func vocabularyIsValid(at url: URL) -> Bool {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = (attributes[.size] as? NSNumber)?.intValue,
-              let modified = attributes[.modificationDate] as? Date else { return false }
-        if let check = vocabularyCheck.withLock({ $0 }), check.path == url.path, check.size == size, check.modified == modified {
-            return check.valid
-        }
-        let valid = (try? Data(contentsOf: url)).map(validParakeetVocabulary) == true
-        vocabularyCheck.withLock { $0 = (url.path, size, modified, valid) }
-        return valid
+            && (try? Data(contentsOf: parakeetVocabulary(in: downloadBase))).map(validParakeetVocabulary) == true
     }
 
     private static func parakeetVocabulary(in downloadBase: URL) -> URL {
@@ -381,10 +366,10 @@ actor LocalTranscriber {
     func transcribe(
         audioURL: URL,
         audio: MeetingAudio,
-        languages: [String] = TranscriptionLanguage.defaultCandidates,
-        hints: String = "",
-        settings: SpeechSettings = SpeechSettings(),
-        audioReady: (@Sendable () async throws -> Void)? = nil,
+        languages: [String],
+        hints: String,
+        settings: SpeechSettings,
+        audioReady: (@Sendable () async throws -> Void)?,
         progressHandler: @escaping @Sendable (LocalTranscriptionProgress) -> Void
     ) async throws -> [TranscriptSegment] {
         activeTranscriptions += 1
@@ -447,14 +432,15 @@ actor LocalTranscriber {
         guard samples.count >= ASRConstants.minimumRequiredSamples(forSampleRate: ASRConfig.default.sampleRate) else { return [] }
         let manager = try await prepareParakeet(progressHandler: progressHandler)
         progressHandler(.engineTranscribing(nil))
-        let progressTask = Task {
+        // FluidAudio ends its progress stream only for audio over this length; a stream read for shorter audio stays dead for the next job.
+        let progressTask = samples.count > ASRConstants.maxModelSamples ? Task {
             do {
                 for try await fraction in await manager.transcriptionProgressStream {
                     progressHandler(.engineTranscribing(fraction))
                 }
             } catch {}
-        }
-        defer { progressTask.cancel() }
+        } : nil
+        defer { progressTask?.cancel() }
         var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
         // Parakeet detects the language itself; pinning one garbled English product names in a Russian call.
         let result = try await manager.transcribe(samples, decoderState: &decoderState, language: nil)

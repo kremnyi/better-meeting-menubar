@@ -17,6 +17,9 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertNil(MeetingTitle.suggest(from: "Anna called today. We talked about the weather and said goodbye."))
         XCTAssertNil(MeetingTitle.suggest(from: "We discussed the pricing review. We finished the pricing review."))
         XCTAssertNil(MeetingTitle.suggest(from: "Anna will call tomorrow. Anna will call tomorrow."))
+        // Parakeet without token timings gives one long paragraph; over about 100k characters the tagger returns overlapping words.
+        let paragraph = String(repeating: "Anna said the Pricing review for the Stripe integration needs another pass before release. ", count: 1500)
+        XCTAssertNotNil(MeetingTitle.suggest(from: paragraph))
 
         // The stem must join "система", "систему" and "системою"; without it the topic is only "Оплати".
         XCTAssertEqual(MeetingTitle.suggest(from: payments), "Тарас — Система Оплати")

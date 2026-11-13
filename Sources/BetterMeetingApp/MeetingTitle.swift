@@ -24,6 +24,8 @@ enum MeetingTitle {
             in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameTypeOrLexicalClass,
             options: [.omitWhitespace, .omitPunctuation, .omitOther, .joinNames]
         ) { tag, range in
+            // Over about 100k characters in one paragraph the tagger can return overlapping words, such as "sai" then "said".
+            if let last = words.last, range.lowerBound < last.range.upperBound { return !Task.isCancelled }
             let word = String(text[range])
             let lemma = tagger.tag(at: range.lowerBound, unit: .word, scheme: .lemma).0?.rawValue ?? word
             words.append((word, (lemma.isEmpty ? word : lemma).lowercased(), tag, range))
@@ -84,6 +86,7 @@ enum MeetingTitle {
             in: text.startIndex..<text.endIndex, unit: .word, scheme: .tokenType,
             options: [.omitWhitespace, .omitPunctuation, .omitOther]
         ) { _, range in
+            if let last = words.last, range.lowerBound < last.range.upperBound { return !Task.isCancelled }
             words.append((String(text[range]), stem(String(text[range])), range))
             return !Task.isCancelled
         }

@@ -32,10 +32,12 @@ final class SpeechSettingsTests: XCTestCase {
         let transcriber = LocalTranscriber(downloadBase: cache)
         let audio = URL(fileURLWithPath: path)
         for model in SpeechModel.allCases + [.small] {
-            var settings = SpeechSettings()
+            var settings = SpeechSettings(engine: .whisper)
             settings.model = model
             settings.fallbackCount = 0
-            let segments = try await transcriber.transcribe(audioURL: audio, audio: MeetingAudio(url: audio), languages: ["en"], hints: "Anna, pricing, release", settings: settings) { _ in }
+            let segments = try await transcriber.transcribe(
+                audioURL: audio, audio: MeetingAudio(url: audio), languages: ["en"], hints: "Anna, pricing, release", settings: settings, audioReady: nil
+            ) { _ in }
             let text = segments.map(\.text).joined(separator: " ").lowercased()
             XCTAssertTrue(text.contains("pricing"), "\(model.label): \(text)")
             XCTAssertTrue(segments.allSatisfy { $0.language == "en" && $0.end > $0.start })

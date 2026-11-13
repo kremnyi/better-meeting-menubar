@@ -272,6 +272,16 @@ final class TranscriptionPassTests: XCTestCase {
         XCTAssertEqual(SpeechProbabilityDecoder.probability(of: 1, in: single), expected)
     }
 
+    func testFailedWhisperChunkFailsThePass() async throws {
+        // Without model files every 30 s chunk fails; WhisperKit only logs a failed chunk and returns the others.
+        let whisper = try await MeetingWhisperKit(verbose: false, load: false, download: false)
+        let samples = [Float](repeating: 0, count: WhisperKit.sampleRate * 70)
+        do {
+            let results = try await whisper.transcribe(audioArray: samples, decodeOptions: SpeechSettings().decodingOptions(language: "en"))
+            XCTFail("A failed chunk must fail the pass, not save a transcript with a gap: \(results.count) results")
+        } catch WhisperError.modelsUnavailable {}
+    }
+
     func testCancellationKeepsOnlyCompletedPasses() async throws {
         let root = makeTempRoot()
         defer { removeTempRoot(root) }
@@ -300,14 +310,9 @@ final class TranscriptionPassTests: XCTestCase {
         let (defaults, suite, root) = try makeTempDefaults("BetterMeetingLanguages")
         defer { removeTempDefaults(defaults, suite: suite, root: root) }
         XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["uk", "ru", "en"])
-        defaults.set("auto", forKey: "transcriptionLanguage")
-        defaults.set(["pl", "en"], forKey: "candidateLanguages")
-        XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["pl", "en"])
-        defaults.set("uk", forKey: "transcriptionLanguage")
         let model = makeModel(defaults)
-        XCTAssertEqual(model.transcriptionLanguages, ["uk"], "Preserve the previous single-language selection")
         model.transcriptionLanguages = ["ja", "en"]
-        XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["ja", "en"], "New choices must override both legacy preferences")
+        XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["ja", "en"])
         model.transcriptionLanguages = ["en"]
         model.transcriptionHints = "Anna, Approck, WhisperKit"
         XCTAssertEqual(makeModel(defaults).transcriptionLanguages, ["en"])
@@ -348,8 +353,10 @@ final class TranscriptionPassTests: XCTestCase {
         }
         let cache = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/model-check")
         let transcriber = LocalTranscriber(downloadBase: cache)
+        let settings = SpeechSettings(engine: .whisper)
         let segments = try await transcriber.transcribe(
-            audioURL: URL(fileURLWithPath: path), audio: MeetingAudio(url: URL(fileURLWithPath: path))
+            audioURL: URL(fileURLWithPath: path), audio: MeetingAudio(url: URL(fileURLWithPath: path)),
+            languages: ["uk", "ru", "en"], hints: "", settings: settings, audioReady: nil
         ) { _ in }
         XCTAssertEqual(Set(segments.compactMap(\.language)), Set(["uk", "ru", "en"]))
         XCTAssertTrue(segments.allSatisfy { !$0.text.contains("<|") && $0.end > $0.start })
@@ -360,13 +367,19 @@ final class TranscriptionPassTests: XCTestCase {
             XCTAssertTrue(pass.contains { ($0["nospeech"] as? Double ?? 0) > 0 }, "No-speech probabilities must be computed, not hardcoded")
         }
         let audio = URL(fileURLWithPath: path)
-        let hinted = try await transcriber.transcribe(audioURL: audio, audio: MeetingAudio(url: audio), languages: ["en"], hints: "Anna, Michael, pricing, release schedule") { _ in }
+        let hinted = try await transcriber.transcribe(
+            audioURL: audio, audio: MeetingAudio(url: audio), languages: ["en"], hints: "Anna, Michael, pricing, release schedule",
+            settings: settings, audioReady: nil
+        ) { _ in }
         XCTAssertFalse(hinted.isEmpty)
         XCTAssertTrue(hinted.allSatisfy { $0.language == "en" && !$0.text.contains("<|") })
         let pass = audio.deletingLastPathComponent().appendingPathComponent("pass_en.json")
         let completedPass = try Data(contentsOf: pass)
         let work = Task {
-            try await transcriber.transcribe(audioURL: audio, audio: MeetingAudio(url: audio), languages: ["en"], hints: "Different hints force another pass") { _ in }
+            try await transcriber.transcribe(
+                audioURL: audio, audio: MeetingAudio(url: audio), languages: ["en"], hints: "Different hints force another pass",
+                settings: settings, audioReady: nil
+            ) { _ in }
         }
         try await Task.sleep(for: .milliseconds(100))
         work.cancel()

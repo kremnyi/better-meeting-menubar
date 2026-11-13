@@ -56,7 +56,8 @@ final class EngineComparisonTests: XCTestCase {
             let started = Date()
             defer { sampler.cancel() }
             let segments = try await transcriber.transcribe(
-                audioURL: audio, audio: MeetingAudio(url: audio), languages: languages, settings: run.settings, progressHandler: { _ in }
+                audioURL: audio, audio: MeetingAudio(url: audio), languages: languages, hints: "", settings: run.settings,
+                audioReady: nil, progressHandler: { _ in }
             )
             let elapsed = Date().timeIntervalSince(started)
             sampler.cancel()
