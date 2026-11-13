@@ -11,6 +11,8 @@ final class AutomaticTitleTests: XCTestCase {
         XCTAssertEqual(MeetingTitle.suggest(from: pricing), "Anna — Pricing Review")
         XCTAssertEqual(MeetingTitle.suggest(from: "Microsoft discussed the product launch. Microsoft will prepare the product launch. We will review the product launch next week."), "Microsoft — Product Launch")
         XCTAssertEqual(MeetingTitle.suggest(from: "The iPhone needs a battery test. We should repeat the battery test on the iPhone. This iPhone passed the battery test."), "iPhone — Battery Test")
+        // Acronyms keep their capitals; `capitalized` turned this into "Api Migration".
+        XCTAssertEqual(MeetingTitle.suggest(from: "Anna will lead the API migration. Anna started the API migration yesterday. The API migration needs another test."), "Anna — API Migration")
         XCTAssertNil(MeetingTitle.suggest(from: ""))
         XCTAssertNil(MeetingTitle.suggest(from: "Anna called today. We talked about the weather and said goodbye."))
         XCTAssertNil(MeetingTitle.suggest(from: "We discussed the pricing review. We finished the pricing review."))

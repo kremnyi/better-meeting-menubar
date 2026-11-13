@@ -137,7 +137,11 @@ enum MeetingTitle {
             return $0.index < $1.index
         }
         guard let name, let topic else { return nil }
-        return MeetingArtifacts.sanitizedTitle("\(name.text) — \(topic.text.capitalized)")
+        // `capitalized` lowercases the rest of each word, so "API" became "Api"; words with capitals keep them.
+        let topicTitle = topic.text.split(separator: " ").map { word in
+            word.contains(where: \.isUppercase) ? String(word) : word.prefix(1).uppercased() + word.dropFirst()
+        }.joined(separator: " ")
+        return MeetingArtifacts.sanitizedTitle("\(name.text) — \(topicTitle)")
     }
 
     private static func stem(_ word: String) -> String {
