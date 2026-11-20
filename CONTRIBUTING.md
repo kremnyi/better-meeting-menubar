@@ -224,21 +224,11 @@ Then it follows the steps below:
 2. Runs `swift test` and `package-release.sh`.
 3. Checks the feed items and the archive signature against `SUPublicEDKey` without reading a private key. It also checks that every other download in the feed is reachable, so that a stable ZIP left in `dist/` by a release that stopped before publishing cannot reach the feed. Then it updates and checks the casks: `Casks/better-meeting@beta.rb` for every release, and `Casks/better-meeting.rb` for a stable release.
 4. Commits, then asks `Publish v<version> to GitHub and push main? [y/N]`. Pass `--yes` to skip the question.
-5. Pushes the tag. For a stable release, it waits for CI on the tag first.
+5. Pushes the tag.
 6. Publishes the GitHub release, marked as a pre-release for betas, and checks the download.
 7. Pushes `main` and checks that the public feed lists the new version.
 8. Runs `brew fetch` for each updated cask. `brew fetch` loads only trusted casks, so trust both once on the release Mac with `brew trust --cask kremnyi/better-meeting/better-meeting kremnyi/better-meeting/better-meeting@beta`.
-9. Reads the result of **Build and check**, the CI workflow:
-   - **Beta:** the script does not wait, because it publishes a beta without a CI gate, and GitHub is sometimes without a macOS runner for a long time. It prints the state of each run of the release commit, and the command that reads the state again. The exit code does not depend on CI. If GitHub cancelled a run because no runner took the job, run it again with `gh run rerun <run id> --failed`. Use the run of the tag: a rerun of the run of `main` can cancel the run of a newer commit.
-   - **Stable:** the script waits for the run on `main`. This wait and the wait in step 5 use these rules:
-     - The script reads each **Build and check** run of the release commit, on any ref (the tag, `main`, or another branch). It waits until GitHub reports each run as completed.
-     - A job passes if it passed in any attempt of any of these runs.
-     - If a job ends the last attempt of a run in a state other than success, skipped, or cancelled, the script stops. It stops even if the job passed in another run.
-     - GitHub cancels a job when no runner takes it in 15 minutes. If such a job of the tag run passed in no run, the script runs the failed jobs of the tag run again. It does this up to eight times in one wait. It does not run the jobs of `main` or of another branch again, because that can cancel the run of a newer commit.
-     - If a job was cancelled in the last attempt of a run and passed in another run or attempt, the script continues. That run stays red on GitHub. The script prints a note when the run is for the ref that it waits for.
-     - If a job passed in no run, the script stops.
-     - If a GitHub API call fails, the script tries again. It stops if GitHub does not report a run as completed, or does not give a complete job list, after 60 tries.
-     - Website deployment does not count as an app check.
+9. Prints the result of **Build and check**, the CI workflow, for each run of the release commit, and the command that reads it again. The script does not wait for CI on a stable or a beta release, because GitHub is sometimes without a macOS runner for a long time; the local `swift test` and packaging are the release checks. The exit code does not depend on CI. If GitHub cancelled a run because no runner took the job, run it again with `gh run rerun <run id> --failed`. Use the run of the tag: a rerun of the run of `main` can cancel the run of a newer commit.
 
 If a step fails, the script names the step and what state it left:
 
